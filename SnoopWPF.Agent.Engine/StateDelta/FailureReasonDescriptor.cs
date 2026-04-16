@@ -106,10 +106,10 @@ internal static class FailureReasonDescriptor
             // ── Tier / strategy failures ────────────────────────────────────────────
             FailureReason.TierMismatch => new SuggestionDto
             {
-                Tool = "broker_reconfigure_session",
+                Tool = "wpf_execute_command",
                 Args = new List<NameValuePairDto>
                 {
-                    new() { Name = "maxTier", Value = "3" },
+                    new() { Name = "hint", Value = "Fallback to L0 read-only inspection; command execution not available at current tier." },
                 },
             },
 

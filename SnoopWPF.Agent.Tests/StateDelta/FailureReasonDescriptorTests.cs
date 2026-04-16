@@ -136,13 +136,13 @@ public class FailureReasonDescriptorTests
     // ── TierMismatch ─────────────────────────────────────────────────────────────
 
     [Test]
-    public void TierMismatch_ReturnsBrokerReconfigureSession()
+    public void TierMismatch_ReturnsExecuteCommand_WithFallbackHint()
     {
         var result = FailureReasonDescriptor.Suggest(FailureReason.TierMismatch, SampleLocator);
 
         Assert.That(result, Is.Not.Null);
-        Assert.That(result!.Tool, Is.EqualTo("broker_reconfigure_session"));
-        AssertArg(result, "maxTier", "3");
+        Assert.That(result!.Tool, Is.EqualTo("wpf_execute_command"));
+        Assert.That(result.Args, Has.Some.Matches<Contracts.Dtos.NameValuePairDto>(a => a.Name == "hint"));
     }
 
     // ── StateUnchanged ───────────────────────────────────────────────────────────
