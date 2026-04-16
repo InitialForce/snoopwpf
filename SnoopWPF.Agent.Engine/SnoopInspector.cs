@@ -970,7 +970,139 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
     /// <inheritdoc/>
     public Task<SetPropertyResultDto> SetPropertyAsync(string nodeId, string propertyName, string value, CancellationToken ct)
     {
-        throw new NotImplementedException("BEAD-017");
+        return this.RunOnDispatcherAsync(() =>
+        {
+            // Guard: mutation must be explicitly enabled.
+            if (!this.options.EnableMutation)
+            {
+                throw new SnoopException(
+                    SnoopErrorCode.MutationDisabled,
+                    "Mutation is disabled. Set EnableMutation=true in SnoopInspectorOptions.",
+                    targetId: nodeId,
+                    suggestions: new[] { SnoopSuggestions.MutationDisabled });
+            }
+
+            var target = this.ResolveNodeOrThrow(nodeId);
+            this.VerifyElementConnectivity(target, nodeId);
+
+            // Guard: redacted properties cannot be mutated.
+            var isRedacted = this.options.EnableRedaction && RedactionFilter.IsRedacted(propertyName, null);
+            if (isRedacted)
+            {
+                throw new SnoopException(
+                    SnoopErrorCode.PropertyRedacted,
+                    $"Property '{propertyName}' is redacted and cannot be set.",
+                    targetId: nodeId,
+                    suggestions: new[] { SnoopSuggestions.PropertyRedacted });
+            }
+
+            // Only DependencyObject targets support DP-based property setting.
+            if (target is not DependencyObject depObj)
+            {
+                throw new SnoopException(
+                    SnoopErrorCode.UnsupportedPropertyType,
+                    $"Target '{nodeId}' is not a DependencyObject; property mutation requires a DependencyObject.",
+                    targetId: nodeId,
+                    suggestions: new[] { SnoopSuggestions.UnsupportedPropertyType });
+            }
+
+            // Find the DependencyProperty via PropertyInformation.
+            // ONE synchronous block: get properties, find named one, capture type, teardown.
+            DependencyProperty? depProp = null;
+            Type? propertyType = null;
+            string previousValue = string.Empty;
+
+            var props = PropertyInformation.GetProperties(target);
+            try
+            {
+                var match = props.FirstOrDefault(p =>
+                    string.Equals(p.Name, propertyName, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(p.DisplayName, propertyName, StringComparison.OrdinalIgnoreCase));
+
+                if (match is null)
+                {
+                    throw new SnoopException(
+                        SnoopErrorCode.PropertyReadOnly,
+                        $"Property '{propertyName}' was not found on '{target.GetType().Name}'.",
+                        targetId: nodeId,
+                        suggestions: new[] { SnoopSuggestions.PropertyReadOnly });
+                }
+
+                if (!match.CanEdit)
+                {
+                    throw new SnoopException(
+                        SnoopErrorCode.PropertyReadOnly,
+                        $"Property '{propertyName}' is read-only on '{target.GetType().Name}'.",
+                        targetId: nodeId,
+                        suggestions: new[] { SnoopSuggestions.PropertyReadOnly });
+                }
+
+                depProp = match.DependencyProperty;
+                propertyType = (Type?)match.PropertyType;
+
+                // Capture previous value (use StringValue — never TypeDescriptor).
+                previousValue = match.StringValue ?? string.Empty;
+            }
+            finally
+            {
+                foreach (var prop in props)
+                {
+                    prop.Teardown();
+                    StopChangeTimer(prop);
+                }
+            }
+
+            if (depProp is null || propertyType is null)
+            {
+                throw new SnoopException(
+                    SnoopErrorCode.UnsupportedPropertyType,
+                    $"Property '{propertyName}' on '{target.GetType().Name}' is not a DependencyProperty and cannot be set.",
+                    targetId: nodeId,
+                    suggestions: new[] { SnoopSuggestions.UnsupportedPropertyType });
+            }
+
+            // Convert the value using the hardcoded TypeConverterTable — NEVER TypeDescriptor.GetConverter().
+            object convertedValue;
+            try
+            {
+                convertedValue = TypeConverterTable.Convert(propertyType, value);
+            }
+            catch (NotSupportedException ex)
+            {
+                throw new SnoopException(
+                    SnoopErrorCode.UnsupportedPropertyType,
+                    ex.Message,
+                    ex,
+                    targetId: nodeId,
+                    suggestions: new[] { SnoopSuggestions.UnsupportedPropertyType });
+            }
+            catch (FormatException ex)
+            {
+                throw new SnoopException(
+                    SnoopErrorCode.TypeConversionFailed,
+                    ex.Message,
+                    ex,
+                    targetId: nodeId,
+                    suggestions: new[] { SnoopSuggestions.TypeConversionFailed });
+            }
+
+            // Apply the value.
+            depObj.SetValue(depProp, convertedValue);
+
+            // Log mutation: nodeId + property name only (NOT values — per security rules).
+            System.Diagnostics.Trace.WriteLine(
+                $"[SnoopWPF.Agent] SetProperty: nodeId={nodeId}, property={propertyName}");
+
+            var newValue = convertedValue.ToString() ?? string.Empty;
+
+            return new SetPropertyResultDto
+            {
+                Success = true,
+                PreviousValue = previousValue,
+                NewValue = newValue,
+                Error = null,
+            };
+        }, ct);
     }
 
     /// <inheritdoc/>
