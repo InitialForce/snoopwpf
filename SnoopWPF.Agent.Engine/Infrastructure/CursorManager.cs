@@ -92,37 +92,46 @@ public sealed class CursorManager : IDisposable
         var age = now - entry.CreatedAt;
         var stale = age > this.ttl;
 
-        int offset;
+        var items = entry.Snapshot;
+        var totalCount = items.Count;
+
+        // Atomically claim an exclusive range [claimedOffset, end) using CAS.
+        // Only one thread can claim any given range — no two threads ever serve
+        // the same item, regardless of how many concurrent callers hold the entry ref.
+        int claimedOffset;
         int end;
-        int totalCount;
-        string[] page;
-        bool hasMore;
-
-        lock (entry.SyncLock)
+        do
         {
-            offset = entry.Offset;
-            var items = entry.Snapshot;
-            totalCount = items.Count;
-            end = Math.Min(offset + pageSize, totalCount);
-            page = new string[end - offset];
-
-            for (var i = offset; i < end; i++)
+            claimedOffset = entry.ReadOffset();
+            if (claimedOffset >= totalCount)
             {
-                page[i - offset] = items[i];
+                // Cursor already fully consumed (by us or another thread).
+                return new CursorPage(
+                    items: Array.Empty<string>(),
+                    nextCursor: null,
+                    totalCount: totalCount,
+                    hasMore: false,
+                    stale: stale);
             }
 
-            hasMore = end < totalCount;
+            end = Math.Min(claimedOffset + pageSize, totalCount);
+        }
+        while (!entry.TryAdvance(claimedOffset, end));
 
-            if (hasMore)
-            {
-                // Advance the offset in the existing entry and return the same cursor token
-                entry.Offset = end;
-            }
-            else
-            {
-                // All pages consumed; remove the snapshot
-                this.snapshots.TryRemove(cursor, out _);
-            }
+        // We exclusively own [claimedOffset, end).  Build the page.
+        var page = new string[end - claimedOffset];
+        for (var i = claimedOffset; i < end; i++)
+        {
+            page[i - claimedOffset] = items[i];
+        }
+
+        var hasMore = end < totalCount;
+
+        if (!hasMore)
+        {
+            // All slots consumed — remove from dict so future TryGetValue calls return empty.
+            // It is safe for multiple threads to race here; TryRemove is idempotent.
+            this.snapshots.TryRemove(cursor, out _);
         }
 
         string? nextCursor = hasMore ? cursor : null;
@@ -171,22 +180,37 @@ public sealed class CursorManager : IDisposable
 
     private sealed class CursorEntry
     {
+        /// <summary>
+        /// The current read offset into <see cref="Snapshot"/>.
+        /// Mutated exclusively via <see cref="TryAdvance"/> to ensure atomic,
+        /// race-free advancement using compare-and-swap.
+        /// </summary>
+        private int offset;
+
         public CursorEntry(IReadOnlyList<string> snapshot, DateTimeOffset createdAt)
         {
             this.Snapshot = snapshot;
             this.CreatedAt = createdAt;
-            this.Offset = 0;
-            this.SyncLock = new object();
+            this.offset = 0;
         }
 
         public IReadOnlyList<string> Snapshot { get; }
 
         public DateTimeOffset CreatedAt { get; }
 
-        public int Offset { get; set; }
+        /// <summary>
+        /// Reads the current offset with a volatile load.
+        /// </summary>
+        public int ReadOffset() => Volatile.Read(ref this.offset);
 
-        /// <summary>Guards read-compute-write of Offset against concurrent callers.</summary>
-        public object SyncLock { get; }
+        /// <summary>
+        /// Attempts to atomically advance the offset from <paramref name="expected"/> to
+        /// <paramref name="desired"/>. Returns <see langword="true"/> if the CAS succeeded
+        /// (this thread exclusively owns the range [expected, desired)); returns
+        /// <see langword="false"/> if another thread raced and the caller must retry.
+        /// </summary>
+        public bool TryAdvance(int expected, int desired)
+            => Interlocked.CompareExchange(ref this.offset, desired, expected) == expected;
     }
 }
 
