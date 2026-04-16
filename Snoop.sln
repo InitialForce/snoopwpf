@@ -77,6 +77,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SnoopWPF.SampleApp", "Sampl
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SnoopWPF.Agent.Server", "SnoopWPF.Agent.Server\SnoopWPF.Agent.Server.csproj", "{64A69745-6D1F-48F9-8F79-D13DF8F08E5E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SnoopWPF.Agent.IntegrationTests", "SnoopWPF.Agent.IntegrationTests\SnoopWPF.Agent.IntegrationTests.csproj", "{D0BE5F21-40DA-4EBB-B7B4-5B2D942320E5}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		CI_Debug|Any CPU = CI_Debug|Any CPU
@@ -423,6 +425,30 @@ Global
 		{64A69745-6D1F-48F9-8F79-D13DF8F08E5E}.Release|x64.Build.0 = Release|Any CPU
 		{64A69745-6D1F-48F9-8F79-D13DF8F08E5E}.Release|x86.ActiveCfg = Release|Any CPU
 		{64A69745-6D1F-48F9-8F79-D13DF8F08E5E}.Release|x86.Build.0 = Release|Any CPU
+		{D0BE5F21-40DA-4EBB-B7B4-5B2D942320E5}.CI_Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D0BE5F21-40DA-4EBB-B7B4-5B2D942320E5}.CI_Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D0BE5F21-40DA-4EBB-B7B4-5B2D942320E5}.CI_Debug|x64.ActiveCfg = Debug|Any CPU
+		{D0BE5F21-40DA-4EBB-B7B4-5B2D942320E5}.CI_Debug|x64.Build.0 = Debug|Any CPU
+		{D0BE5F21-40DA-4EBB-B7B4-5B2D942320E5}.CI_Debug|x86.ActiveCfg = Debug|Any CPU
+		{D0BE5F21-40DA-4EBB-B7B4-5B2D942320E5}.CI_Debug|x86.Build.0 = Debug|Any CPU
+		{D0BE5F21-40DA-4EBB-B7B4-5B2D942320E5}.CI_Release|Any CPU.ActiveCfg = Debug|Any CPU
+		{D0BE5F21-40DA-4EBB-B7B4-5B2D942320E5}.CI_Release|Any CPU.Build.0 = Debug|Any CPU
+		{D0BE5F21-40DA-4EBB-B7B4-5B2D942320E5}.CI_Release|x64.ActiveCfg = Debug|Any CPU
+		{D0BE5F21-40DA-4EBB-B7B4-5B2D942320E5}.CI_Release|x64.Build.0 = Debug|Any CPU
+		{D0BE5F21-40DA-4EBB-B7B4-5B2D942320E5}.CI_Release|x86.ActiveCfg = Debug|Any CPU
+		{D0BE5F21-40DA-4EBB-B7B4-5B2D942320E5}.CI_Release|x86.Build.0 = Debug|Any CPU
+		{D0BE5F21-40DA-4EBB-B7B4-5B2D942320E5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D0BE5F21-40DA-4EBB-B7B4-5B2D942320E5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D0BE5F21-40DA-4EBB-B7B4-5B2D942320E5}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{D0BE5F21-40DA-4EBB-B7B4-5B2D942320E5}.Debug|x64.Build.0 = Debug|Any CPU
+		{D0BE5F21-40DA-4EBB-B7B4-5B2D942320E5}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{D0BE5F21-40DA-4EBB-B7B4-5B2D942320E5}.Debug|x86.Build.0 = Debug|Any CPU
+		{D0BE5F21-40DA-4EBB-B7B4-5B2D942320E5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D0BE5F21-40DA-4EBB-B7B4-5B2D942320E5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D0BE5F21-40DA-4EBB-B7B4-5B2D942320E5}.Release|x64.ActiveCfg = Release|Any CPU
+		{D0BE5F21-40DA-4EBB-B7B4-5B2D942320E5}.Release|x64.Build.0 = Release|Any CPU
+		{D0BE5F21-40DA-4EBB-B7B4-5B2D942320E5}.Release|x86.ActiveCfg = Release|Any CPU
+		{D0BE5F21-40DA-4EBB-B7B4-5B2D942320E5}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
