@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
+
+  <PropertyGroup>
+    <TargetFrameworks>net462;net6.0-windows</TargetFrameworks>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <UseWpf>true</UseWpf>
+    <OutputType>Library</OutputType>
+    <IsPackable>false</IsPackable>
+    <!-- CA1063/CA1816: IDisposable pattern used intentionally -->
+    <NoWarn>$(NoWarn);CA1063;CA1816</NoWarn>
+  </PropertyGroup>
+
+  <!-- net462 requires System.IO.Pipes.AccessControl for pipe ACLs -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net462'">
+    <PackageReference Include="System.IO.Pipes.AccessControl" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SnoopWPF.Agent.Contracts\SnoopWPF.Agent.Contracts.csproj" />
+    <ProjectReference Include="..\SnoopWPF.Agent.Engine\SnoopWPF.Agent.Engine.csproj" />
+  </ItemGroup>
+
+</Project>
