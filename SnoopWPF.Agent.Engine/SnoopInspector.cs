@@ -788,7 +788,183 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
         int maxResults,
         CancellationToken ct)
     {
-        throw new NotImplementedException("BEAD-016");
+        return this.RunOnDispatcherAsync(() =>
+        {
+            // Cap maxResults at 100.
+            var cap = Math.Min(maxResults <= 0 ? 100 : maxResults, 100);
+
+            var root = this.ResolveRootTarget(rootNodeId);
+
+            var treeTypeEnum = ParseTreeType(treeType);
+            using var treeService = TreeService.From(treeTypeEnum);
+            var rootItem = treeService.Construct(root, parent: null);
+
+            if (rootItem is null)
+            {
+                return new FindElementResultDto
+                {
+                    Results = new List<FindElementHitDto>(),
+                    TotalScanned = 0,
+                    Truncated = false,
+                };
+            }
+
+            var results = new List<FindElementHitDto>();
+            var totalScanned = 0;
+            var truncated = false;
+
+            // BFS traversal of the tree.
+            // Use parallel queues to avoid ValueTuple (not available on net462 without NuGet).
+            var itemQueue = new Queue<TreeItem>();
+            var pathQueue = new Queue<List<string>>();
+
+            itemQueue.Enqueue(rootItem);
+            pathQueue.Enqueue(new List<string>());
+
+            while (itemQueue.Count > 0 && !truncated)
+            {
+                var current = itemQueue.Dequeue();
+                var pathSoFar = pathQueue.Dequeue();
+                totalScanned++;
+
+                if (this.MatchesFilter(current, typeName, name, conditions))
+                {
+                    if (results.Count >= cap)
+                    {
+                        truncated = true;
+                        break;
+                    }
+
+                    var nodeDto = DtoProjection.ToNodeDto(current, this.nodeRegistry);
+                    results.Add(new FindElementHitDto
+                    {
+                        Node = nodeDto,
+                        Path = new List<string>(pathSoFar),
+                    });
+                }
+
+                // Enqueue children with updated path.
+                var childPath = new List<string>(pathSoFar)
+                {
+                    current.TargetType?.Name ?? current.Target?.GetType().Name ?? string.Empty,
+                };
+
+                foreach (var child in current.Children)
+                {
+                    itemQueue.Enqueue(child);
+                    pathQueue.Enqueue(childPath);
+                }
+            }
+
+            return new FindElementResultDto
+            {
+                Results = results,
+                TotalScanned = totalScanned,
+                Truncated = truncated,
+            };
+        }, ct);
+    }
+
+    /// <summary>
+    /// Returns true if the given TreeItem matches the search filter criteria.
+    /// Called only on the Dispatcher thread.
+    /// </summary>
+    private bool MatchesFilter(
+        TreeItem item,
+        string? typeNameFilter,
+        string? nameFilter,
+        List<PropertyConditionDto>? conditions)
+    {
+        // Type name filter: short name ("Button") or full name, case-insensitive substring match.
+        if (!string.IsNullOrEmpty(typeNameFilter))
+        {
+            var shortName = item.TargetType?.Name ?? string.Empty;
+            var fullName = item.TargetType?.FullName ?? string.Empty;
+
+            var matchesType =
+                shortName.IndexOf(typeNameFilter, StringComparison.OrdinalIgnoreCase) >= 0
+                || fullName.IndexOf(typeNameFilter, StringComparison.OrdinalIgnoreCase) >= 0;
+
+            if (!matchesType)
+            {
+                return false;
+            }
+        }
+
+        // Name filter: match x:Name / Name property.
+        if (!string.IsNullOrEmpty(nameFilter))
+        {
+            var elementName = item.Name ?? string.Empty;
+            if (elementName.IndexOf(nameFilter, StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                return false;
+            }
+        }
+
+        // Property conditions: check each condition against element's dependency properties.
+        if (conditions is { Count: > 0 } && item.Target is DependencyObject depObj)
+        {
+            foreach (var condition in conditions)
+            {
+                if (string.IsNullOrEmpty(condition.Property))
+                {
+                    continue;
+                }
+
+                if (!this.EvaluatePropertyCondition(depObj, condition))
+                {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Evaluates a single property condition against a DependencyObject.
+    /// Uses reflection on public instance properties (NOT TypeDescriptor) per security rules.
+    /// Called only on the Dispatcher thread.
+    /// </summary>
+    private bool EvaluatePropertyCondition(DependencyObject depObj, PropertyConditionDto condition)
+    {
+        try
+        {
+            // Look up property via reflection — public instance properties only.
+            // Per global security rules: use GetProperties(BindingFlags) NOT TypeDescriptor.GetProperties().
+            var propInfo = depObj.GetType().GetProperty(
+                condition.Property,
+                BindingFlags.Public | BindingFlags.Instance);
+
+            if (propInfo is null)
+            {
+                // Unknown property — condition cannot match.
+                return false;
+            }
+
+            var rawValue = propInfo.GetValue(depObj);
+            var stringValue = rawValue?.ToString() ?? string.Empty;
+
+            var op = condition.Operator ?? "Equals";
+
+            if (string.Equals(op, "Equals", StringComparison.OrdinalIgnoreCase))
+            {
+                return string.Equals(stringValue, condition.Value ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+            }
+
+            if (string.Equals(op, "Contains", StringComparison.OrdinalIgnoreCase))
+            {
+                return stringValue.IndexOf(condition.Value ?? string.Empty, StringComparison.OrdinalIgnoreCase) >= 0;
+            }
+
+            // Unknown operator — condition cannot match.
+            return false;
+        }
+        catch
+        {
+            // Property access can throw (e.g. for elements in invalid state).
+            return false;
+        }
     }
 
     /// <inheritdoc/>
