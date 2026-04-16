@@ -22,6 +22,7 @@
     <ProjectReference Include="..\SnoopWPF.Agent.Tools\SnoopWPF.Agent.Tools.csproj" />
     <ProjectReference Include="..\SnoopWPF.Agent.Remote\SnoopWPF.Agent.Remote.csproj" />
     <ProjectReference Include="..\SnoopWPF.Agent.Input.Deterministic\SnoopWPF.Agent.Input.Deterministic.csproj" />
+    <ProjectReference Include="..\SnoopWPF.Agent.BrokerHost\SnoopWPF.Agent.BrokerHost.csproj" />
   </ItemGroup>
 
 </Project>
