@@ -17,6 +17,11 @@
       <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
     </ItemGroup>
 
+    <ItemGroup Label="MCP">
+        <PackageVersion Include="ModelContextProtocol" Version="1.2.0" />
+        <PackageVersion Include="ModelContextProtocol.Core" Version="1.2.0" />
+    </ItemGroup>
+
     <ItemGroup Label="Build">
         <PackageVersion Include="Microsoft.NETFramework.ReferenceAssemblies.net462" Version="1.0.3" />
         <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" />
