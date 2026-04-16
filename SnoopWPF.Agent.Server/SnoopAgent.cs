@@ -2,6 +2,7 @@ namespace SnoopWPF.Agent.Server;
 
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
@@ -38,6 +39,12 @@ public static class SnoopAgent
     /// </exception>
     public static SnoopAgentHandle StartCoLocated(SnoopAgentOptions? options = null)
     {
+        // M1-19: stdout held by MCP transport; see SWPF0001.
+        // This MUST be the first statement: any Console.Write before this line leaks
+        // onto the stdio MCP transport and corrupts the JSON-RPC framing.
+        // NOTE: StartBrokered does NOT take over stdout — the broker owns its own stdio.
+        Console.SetOut(TextWriter.Null);
+
         options ??= new SnoopAgentOptions();
 
         lock (Lock)
