@@ -418,6 +418,13 @@ internal sealed class PipeAgentServer : IDisposable
                 var result = await this.inspector.ExecuteCommandAsync(p.NodeId, ct).ConfigureAwait(false);
                 return JsonFramedSerializer.SerializeToString(result);
             },
+
+            ["SetSliderValue"] = async (paramsJson, ct) =>
+            {
+                var p = JsonFramedSerializer.DeserializeString<SetSliderValueParams>(paramsJson);
+                var result = await this.inspector.SetSliderValueAsync(p.NodeId, p.Value, p.Normalized, ct).ConfigureAwait(false);
+                return JsonFramedSerializer.SerializeToString(result);
+            },
         };
     }
 
@@ -747,5 +754,18 @@ internal sealed class ExecuteCommandParams
 {
     [System.Runtime.Serialization.DataMember(Name = "nodeId")]
     public string NodeId { get; set; } = string.Empty;
+}
+
+[System.Runtime.Serialization.DataContract]
+internal sealed class SetSliderValueParams
+{
+    [System.Runtime.Serialization.DataMember(Name = "nodeId")]
+    public string NodeId { get; set; } = string.Empty;
+
+    [System.Runtime.Serialization.DataMember(Name = "value")]
+    public double Value { get; set; }
+
+    [System.Runtime.Serialization.DataMember(Name = "normalized")]
+    public bool Normalized { get; set; }
 }
 #pragma warning restore CA1812

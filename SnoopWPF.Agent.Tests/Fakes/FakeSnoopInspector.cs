@@ -191,6 +191,12 @@ public sealed class FakeSnoopInspector : ISnoopInspector
     public Task<StateDeltaDto> SetTextValueAsync(WpfLocator locator, string value, CancellationToken ct)
         => throw new NotImplementedException("M2-02");
 
+    public Task<StateDeltaDto> SetSliderValueAsync(string nodeId, double value, bool normalized, CancellationToken ct)
+        => throw new NotImplementedException("M2-16");
+
+    public Task<StateDeltaDto> SetSliderValueAsync(WpfLocator locator, double value, bool normalized, CancellationToken ct)
+        => throw new NotImplementedException("M2-16");
+
     public Task<StateDeltaDto> ExecuteCommandAsync(string nodeId, CancellationToken ct)
         => (this.OnExecuteCommand ?? throw new NotImplementedException("OnExecuteCommand not set"))
             .Invoke(nodeId, ct);
@@ -222,4 +228,7 @@ public sealed class FakeSnoopInspector : ISnoopInspector
 
     public Task<PollChangesResultDto> PollChangesAsync(long sinceVersion, WpfLocator? rootLocator, CancellationToken ct)
         => throw new NotImplementedException("M2-10");
+
+    public Task<PumpUntilIdleResultDto> PumpUntilIdleAsync(int timeoutMs, IReadOnlyList<string>? resources, CancellationToken ct)
+        => throw new NotImplementedException("M2-11");
 }

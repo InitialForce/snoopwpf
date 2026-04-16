@@ -138,6 +138,7 @@ public sealed class InputStrategySelector
     {
         return kind is InputIntentKind.SetProperty
                     or InputIntentKind.SetTextValue
-                    or InputIntentKind.ExecuteCommand;
+                    or InputIntentKind.ExecuteCommand
+                    or InputIntentKind.SetSliderValue;
     }
 }

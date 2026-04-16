@@ -210,6 +210,19 @@ public interface ISnoopInspector
     /// <summary>Locator overload for <see cref="SetTextValueAsync(string,string,CancellationToken)"/>.</summary>
     Task<StateDeltaDto> SetTextValueAsync(WpfLocator locator, string value, CancellationToken ct);
 
+    // ── M2-16: wpf_set_slider_value ───────────────────────────────────────────
+
+    /// <summary>
+    /// Sets the value of a <c>Slider</c> or any <c>RangeBase</c> element
+    /// identified by <paramref name="nodeId"/> via <c>SetValue</c> (L0, M2-16).
+    /// When <paramref name="normalized"/> is <see langword="true"/> the value is
+    /// interpreted as a fraction in [0, 1] mapped to <c>Minimum + value × (Maximum − Minimum)</c>.
+    /// </summary>
+    Task<StateDeltaDto> SetSliderValueAsync(string nodeId, double value, bool normalized, CancellationToken ct);
+
+    /// <summary>Locator overload for <see cref="SetSliderValueAsync(string,double,bool,CancellationToken)"/>.</summary>
+    Task<StateDeltaDto> SetSliderValueAsync(WpfLocator locator, double value, bool normalized, CancellationToken ct);
+
     // ── M2-01: wpf_execute_command ────────────────────────────────────────────
 
     /// <summary>
@@ -308,6 +321,17 @@ public interface ISnoopInspector
         string? expectedValue,
         int timeoutMs,
         string presenceExpected,
+        CancellationToken ct);
+
+    // ── M2-11: wpf_pump_until_idle ────────────────────────────────────────────
+
+    /// <summary>
+    /// Blocks until the WPF dispatcher and all monitored idling resources are simultaneously
+    /// idle, or until <paramref name="timeoutMs"/> elapses (PRD §5.4, §8.2, M2-11).
+    /// </summary>
+    Task<Dtos.PumpUntilIdleResultDto> PumpUntilIdleAsync(
+        int timeoutMs,
+        IReadOnlyList<string>? resources,
         CancellationToken ct);
 
     // ── M2-10: wpf_poll_changes ───────────────────────────────────────────────

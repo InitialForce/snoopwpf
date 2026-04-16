@@ -136,6 +136,16 @@ public sealed class McpTestClient : IDisposable
         System.Threading.CancellationToken ct = default)
         => this.inspector.PollChangesAsync(sinceVersion, rootLocator, ct);
 
+    /// <summary>
+    /// Sets the value of a Slider (or RangeBase) in the test application.
+    /// </summary>
+    public Task<Contracts.Dtos.StateDeltaDto> SetSliderValueAsync(
+        string nodeId,
+        double value,
+        bool normalized = false,
+        CancellationToken ct = default)
+        => this.inspector.SetSliderValueAsync(nodeId, value, normalized, ct);
+
     /// <inheritdoc/>
     public void Dispose()
     {

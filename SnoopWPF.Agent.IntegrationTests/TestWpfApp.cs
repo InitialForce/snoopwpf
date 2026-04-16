@@ -378,6 +378,20 @@ public sealed class TestWpfApp : IDisposable
         VirtualizingStackPanel.SetVirtualizationMode(testBigList, VirtualizationMode.Recycling);
         rootPanel.Children.Add(testBigList);
 
+        // ── M2-16: wpf_set_slider_value coverage-gap elements ────────────────
+        // Slider: Name="testSlider", Minimum=0, Maximum=100, initial Value=50.
+        // Used by CoverageGapIntegrationTests to verify SetSliderValueStrategy.
+        var testSlider = new System.Windows.Controls.Slider
+        {
+            Name = "testSlider",
+            Minimum = 0.0,
+            Maximum = 100.0,
+            Value = 50.0,
+            Width = 200,
+            Height = 24,
+        };
+        rootPanel.Children.Add(testSlider);
+
         var window = new Window
         {
             Title = "SnoopWPF Integration Test Window",

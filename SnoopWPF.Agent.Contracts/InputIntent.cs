@@ -56,4 +56,11 @@ public enum InputIntentKind
 
     /// <summary>wpf_set_property — directly set a dependency property value (mutation).</summary>
     SetProperty = 7,
+
+    /// <summary>
+    /// wpf_set_slider_value — set a Slider value using a normalised 0..1 fraction
+    /// that maps to the Slider's Minimum..Maximum range.
+    /// Added in M2-16 (bd-2co) to close the §12.3 "Slider value setter + range normalization" gap.
+    /// </summary>
+    SetSliderValue = 8,
 }

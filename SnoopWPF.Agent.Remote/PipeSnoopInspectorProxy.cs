@@ -542,6 +542,14 @@ public sealed class PipeSnoopInspectorProxy : ISnoopInspector, IAsyncDisposable,
         => throw new NotImplementedException("M2-02");
 
     /// <inheritdoc/>
+    public Task<StateDeltaDto> SetSliderValueAsync(string nodeId, double value, bool normalized, CancellationToken ct)
+        => this.InvokeAsync<StateDeltaDto>("SetSliderValue", new { nodeId, value, normalized }, ct);
+
+    /// <inheritdoc/>
+    public Task<StateDeltaDto> SetSliderValueAsync(WpfLocator locator, double value, bool normalized, CancellationToken ct)
+        => throw new NotImplementedException("M2-16");
+
+    /// <inheritdoc/>
     public Task<StateDeltaDto> ExecuteCommandAsync(string nodeId, CancellationToken ct)
         => this.InvokeAsync<StateDeltaDto>("ExecuteCommand", new { nodeId }, ct);
 
@@ -589,6 +597,10 @@ public sealed class PipeSnoopInspectorProxy : ISnoopInspector, IAsyncDisposable,
     /// <inheritdoc/>
     public Task<PollChangesResultDto> PollChangesAsync(long sinceVersion, WpfLocator? rootLocator, CancellationToken ct)
         => throw new NotImplementedException("M2-10");
+
+    /// <inheritdoc/>
+    public Task<PumpUntilIdleResultDto> PumpUntilIdleAsync(int timeoutMs, IReadOnlyList<string>? resources, CancellationToken ct)
+        => throw new NotImplementedException("M2-11");
 
     // --------------------------------------------------------------------------
     // Inner types

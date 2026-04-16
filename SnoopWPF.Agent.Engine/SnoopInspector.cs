@@ -20,6 +20,7 @@ using SnoopWPF.Agent.Contracts;
 using SnoopWPF.Agent.Contracts.Dtos;
 using SnoopWPF.Agent.Engine.Infrastructure;
 using SnoopWPF.Agent.Engine.StateDelta;
+using SnoopWPF.Agent.Engine.Sync;
 
 /// <summary>
 /// Core inspection engine. Implements <see cref="ISnoopInspector"/> by marshaling all WPF operations
@@ -47,6 +48,10 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
 
     // Max 3 concurrent Dispatcher operations.
     private readonly SemaphoreSlim concurrencySemaphore = new(3, 3);
+
+    // M2-11: nested-pump guard — tracks active PumpUntilIdleAsync call depth per thread.
+    [ThreadStatic]
+    private static int pumpDepth;
 
     private volatile bool disposed;
 
@@ -2212,6 +2217,86 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
         return await this.SetTextValueAsync(nodeId, value, ct).ConfigureAwait(false);
     }
 
+    // ── M2-16: wpf_set_slider_value ───────────────────────────────────────────
+
+    /// <inheritdoc/>
+    public Task<StateDeltaDto> SetSliderValueAsync(string nodeId, double value, bool normalized, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(nodeId))
+        {
+            throw new ArgumentException("nodeId must not be null or empty.", nameof(nodeId));
+        }
+
+        return this.RunOnDispatcherAsync(() =>
+        {
+            if (!this.options.EnableMutation)
+            {
+                throw new SnoopException(
+                    SnoopErrorCode.MutationDisabled,
+                    "Mutation is disabled. Set EnableMutation=true in SnoopInspectorOptions to allow wpf_set_slider_value.",
+                    targetId: nodeId,
+                    suggestions: new[] { SnoopSuggestions.MutationDisabled });
+            }
+
+            var target = this.ResolveNodeOrThrow(nodeId);
+            this.VerifyElementConnectivity(target, nodeId);
+
+            if (target is not System.Windows.Controls.Primitives.RangeBase rangeBase)
+            {
+                return new StateDeltaDto
+                {
+                    Success = false,
+                    ElementVisible = target is System.Windows.FrameworkElement,
+                    StateChanged = false,
+                    FailureReason = FailureReason.PatternNotSupported,
+                    Suggestion = StateDelta.FailureReasonDescriptor.Suggest(FailureReason.PatternNotSupported, null),
+                };
+            }
+
+            var previousValue = rangeBase.Value;
+
+            double targetValue;
+            if (normalized)
+            {
+                var fraction = Math.Max(0.0, Math.Min(1.0, value));
+                var min = rangeBase.Minimum;
+                var max = rangeBase.Maximum;
+                var range = max - min;
+                targetValue = range <= 0.0 ? min : min + (fraction * range);
+            }
+            else
+            {
+                targetValue = Math.Max(rangeBase.Minimum, Math.Min(rangeBase.Maximum, value));
+            }
+
+            rangeBase.SetValue(System.Windows.Controls.Primitives.RangeBase.ValueProperty, targetValue);
+
+            var newValue = rangeBase.Value;
+            var stateChanged = Math.Abs(previousValue - newValue) > double.Epsilon;
+
+            System.Diagnostics.Trace.WriteLine(
+                $"[SnoopWPF.Agent] SetSliderValue({rangeBase.GetType().Name}): " +
+                $"normalized={normalized}, input={value}, target={targetValue}, stateChanged={stateChanged}");
+
+            return new StateDeltaDto
+            {
+                Success = true,
+                ElementVisible = true,
+                StateChanged = stateChanged,
+                PreviousValue = previousValue.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                NewValue = newValue.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                ChosenTier = InputTier.L0,
+            };
+        }, ct);
+    }
+
+    /// <inheritdoc/>
+    public async Task<StateDeltaDto> SetSliderValueAsync(WpfLocator locator, double value, bool normalized, CancellationToken ct)
+    {
+        var nodeId = await this.ResolveLocatorAsync(locator, ct).ConfigureAwait(false);
+        return await this.SetSliderValueAsync(nodeId, value, normalized, ct).ConfigureAwait(false);
+    }
+
     // ── M2-01: wpf_execute_command ────────────────────────────────────────────
 
     /// <inheritdoc/>
@@ -2748,6 +2833,188 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
             var remaining = (int)(deadline - sw.Elapsed).TotalMilliseconds;
             var delay = Math.Min(MinPollIntervalMs, Math.Max(1, remaining - 1));
             await Task.Delay(delay, ct).ConfigureAwait(false);
+        }
+    }
+
+    // ── M2-11: wpf_pump_until_idle ────────────────────────────────────────────
+
+    /// <inheritdoc/>
+    public async Task<Contracts.Dtos.PumpUntilIdleResultDto> PumpUntilIdleAsync(
+        int timeoutMs,
+        IReadOnlyList<string>? resources,
+        CancellationToken ct)
+    {
+        this.ThrowIfDisposed();
+
+        // Nested-pump guard (PRD §8.2): reject re-entrant calls on the same thread.
+        if (pumpDepth > 0)
+        {
+            throw new SnoopException(
+                SnoopErrorCode.DispatcherBusy,
+                "wpf_pump_until_idle cannot be called re-entrantly: a pump is already in progress on this thread.",
+                suggestions: new[] { SnoopSuggestions.DispatcherBusy });
+        }
+
+        // 5-second animation-runaway ceiling (PRD §8.2 W3-H2).
+        const int MaxTimeoutMs = 5000;
+        var clampedTimeout = Math.Min(timeoutMs, MaxTimeoutMs);
+
+        pumpDepth++;
+        try
+        {
+            return await this.PumpUntilIdleCoreAsync(clampedTimeout, resources, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            pumpDepth--;
+        }
+    }
+
+    private async Task<Contracts.Dtos.PumpUntilIdleResultDto> PumpUntilIdleCoreAsync(
+        int timeoutMs,
+        IReadOnlyList<string>? resources,
+        CancellationToken ct)
+    {
+        // Build the set of resource names to monitor (null/empty = all built-in resources).
+        var filterNames = resources is { Count: > 0 }
+            ? new HashSet<string>(resources, StringComparer.OrdinalIgnoreCase)
+            : null;
+
+        // Instantiate built-in resources on the Dispatcher thread so they can observe it.
+        // Only DispatcherIdlingResource and CompositionRenderingResource can be created without
+        // a specific object instance to observe — they monitor the Dispatcher queue and
+        // rendering pipeline respectively.
+        var builtInResources = await this.RunOnDispatcherAsync<List<IIdlingResource>>(() =>
+        {
+            var list = new List<IIdlingResource>
+            {
+                new DispatcherIdlingResource(this.dispatcher),
+                new CompositionRenderingResource(this.dispatcher),
+            };
+
+            // Apply resource name filter if specified.
+            if (filterNames is not null)
+            {
+                list = list.FindAll(r => filterNames.Contains(r.Name));
+            }
+
+            return list;
+        }, ct).ConfigureAwait(false);
+
+        var monitored = builtInResources.ConvertAll(r => r.Name);
+
+        // Build an IdlingResourceRegistry for the AND-gate.
+        using var registry = new IdlingResourceRegistry();
+        foreach (var r in builtInResources)
+        {
+            registry.Register(r);
+        }
+
+        var sw = Stopwatch.StartNew();
+        var deadline = TimeSpan.FromMilliseconds(timeoutMs);
+
+        try
+        {
+            // Fast path: already idle.
+            if (registry.IsIdle)
+            {
+                return new Contracts.Dtos.PumpUntilIdleResultDto
+                {
+                    IdleReached = true,
+                    ElapsedMs = (int)sw.ElapsedMilliseconds,
+                    ResourcesMonitored = monitored,
+                    StillBusy = new List<string>(),
+                };
+            }
+
+            // Wait for the registry IdleChanged event or timeout.
+            using var idleSignal = new SemaphoreSlim(0, 1);
+
+            void OnIdleChanged(object? sender, IdleChangedEventArgs e)
+            {
+                if (e.IsIdle)
+                {
+                    try
+                    {
+                        idleSignal.Release();
+                    }
+                    catch (SemaphoreFullException)
+                    {
+                        // Already signalled — ignore.
+                    }
+                }
+            }
+
+            registry.IdleChanged += OnIdleChanged;
+
+            try
+            {
+                while (true)
+                {
+                    ct.ThrowIfCancellationRequested();
+
+                    // Check again after subscribing to avoid a TOCTOU race.
+                    if (registry.IsIdle)
+                    {
+                        return new Contracts.Dtos.PumpUntilIdleResultDto
+                        {
+                            IdleReached = true,
+                            ElapsedMs = (int)sw.ElapsedMilliseconds,
+                            ResourcesMonitored = monitored,
+                            StillBusy = new List<string>(),
+                        };
+                    }
+
+                    var remaining = (int)(deadline - sw.Elapsed).TotalMilliseconds;
+                    if (remaining <= 0)
+                    {
+                        break;
+                    }
+
+                    // Wait up to remaining ms for an idle signal.
+                    var signalled = await idleSignal.WaitAsync(remaining, ct).ConfigureAwait(false);
+                    if (signalled && registry.IsIdle)
+                    {
+                        return new Contracts.Dtos.PumpUntilIdleResultDto
+                        {
+                            IdleReached = true,
+                            ElapsedMs = (int)sw.ElapsedMilliseconds,
+                            ResourcesMonitored = monitored,
+                            StillBusy = new List<string>(),
+                        };
+                    }
+
+                    // Check elapsed again (handles the case where we were woken but not yet fully idle).
+                    if (sw.Elapsed >= deadline)
+                    {
+                        break;
+                    }
+                }
+            }
+            finally
+            {
+                registry.IdleChanged -= OnIdleChanged;
+            }
+
+            // Timeout reached — identify still-busy resources and throw.
+            var stillBusy = builtInResources.FindAll(r => !r.IsIdle).ConvertAll(r => r.Name);
+
+            throw new SnoopException(
+                SnoopErrorCode.DispatcherBusy,
+                $"wpf_pump_until_idle timed out after {timeoutMs}ms waiting for idle. " +
+                $"Still busy: [{string.Join(", ", stillBusy)}].",
+                suggestions: new[] { SnoopSuggestions.DispatcherBusy });
+        }
+        finally
+        {
+            // Dispose all built-in resource instances we created.
+            foreach (var r in builtInResources)
+            {
+                if (r is IDisposable d)
+                {
+                    d.Dispose();
+                }
+            }
         }
     }
 
