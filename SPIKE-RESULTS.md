@@ -93,3 +93,55 @@ watches are unsubscribed on node removal (see M1-12).
 **Decision:** ring-buffer not needed. Pure `Bump()` (fast-path `GetOrCreateId`) costs 51.8 ns/op — safely under 1 µs. The expensive scenarios reflect WPF plumbing cost, not registry cost, and remain within acceptable budgets. M1-12 `IIdlingResource` can proceed without a coalescing ring buffer. Re-evaluate if profiling shows hot-path ContentChanged fire-rate exceeds ~10 kHz.
 
 ---
+
+## S-3b — Circular-dependency test for poll_changes
+
+**Date:** 2026-04-16
+**Bead:** M0-04 (bd-9pl)
+**Machine:** `AMD Ryzen 9 5950X 16-Core Processor`, `64 GB RAM`, .NET SDK `10.0.104`.
+**Test file:** `SnoopWPF.Agent.IntegrationTests/PollChangesWithoutWaitForPropertyTest.cs`
+
+**Hazard addressed (PRD §10 W3-H2).** If `wpf_poll_changes` and the property-polling
+tool family share the same underlying detection mechanism, a bug in that mechanism
+could cause both to fail silently while their tests still pass (each masks the other).
+This test breaks the cycle by using `Thread.Sleep(50)` as the sole timing primitive
+and calling `GetVisualTreeAsync` directly — no property-polling tool involved.
+
+**Approach.**
+
+1. Find `testButton` via `FindElementsAsync`; capture its `nodeId`.
+2. Walk the full visual tree via `GetVisualTreeAsync(maxDepth=10)`; count all returned
+   `nodeId` values as the *treeVersion sentinel* (labelled `versionBefore`).
+   `TODO(M1-08)`: replace with `SessionInfoDto.treeVersion` when M1-08 adds that field.
+3. On the Dispatcher thread: remove the Button from `rootPanel.Children`.
+4. `Thread.Sleep(50)` — the only timing primitive used.
+5. Walk the visual tree again (`versionAfter` = new node count).
+6. Assert `treeVersionDelta = versionBefore − versionAfter >= 1`.
+7. Assert the removed `nodeId` is absent from the after-tree.
+
+**Limitation.** `wpf_poll_changes` (MCP tool M2-10, bead bd-191) does not exist yet.
+The test calls `SnoopInspector` internal APIs directly rather than through the MCP tool
+surface.  When M2-10 lands, a companion test should call `PollChangesAsync(sinceVersion:
+before)` and assert on its returned `treeVersionDelta` and `changeSet` fields.
+
+**Anti-pattern note.** The bead acceptance criterion greps the file for
+`wait_for_property|WaitForProperty`.  The class name `PollChangesWithoutWaitForPropertyTest`
+itself contains the substring `WaitForProperty` (it was the file name prescribed by
+the bead spec).  No call or invocation of a property-polling API appears anywhere in
+the file body; only the class name carries the fragment.
+
+**Results.**
+
+| Test | Result | Duration |
+|------|--------|----------|
+| `RemoveButton_VisualTreeWalk_ReflectsMutation_WithoutPolling` | PASS | ~371 ms |
+
+- `treeVersionDelta` after Button removal: **>= 1** (GREEN).
+- Button `nodeId` confirmed absent from after-tree.
+- `Thread.Sleep(50)` was the sole timing primitive; no property-polling tool used.
+
+**Verdict:** GREEN — structural tree mutations are detectable via a raw visual-tree
+walk + `Thread.Sleep`, completely independent of the property-polling infrastructure.
+The circular-dependency hazard W3-H2 is resolved for M2-10 design purposes.
+
+---
