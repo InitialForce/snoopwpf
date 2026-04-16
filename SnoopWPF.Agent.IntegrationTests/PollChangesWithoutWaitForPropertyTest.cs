@@ -27,13 +27,11 @@ using SnoopWPF.Agent.Contracts.Dtos;
 ///   5. Assert: treeVersionDelta = nodeCountBefore − nodeCountAfter >= 1.
 ///   6. Assert: the removed Button's nodeId is absent from the after-tree.
 ///
-/// LIMITATION: <c>wpf_poll_changes</c> (MCP tool M2-10, bead bd-191) does not exist
-/// yet.  This test exercises the same structural-change detection logic by calling
+/// LIMITATION: This test exercises the same structural-change detection logic by calling
 /// <see cref="SnoopWPF.Agent.Engine.SnoopInspector"/> APIs directly rather than
-/// through the MCP tool surface.  When M2-10 lands, a companion test should call
-/// the MCP tool and assert on its returned <c>treeVersionDelta</c> and
-/// <c>changeSet</c> fields instead.  TODO(M2-10): replace direct-API call with
-/// <c>PollChangesAsync(sinceVersion: before)</c> once the tool is available.
+/// through the MCP tool surface.  The production form of this test lives in
+/// <see cref="PollChangesIntegrationTests"/> which calls <c>PollChangesAsync</c> directly
+/// and asserts on the returned <c>treeVersionDelta</c> and <c>changeSet</c> fields.
 ///
 /// Anti-pattern constraint: MUST NOT contain any call to the property-polling
 /// tool family.  The acceptance-criteria grep enforces this on file text.
@@ -112,7 +110,6 @@ public sealed class PollChangesWithoutWaitForPropertyTest : WpfIntegrationTestBa
         // Walk the visual tree and count all nodes; the count acts as a
         // coarse treeVersion proxy until M1-08 adds a dedicated counter to
         // wpf_get_session_info.
-        // TODO(M1-08): replace node-count sentinel with SessionInfoDto.treeVersion.
         // ------------------------------------------------------------------
         var treeBefore = await this.Client.Inspector
             .GetVisualTreeAsync(
