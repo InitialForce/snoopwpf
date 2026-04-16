@@ -2,6 +2,7 @@ namespace SnoopWPF.Agent.Tests.Tools;
 
 using System.Collections.Generic;
 using System.Text.Json.Nodes;
+using System.Threading;
 using System.Threading.Tasks;
 using ModelContextProtocol;
 using NUnit.Framework;
@@ -108,6 +109,32 @@ public class SessionInfoToolTests
         Assert.That(json, Does.Contain("\"dotnetVersion\""));
         Assert.That(json, Does.Not.Contain("\"ProcessName\""));
         Assert.That(json, Does.Not.Contain("\"MutationEnabled\""));
+    }
+
+    // ── Parameter forwarding ────────────────────────────────────────────────────
+
+    [Test]
+    public async Task ForwardsParameters_PassesCancellationToInspector()
+    {
+        CancellationToken capturedCt = default;
+
+        this.fake.OnGetSessionInfo = ct =>
+        {
+            capturedCt = ct;
+            return Task.FromResult(new SessionInfoDto
+            {
+                ProcessName = "P",
+                MutationEnabled = false,
+            });
+        };
+
+        using var cts = new CancellationTokenSource();
+        var expectedCt = cts.Token;
+
+        await this.tool.GetSessionInfoAsync(expectedCt);
+
+        Assert.That(capturedCt, Is.EqualTo(expectedCt),
+            "SessionInfoTool must forward the CancellationToken to ISnoopInspector.GetSessionInfoAsync.");
     }
 
     // ── Error mapping ────────────────────────────────────────────────────────────

@@ -204,7 +204,7 @@ public sealed class ScreenshotIntegrationTests : WpfIntegrationTestBase
 
         if (button == null)
         {
-            Assert.Ignore("Button not found in visual tree; test inconclusive.");
+            Assert.Fail("TestWpfApp should contain a Button");
             return;
         }
 

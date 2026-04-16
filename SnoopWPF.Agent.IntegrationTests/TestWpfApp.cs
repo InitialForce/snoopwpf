@@ -4,6 +4,7 @@ using System;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using System.Windows.Threading;
 
 /// <summary>
@@ -114,6 +115,11 @@ public sealed class TestWpfApp : IDisposable
         {
             this.app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
             this.dispatcher = Dispatcher.CurrentDispatcher;
+
+            // Add known application-level resources so resource inspection tests always have
+            // something to enumerate, regardless of the nodeId used in the query.
+            this.app.Resources["TestBrush"] = new SolidColorBrush(Colors.CornflowerBlue);
+            this.app.Resources["TestCornerRadius"] = new CornerRadius(4);
 
             this.app.Startup += (_, _) =>
             {
