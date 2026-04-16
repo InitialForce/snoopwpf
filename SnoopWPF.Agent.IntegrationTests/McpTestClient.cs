@@ -116,6 +116,15 @@ public sealed class McpTestClient : IDisposable
         CancellationToken ct = default)
         => this.inspector.GetBindingInfoAsync(nodeId, propertyName, ct);
 
+    /// <summary>
+    /// Returns the full binding chain resolution for a property on a node (M2-08).
+    /// </summary>
+    public Task<Contracts.Dtos.BindingResolutionDto> ResolveBindingAsync(
+        string nodeId,
+        string propertyName,
+        CancellationToken ct = default)
+        => this.inspector.ResolveBindingAsync(nodeId, propertyName, ct);
+
     /// <inheritdoc/>
     public void Dispose()
     {

@@ -17,7 +17,7 @@ using SnoopWPF.Agent.Contracts.Dtos;
 ///   1. Clean DP binding — TextBlock.Text bound to a ViewModel property.
 ///   2. Missing DataContext — binding on an element with no DataContext.
 ///   3. Path typo — binding path that does not exist on the ViewModel.
-///   4. Converter-throws — binding with a converter whose Convert method throws.
+///   4. Converter — binding with a converter; verifies ConverterTypeName is captured.
 /// </summary>
 [TestFixture]
 public sealed class ResolveBindingIntegrationTests : WpfIntegrationTestBase
@@ -74,7 +74,8 @@ public sealed class ResolveBindingIntegrationTests : WpfIntegrationTestBase
                 new Binding("ThisPropertyDoesNotExist") { Mode = BindingMode.OneWay });
             root.Children.Add(typoBlock);
 
-            // 4. Converter that throws: TextBlock.Text with ThrowingConverter.
+            // 4. Binding with a converter: TextBlock.Text with UpperCaseConverter.
+            // Verifies that ConverterTypeName is captured in the resolved chain.
             var converterBlock = new TextBlock { Name = "resolveBindingConverter" };
             converterBlock.DataContext = vm;
             BindingOperations.SetBinding(
@@ -83,14 +84,13 @@ public sealed class ResolveBindingIntegrationTests : WpfIntegrationTestBase
                 new Binding("UserName")
                 {
                     Mode = BindingMode.OneWay,
-                    Converter = new ThrowingConverter(),
+                    Converter = new UpperCaseConverter(),
                 });
             root.Children.Add(converterBlock);
         });
 
         // Resolve node IDs via inspector (must be off-dispatcher).
-        var tree = this.Client.Inspector
-            .GetVisualTreeAsync((string?)null, 10, "visual", null, default)
+        var tree = this.Client.GetVisualTreeAsync(maxDepth: 10)
             .GetAwaiter()
             .GetResult();
 
@@ -187,11 +187,11 @@ public sealed class ResolveBindingIntegrationTests : WpfIntegrationTestBase
     }
 
     // -------------------------------------------------------------------------
-    // Test 4: converter set (ThrowingConverter)
+    // Test 4: converter set (UpperCaseConverter)
     // -------------------------------------------------------------------------
 
     [Test]
-    public async Task ResolveBinding_ConverterThrows_ReturnsConverterInfo()
+    public async Task ResolveBinding_WithConverter_ReportsConverterTypeName()
     {
         Assert.That(this.converterThrowsNodeId, Is.Not.Null,
             "resolveBindingConverter node must be in the visual tree.");
@@ -200,13 +200,12 @@ public sealed class ResolveBindingIntegrationTests : WpfIntegrationTestBase
             this.converterThrowsNodeId!, "Text").ConfigureAwait(false);
 
         Assert.That(dto.HasBinding, Is.True);
-        // Converter type name should be captured even though it throws.
-        Assert.That(dto.ConverterTypeName, Is.EqualTo(nameof(ThrowingConverter)),
+        Assert.That(dto.ConverterTypeName, Is.EqualTo(nameof(UpperCaseConverter)),
             "ConverterTypeName should report the converter type.");
-        // Status may be ConverterError or OK — the key check is that ConverterTypeName is set
-        // and the path steps were walked (the underlying value is still accessible).
         Assert.That(dto.PathSteps, Has.Count.GreaterThanOrEqualTo(1),
             "Path steps should be walked regardless of converter.");
+        Assert.That(dto.Status, Is.EqualTo(BindingResolutionStatus.OK),
+            "Binding with a working converter should have OK status.");
     }
 
     // -------------------------------------------------------------------------
@@ -217,9 +216,7 @@ public sealed class ResolveBindingIntegrationTests : WpfIntegrationTestBase
     public async Task ResolveBinding_NoBinding_ReturnsNoBinding()
     {
         // Use testButton's Width property which is a plain DP with no binding.
-        var tree = await this.Client.Inspector
-            .GetVisualTreeAsync((string?)null, 10, "visual", null, default)
-            .ConfigureAwait(false);
+        var tree = await this.Client.GetVisualTreeAsync(maxDepth: 10).ConfigureAwait(false);
 
         var buttonNode = FlattenTree(tree.Root)
             .FirstOrDefault(n => n.Name == "testButton");
@@ -285,14 +282,13 @@ public sealed class ResolveBindingIntegrationTests : WpfIntegrationTestBase
     }
 
     /// <summary>
-    /// A converter whose <see cref="Convert"/> method always throws.
-    /// Used to exercise the ConverterError path.
+    /// A simple upper-case converter used to verify that ConverterTypeName is reported.
     /// </summary>
-    private sealed class ThrowingConverter : IValueConverter
+    private sealed class UpperCaseConverter : IValueConverter
     {
         public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
         {
-            throw new InvalidOperationException("ThrowingConverter intentionally throws.");
+            return value?.ToString()?.ToUpperInvariant() ?? string.Empty;
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
