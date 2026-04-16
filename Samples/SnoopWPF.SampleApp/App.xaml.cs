@@ -2,11 +2,12 @@ namespace SnoopWPF.SampleApp;
 
 using System;
 using System.Windows;
+using SnoopWPF.Agent.Contracts;
 using SnoopWPF.Agent.Server;
 
 /// <summary>
 /// Entry point for the SnoopWPF Sample Application.
-/// Demonstrates NuGet-mode MCP agent integration via SnoopAgent.Start().
+/// Demonstrates NuGet-mode MCP agent integration via SnoopAgent.StartCoLocated().
 /// </summary>
 public partial class App : Application
 {
@@ -26,7 +27,7 @@ public partial class App : Application
             // Start the MCP agent on stdio transport (default).
             // The endpoint info is written to %TEMP%\snoop-agent-{pid}.json.
             // Do NOT log the bearer token — integration tests read it from the discovery file.
-            this.agentHandle = SnoopAgent.Start(new SnoopAgentOptions
+            this.agentHandle = SnoopAgent.StartCoLocated(new SnoopAgentOptions
             {
                 EnableMutation = false,
                 EnableRedaction = true,

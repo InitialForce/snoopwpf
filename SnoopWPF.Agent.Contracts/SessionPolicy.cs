@@ -62,7 +62,10 @@ public sealed record SessionPolicy
     /// <returns>An immutable <see cref="SessionPolicy"/> for this session.</returns>
     public static SessionPolicy Create(SessionMode mode, SnoopAgentOptions opts)
     {
-        ArgumentNullException.ThrowIfNull(opts);
+        if (opts is null)
+        {
+            throw new System.ArgumentNullException(nameof(opts));
+        }
 
         // MF-11: injection mode always forces redaction.
         var enableRedaction = mode == SessionMode.Injection ? true : opts.EnableRedaction;

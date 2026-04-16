@@ -2,6 +2,7 @@ namespace SnoopWPF.Agent.Server;
 
 using System;
 using System.Threading;
+using SnoopWPF.Agent.Contracts;
 
 /// <summary>
 /// Represents a running SnoopWPF MCP server session. Dispose to stop the server.
@@ -14,11 +15,19 @@ public sealed class SnoopAgentHandle : IDisposable
 
     internal SnoopAgentHandle(
         CancellationTokenSource cts,
-        SnoopWPF.Agent.Engine.SnoopInspector inspector)
+        SnoopWPF.Agent.Engine.SnoopInspector inspector,
+        SessionPolicy policy)
     {
         this.cts = cts ?? throw new ArgumentNullException(nameof(cts));
         this.inspector = inspector ?? throw new ArgumentNullException(nameof(inspector));
+        this.Policy = policy ?? throw new ArgumentNullException(nameof(policy));
     }
+
+    /// <summary>
+    /// The immutable session policy for this session. Constructed once at session start (S1).
+    /// Tool handlers read policy from this reference; nothing mutates it after construction.
+    /// </summary>
+    public SessionPolicy Policy { get; }
 
     /// <summary>
     /// When <see cref="TransportMode.Pipe"/> is used, the name of the named pipe that the server

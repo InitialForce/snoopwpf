@@ -12,6 +12,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <ProjectReference Include="../../SnoopWPF.Agent.Contracts/SnoopWPF.Agent.Contracts.csproj" />
         <ProjectReference Include="../../SnoopWPF.Agent.Server/SnoopWPF.Agent.Server.csproj" />
     </ItemGroup>
 

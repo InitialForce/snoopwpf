@@ -37,6 +37,7 @@ internal static class McpServerSetup
     internal static Task RunServerAsync(
         ISnoopInspector inspector,
         SnoopAgentOptions options,
+        SessionPolicy policy,
         SnoopAgentHandle handle,
         CancellationToken ct)
     {
@@ -54,14 +55,14 @@ internal static class McpServerSetup
         switch (options.Transport)
         {
             case TransportMode.Stdio:
-                return RunWithStdioAsync(inspector, serverOptions, ct);
+                return RunWithStdioAsync(inspector, policy, serverOptions, ct);
 
             case TransportMode.Pipe:
-                // PipeName and SessionToken were resolved in SnoopAgent.Start() before the
+                // PipeName and SessionToken were resolved in SnoopAgent.StartCoLocated() before the
                 // background task was launched, so handle properties are guaranteed non-null here.
                 var pipeName = handle.PipeName!;
                 var sessionToken = handle.SessionToken!;
-                return RunWithPipeAsync(inspector, serverOptions, pipeName, sessionToken, ct);
+                return RunWithPipeAsync(inspector, policy, serverOptions, pipeName, sessionToken, ct);
 
             default:
                 throw new ArgumentOutOfRangeException(nameof(options), $"Unknown transport: {options.Transport}");
@@ -70,10 +71,11 @@ internal static class McpServerSetup
 
     private static async Task RunWithStdioAsync(
         ISnoopInspector inspector,
+        SessionPolicy policy,
         McpServerOptions serverOptions,
         CancellationToken ct)
     {
-        var services = BuildServiceCollection(inspector);
+        var services = BuildServiceCollection(inspector, policy);
         var sp = services.BuildServiceProvider();
 
         // StdioServerTransport reads from Console.In / writes to Console.Out.
@@ -84,12 +86,13 @@ internal static class McpServerSetup
 
     private static async Task RunWithPipeAsync(
         ISnoopInspector inspector,
+        SessionPolicy policy,
         McpServerOptions serverOptions,
         string pipeName,
         string sessionToken,
         CancellationToken ct)
     {
-        var services = BuildServiceCollection(inspector);
+        var services = BuildServiceCollection(inspector, policy);
         var sp = services.BuildServiceProvider();
 
         // PipeOptions.CurrentUserOnly restricts the pipe ACL to the current Windows user,
@@ -290,12 +293,15 @@ internal static class McpServerSetup
     /// Builds a <see cref="IServiceCollection"/> with <see cref="ISnoopInspector"/> and all tool types
     /// from <c>SnoopWPF.Agent.Tools</c> registered.
     /// </summary>
-    private static IServiceCollection BuildServiceCollection(ISnoopInspector inspector)
+    private static IServiceCollection BuildServiceCollection(ISnoopInspector inspector, SessionPolicy policy)
     {
         var services = new ServiceCollection();
 
         // Register ISnoopInspector so tool constructors can receive it via DI.
         services.AddSingleton<ISnoopInspector>(inspector);
+
+        // Register SessionPolicy so future tool handlers can receive it via DI.
+        services.AddSingleton<SessionPolicy>(policy);
 
         // Register BlobStore so FetchBlobTool (and future blob-producing tools) share one store.
         services.AddSingleton<BlobStore>();
