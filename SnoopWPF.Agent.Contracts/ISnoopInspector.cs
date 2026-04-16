@@ -161,6 +161,19 @@ public interface ISnoopInspector
     /// <summary>Locator overload for <see cref="GetBehaviorsAsync(string,CancellationToken)"/>.</summary>
     Task<List<BehaviorDto>> GetBehaviorsAsync(WpfLocator locator, CancellationToken ct);
 
+    // ── M2-02: wpf_set_text_value ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Sets the text content of a <c>TextBox</c>, <c>PasswordBox</c>, or <c>RichTextBox</c>
+    /// identified by <paramref name="nodeId"/> via <c>SetValue</c> on the control's text DP (L0, M2-02).
+    /// PasswordBox input is treated as SensitiveText (S3) — previousValue is always redacted.
+    /// Returns a <see cref="StateDeltaDto"/> describing the outcome.
+    /// </summary>
+    Task<StateDeltaDto> SetTextValueAsync(string nodeId, string value, CancellationToken ct);
+
+    /// <summary>Locator overload for <see cref="SetTextValueAsync(string,string,CancellationToken)"/>.</summary>
+    Task<StateDeltaDto> SetTextValueAsync(WpfLocator locator, string value, CancellationToken ct);
+
     // ── M2-01: wpf_execute_command ────────────────────────────────────────────
 
     /// <summary>
@@ -185,4 +198,55 @@ public interface ISnoopInspector
 
     /// <summary>Locator overload for <see cref="ResolveBindingAsync(string,string,CancellationToken)"/>.</summary>
     Task<BindingResolutionDto> ResolveBindingAsync(WpfLocator locator, string propertyName, CancellationToken ct);
+
+    // ── M2-09: wpf_wait_for_property ─────────────────────────────────────────
+
+    /// <summary>
+    /// Polls <paramref name="propertyName"/> on the element identified by <paramref name="locator"/>
+    /// until the observed value equals <paramref name="expectedValue"/> (when
+    /// <paramref name="presenceExpected"/> is <c>"present"</c>) or until the element disappears
+    /// (when <paramref name="presenceExpected"/> is <c>"absent"</c>), or until
+    /// <paramref name="timeoutMs"/> elapses.
+    ///
+    /// Intelligent waiting: between polls the method waits for the
+    /// <see cref="SnoopWPF.Agent.Engine.Sync.IdlingResourceRegistry"/> to signal idle so that
+    /// CPU is not wasted spinning during heavy rendering or animation.
+    ///
+    /// Returns a <see cref="Dtos.WaitForPropertyResultDto"/> describing whether the condition
+    /// was satisfied. On timeout, throws <see cref="SnoopException"/> with code
+    /// <see cref="SnoopErrorCode.DispatcherBusy"/> and a suggestion to call
+    /// <c>wpf_pump_until_idle</c> (M2-11).
+    /// </summary>
+    Task<Dtos.WaitForPropertyResultDto> WaitForPropertyAsync(
+        WpfLocator locator,
+        string propertyName,
+        string? expectedValue,
+        int timeoutMs,
+        string presenceExpected,
+        CancellationToken ct);
+
+    // ── M2-10: wpf_poll_changes ───────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns the changeset (added / removed / property-mutated node IDs) that occurred
+    /// since <paramref name="sinceVersion"/> and the current <c>treeVersion</c> to use
+    /// as the baseline for the next call (M2-10).
+    ///
+    /// Non-blocking: returns immediately with the current snapshot delta.
+    /// Callers that need to wait for a specific mutation should call
+    /// <c>wpf_pump_until_idle</c> first (M2-11).
+    /// </summary>
+    /// <param name="sinceVersion">
+    /// The tree version returned by a previous call. Pass 0 to receive all currently
+    /// registered nodes as "added".
+    /// </param>
+    /// <param name="rootLocator">
+    /// Optional locator that scopes the poll to a subtree.
+    /// When null the entire registered node set is compared.
+    /// </param>
+    /// <param name="ct">Cancellation token.</param>
+    Task<Dtos.PollChangesResultDto> PollChangesAsync(
+        long sinceVersion,
+        WpfLocator? rootLocator,
+        CancellationToken ct);
 }

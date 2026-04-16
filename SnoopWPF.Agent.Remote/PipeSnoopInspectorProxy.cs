@@ -518,6 +518,14 @@ public sealed class PipeSnoopInspectorProxy : ISnoopInspector, IAsyncDisposable,
         => throw new NotImplementedException("M1-06");
 
     /// <inheritdoc/>
+    public Task<StateDeltaDto> SetTextValueAsync(string nodeId, string value, CancellationToken ct)
+        => this.InvokeAsync<StateDeltaDto>("SetTextValue", new { nodeId, value }, ct);
+
+    /// <inheritdoc/>
+    public Task<StateDeltaDto> SetTextValueAsync(WpfLocator locator, string value, CancellationToken ct)
+        => throw new NotImplementedException("M2-02");
+
+    /// <inheritdoc/>
     public Task<StateDeltaDto> ExecuteCommandAsync(string nodeId, CancellationToken ct)
         => this.InvokeAsync<StateDeltaDto>("ExecuteCommand", new { nodeId }, ct);
 
@@ -532,6 +540,15 @@ public sealed class PipeSnoopInspectorProxy : ISnoopInspector, IAsyncDisposable,
     /// <inheritdoc/>
     public Task<BindingResolutionDto> ResolveBindingAsync(WpfLocator locator, string propertyName, CancellationToken ct)
         => throw new NotImplementedException("M2-08");
+
+    /// <inheritdoc/>
+    public Task<WaitForPropertyResultDto> WaitForPropertyAsync(
+        WpfLocator locator, string propertyName, string? expectedValue, int timeoutMs, string presenceExpected, CancellationToken ct)
+        => throw new NotImplementedException("M2-09");
+
+    /// <inheritdoc/>
+    public Task<PollChangesResultDto> PollChangesAsync(long sinceVersion, WpfLocator? rootLocator, CancellationToken ct)
+        => throw new NotImplementedException("M2-10");
 
     // --------------------------------------------------------------------------
     // Inner types

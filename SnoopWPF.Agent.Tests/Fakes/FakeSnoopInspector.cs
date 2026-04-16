@@ -47,6 +47,8 @@ public sealed class FakeSnoopInspector : ISnoopInspector
 
     public Func<string, CancellationToken, Task<List<BehaviorDto>>>? OnGetBehaviors { get; set; }
 
+    public Func<string, string, CancellationToken, Task<StateDeltaDto>>? OnSetTextValue { get; set; }
+
     public Func<string, CancellationToken, Task<StateDeltaDto>>? OnExecuteCommand { get; set; }
 
 #pragma warning restore SA1201
@@ -164,10 +166,24 @@ public sealed class FakeSnoopInspector : ISnoopInspector
     public Task<BindingResolutionDto> ResolveBindingAsync(WpfLocator locator, string propertyName, CancellationToken ct)
         => throw new NotImplementedException("M2-08");
 
+    public Task<StateDeltaDto> SetTextValueAsync(string nodeId, string value, CancellationToken ct)
+        => (this.OnSetTextValue ?? throw new NotImplementedException("OnSetTextValue not set"))
+            .Invoke(nodeId, value, ct);
+
+    public Task<StateDeltaDto> SetTextValueAsync(WpfLocator locator, string value, CancellationToken ct)
+        => throw new NotImplementedException("M2-02");
+
     public Task<StateDeltaDto> ExecuteCommandAsync(string nodeId, CancellationToken ct)
         => (this.OnExecuteCommand ?? throw new NotImplementedException("OnExecuteCommand not set"))
             .Invoke(nodeId, ct);
 
     public Task<StateDeltaDto> ExecuteCommandAsync(WpfLocator locator, CancellationToken ct)
         => throw new NotImplementedException("M2-01");
+
+    public Task<WaitForPropertyResultDto> WaitForPropertyAsync(
+        WpfLocator locator, string propertyName, string? expectedValue, int timeoutMs, string presenceExpected, CancellationToken ct)
+        => throw new NotImplementedException("M2-09");
+
+    public Task<PollChangesResultDto> PollChangesAsync(long sinceVersion, WpfLocator? rootLocator, CancellationToken ct)
+        => throw new NotImplementedException("M2-10");
 }

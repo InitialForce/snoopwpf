@@ -20,4 +20,11 @@ public sealed class SnoopInspectorOptions
     /// Whether sensitive property values are redacted (default true).
     /// </summary>
     public bool EnableRedaction { get; set; } = true;
+
+    /// <summary>
+    /// Whether sensitive values (e.g. PasswordBox input, S3) may be retained in tool responses.
+    /// When <see langword="false"/> (default), PasswordBox newValue is redacted in SetTextValueAsync
+    /// responses even on success. Set to <see langword="true"/> only in controlled test environments.
+    /// </summary>
+    public bool AllowSensitiveRetention { get; set; } = false;
 }

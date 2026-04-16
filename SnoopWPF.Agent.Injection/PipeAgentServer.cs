@@ -404,6 +404,20 @@ internal sealed class PipeAgentServer : IDisposable
                 var result = await this.inspector.GetBehaviorsAsync(p.NodeId, ct).ConfigureAwait(false);
                 return JsonFramedSerializer.SerializeToString(result);
             },
+
+            ["SetTextValue"] = async (paramsJson, ct) =>
+            {
+                var p = JsonFramedSerializer.DeserializeString<SetTextValueParams>(paramsJson);
+                var result = await this.inspector.SetTextValueAsync(p.NodeId, p.Value, ct).ConfigureAwait(false);
+                return JsonFramedSerializer.SerializeToString(result);
+            },
+
+            ["ExecuteCommand"] = async (paramsJson, ct) =>
+            {
+                var p = JsonFramedSerializer.DeserializeString<ExecuteCommandParams>(paramsJson);
+                var result = await this.inspector.ExecuteCommandAsync(p.NodeId, ct).ConfigureAwait(false);
+                return JsonFramedSerializer.SerializeToString(result);
+            },
         };
     }
 
@@ -713,6 +727,23 @@ internal sealed class GetTriggersParams
 
 [System.Runtime.Serialization.DataContract]
 internal sealed class GetBehaviorsParams
+{
+    [System.Runtime.Serialization.DataMember(Name = "nodeId")]
+    public string NodeId { get; set; } = string.Empty;
+}
+
+[System.Runtime.Serialization.DataContract]
+internal sealed class SetTextValueParams
+{
+    [System.Runtime.Serialization.DataMember(Name = "nodeId")]
+    public string NodeId { get; set; } = string.Empty;
+
+    [System.Runtime.Serialization.DataMember(Name = "value")]
+    public string Value { get; set; } = string.Empty;
+}
+
+[System.Runtime.Serialization.DataContract]
+internal sealed class ExecuteCommandParams
 {
     [System.Runtime.Serialization.DataMember(Name = "nodeId")]
     public string NodeId { get; set; } = string.Empty;

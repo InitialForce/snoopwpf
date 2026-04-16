@@ -1617,6 +1617,145 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
         return await this.GetBehaviorsAsync(nodeId, ct).ConfigureAwait(false);
     }
 
+    // ── M2-02: wpf_set_text_value ─────────────────────────────────────────────
+
+    /// <inheritdoc/>
+    public Task<StateDeltaDto> SetTextValueAsync(string nodeId, string value, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(nodeId))
+        {
+            throw new ArgumentException("nodeId must not be null or empty.", nameof(nodeId));
+        }
+
+        if (value is null)
+        {
+            throw new ArgumentNullException(nameof(value));
+        }
+
+        return this.RunOnDispatcherAsync(() =>
+        {
+            // Guard: mutation must be explicitly enabled.
+            if (!this.options.EnableMutation)
+            {
+                throw new SnoopException(
+                    SnoopErrorCode.MutationDisabled,
+                    "Mutation is disabled. Set EnableMutation=true in SnoopInspectorOptions to allow wpf_set_text_value.",
+                    targetId: nodeId,
+                    suggestions: new[] { SnoopSuggestions.MutationDisabled });
+            }
+
+            var target = this.ResolveNodeOrThrow(nodeId);
+            this.VerifyElementConnectivity(target, nodeId);
+
+            if (target is not System.Windows.DependencyObject depObj)
+            {
+                return new StateDeltaDto
+                {
+                    Success = false,
+                    ElementVisible = false,
+                    StateChanged = false,
+                    FailureReason = FailureReason.PatternNotSupported,
+                    Suggestion = StateDelta.FailureReasonDescriptor.Suggest(FailureReason.PatternNotSupported, null),
+                };
+            }
+
+            // ── TextBox ──────────────────────────────────────────────────────────
+            if (depObj is System.Windows.Controls.TextBox textBox)
+            {
+                var previousValue = textBox.Text;
+                textBox.SetValue(System.Windows.Controls.TextBox.TextProperty, value);
+                var newValue = textBox.Text;
+                var stateChanged = !string.Equals(previousValue, newValue, System.StringComparison.Ordinal);
+
+                System.Diagnostics.Trace.WriteLine(
+                    $"[SnoopWPF.Agent] SetTextValue(TextBox): nodeId={nodeId}, stateChanged={stateChanged}");
+
+                return new StateDeltaDto
+                {
+                    Success = true,
+                    ElementVisible = true,
+                    StateChanged = stateChanged,
+                    PreviousValue = previousValue,
+                    NewValue = newValue,
+                    ChosenTier = InputTier.L0,
+                };
+            }
+
+            // ── PasswordBox ──────────────────────────────────────────────────────
+            if (depObj is System.Windows.Controls.PasswordBox passwordBox)
+            {
+                // SensitiveText (S3): never log or return the actual password value.
+                const string redactedMarker = "[REDACTED]";
+
+                // AllowSensitiveRetention gate: only return newValue when explicitly permitted.
+                var allowRetention = this.options.AllowSensitiveRetention;
+
+                System.Diagnostics.Trace.WriteLine(
+                    "[SnoopWPF.Agent] SetTextValue(PasswordBox): value=<redacted>");
+
+                // PasswordBox.Password is a CLR property backed by SecureString, not a standard DP.
+                passwordBox.Password = value;
+
+                return new StateDeltaDto
+                {
+                    Success = true,
+                    ElementVisible = true,
+                    StateChanged = true,
+                    PreviousValue = redactedMarker,
+                    NewValue = allowRetention ? value : redactedMarker,
+                    ChosenTier = InputTier.L0,
+                };
+            }
+
+            // ── RichTextBox ──────────────────────────────────────────────────────
+            if (depObj is System.Windows.Controls.RichTextBox richTextBox)
+            {
+                var startPointer = richTextBox.Document.ContentStart;
+                var endPointer = richTextBox.Document.ContentEnd;
+                var previousValue = new System.Windows.Documents.TextRange(startPointer, endPointer).Text ?? string.Empty;
+
+                richTextBox.Document = new System.Windows.Documents.FlowDocument(
+                    new System.Windows.Documents.Paragraph(
+                        new System.Windows.Documents.Run(value)));
+
+                var newStartPointer = richTextBox.Document.ContentStart;
+                var newEndPointer = richTextBox.Document.ContentEnd;
+                var newValue = new System.Windows.Documents.TextRange(newStartPointer, newEndPointer).Text ?? string.Empty;
+                var stateChanged = !string.Equals(previousValue, newValue, System.StringComparison.Ordinal);
+
+                System.Diagnostics.Trace.WriteLine(
+                    $"[SnoopWPF.Agent] SetTextValue(RichTextBox): nodeId={nodeId}, stateChanged={stateChanged}");
+
+                return new StateDeltaDto
+                {
+                    Success = true,
+                    ElementVisible = true,
+                    StateChanged = stateChanged,
+                    PreviousValue = previousValue,
+                    NewValue = newValue,
+                    ChosenTier = InputTier.L0,
+                };
+            }
+
+            // Not a supported text control.
+            return new StateDeltaDto
+            {
+                Success = false,
+                ElementVisible = true,
+                StateChanged = false,
+                FailureReason = FailureReason.PatternNotSupported,
+                Suggestion = StateDelta.FailureReasonDescriptor.Suggest(FailureReason.PatternNotSupported, null),
+            };
+        }, ct);
+    }
+
+    /// <inheritdoc/>
+    public async Task<StateDeltaDto> SetTextValueAsync(WpfLocator locator, string value, CancellationToken ct)
+    {
+        var nodeId = await this.ResolveLocatorAsync(locator, ct).ConfigureAwait(false);
+        return await this.SetTextValueAsync(nodeId, value, ct).ConfigureAwait(false);
+    }
+
     // ── M2-01: wpf_execute_command ────────────────────────────────────────────
 
     /// <inheritdoc/>
@@ -1749,6 +1888,251 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
     {
         var nodeId = await this.ResolveLocatorAsync(locator, ct).ConfigureAwait(false);
         return await this.ResolveBindingAsync(nodeId, propertyName, ct).ConfigureAwait(false);
+    }
+
+    // ── M2-09: wpf_wait_for_property ──────────────────────────────────────────
+
+    /// <inheritdoc/>
+    public async Task<Contracts.Dtos.WaitForPropertyResultDto> WaitForPropertyAsync(
+        WpfLocator locator,
+        string propertyName,
+        string? expectedValue,
+        int timeoutMs,
+        string presenceExpected,
+        CancellationToken ct)
+    {
+        if (locator is null)
+        {
+            throw new ArgumentNullException(nameof(locator));
+        }
+
+        if (string.IsNullOrEmpty(propertyName))
+        {
+            throw new ArgumentException("propertyName must not be null or empty.", nameof(propertyName));
+        }
+
+        var absent = string.Equals(presenceExpected, "absent", StringComparison.OrdinalIgnoreCase);
+
+        var sw = Stopwatch.StartNew();
+        var deadline = TimeSpan.FromMilliseconds(timeoutMs);
+        var pollCount = 0;
+        const int MinPollIntervalMs = 50;
+
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            pollCount++;
+
+            string? actualValue = null;
+            bool elementFound = false;
+            bool dispatcherBusy = false;
+
+            try
+            {
+                var pollResult = await this.RunOnDispatcherAsync(() =>
+                {
+                    var root = this.GetEffectiveRootTarget();
+                    var resolved = this.locatorResolver.TryResolve(locator, root);
+                    if (resolved is null)
+                    {
+                        return new WaitForPropertyPollResult(false, null);
+                    }
+
+                    var props = PropertyInformation.GetProperties(resolved);
+                    try
+                    {
+                        var match = props.FirstOrDefault(p =>
+                            string.Equals(p.Name, propertyName, StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(p.DisplayName, propertyName, StringComparison.OrdinalIgnoreCase));
+
+                        return new WaitForPropertyPollResult(true, match?.StringValue);
+                    }
+                    finally
+                    {
+                        foreach (var prop in props)
+                        {
+                            prop.Teardown();
+                            StopChangeTimer(prop);
+                        }
+                    }
+                }, ct).ConfigureAwait(false);
+                elementFound = pollResult.Found;
+                actualValue = pollResult.Value;
+            }
+            catch (SnoopException ex) when (ex.Code == SnoopErrorCode.DispatcherBusy)
+            {
+                dispatcherBusy = true;
+            }
+
+            if (!dispatcherBusy)
+            {
+                bool conditionMet = absent
+                    ? !elementFound
+                    : elementFound && string.Equals(actualValue, expectedValue, StringComparison.Ordinal);
+
+                if (conditionMet)
+                {
+                    return new Contracts.Dtos.WaitForPropertyResultDto
+                    {
+                        ConditionMet = true,
+                        ActualValue = actualValue,
+                        ElapsedMs = (int)sw.ElapsedMilliseconds,
+                        PollCount = pollCount,
+                    };
+                }
+            }
+
+            if (sw.Elapsed >= deadline)
+            {
+                throw new SnoopException(
+                    SnoopErrorCode.DispatcherBusy,
+                    $"wpf_wait_for_property timed out after {timeoutMs}ms waiting for " +
+                    $"'{propertyName}' {(absent ? "to disappear" : $"= \"{expectedValue}\"")}. " +
+                    $"Last observed value: {(actualValue is null ? "<null>" : $"\"{actualValue}\"")}.",
+                    suggestions: new[] { SnoopSuggestions.WaitForPropertyTimeout });
+            }
+
+            var remaining = (int)(deadline - sw.Elapsed).TotalMilliseconds;
+            var delay = Math.Min(MinPollIntervalMs, Math.Max(1, remaining - 1));
+            await Task.Delay(delay, ct).ConfigureAwait(false);
+        }
+    }
+
+    // ── M2-10: wpf_poll_changes ────────────────────────────────────────────────
+
+    /// <inheritdoc/>
+    public Task<Contracts.Dtos.PollChangesResultDto> PollChangesAsync(
+        long sinceVersion,
+        WpfLocator? rootLocator,
+        CancellationToken ct)
+    {
+        return this.RunOnDispatcherAsync(() =>
+        {
+            // Snapshot the current tree version atomically.
+            var currentVersion = this.nodeRegistry.Version;
+
+            // Walk the live visual tree from the effective root (or locator root).
+            var rootTarget = rootLocator is not null
+                ? (object?)this.locatorResolver.TryResolve(rootLocator, this.GetEffectiveRootTarget())
+                : this.GetEffectiveRootTarget();
+
+            // Collect all nodeIds currently visible in the live tree.
+            var liveNodeIds = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
+            if (rootTarget is not null)
+            {
+                this.CollectLiveNodeIds(rootTarget, liveNodeIds);
+            }
+
+            // Determine which IDs in the registry were registered BEFORE sinceVersion
+            // (present in baseline) vs after (newly added).
+            var changes = new List<Contracts.Dtos.NodeChangeEntryDto>();
+
+            foreach (var nodeId in liveNodeIds)
+            {
+                // Parse the sequence number from the nodeId format "0:<n>"
+                if (TryParseNodeVersion(nodeId, out var nodeVersion))
+                {
+                    if (nodeVersion > sinceVersion)
+                    {
+                        changes.Add(new Contracts.Dtos.NodeChangeEntryDto
+                        {
+                            NodeId = nodeId,
+                            ChangeKind = "added",
+                        });
+                    }
+                }
+            }
+
+            // Detect removed nodes: IDs that existed before sinceVersion whose objects
+            // are no longer reachable via the live tree.
+            // We check all IDs in the registry reverse map that were created <= sinceVersion
+            // but are NOT in the current live tree.
+            var removedIds = this.nodeRegistry.CollectRemovedSince(sinceVersion, liveNodeIds);
+            foreach (var removedId in removedIds)
+            {
+                changes.Add(new Contracts.Dtos.NodeChangeEntryDto
+                {
+                    NodeId = removedId,
+                    ChangeKind = "removed",
+                });
+            }
+
+            return new Contracts.Dtos.PollChangesResultDto
+            {
+                TreeVersion = currentVersion,
+                SinceVersion = sinceVersion,
+                Changes = changes,
+                ChangeCount = changes.Count,
+            };
+        }, ct);
+    }
+
+    /// <summary>
+    /// Parses the sequence number from a node ID in the format "0:&lt;n&gt;".
+    /// </summary>
+    private static bool TryParseNodeVersion(string nodeId, out long version)
+    {
+        version = 0;
+        // Use string overload to satisfy CA1307 across all TFMs.
+        var colonIdx = nodeId.IndexOf(":", StringComparison.Ordinal);
+        if (colonIdx < 0)
+        {
+            return false;
+        }
+
+        return long.TryParse(nodeId.Substring(colonIdx + 1), out version);
+    }
+
+    /// <summary>
+    /// Recursively walks the visual tree from <paramref name="root"/> and collects
+    /// stable node IDs for all reachable objects. Must be called on the Dispatcher thread.
+    /// </summary>
+    private void CollectLiveNodeIds(object root, System.Collections.Generic.HashSet<string> ids)
+    {
+        const int maxNodes = 5000;
+        var queue = new Queue<object>();
+        queue.Enqueue(root);
+
+        while (queue.Count > 0 && ids.Count < maxNodes)
+        {
+            var current = queue.Dequeue();
+            if (current is null)
+            {
+                continue;
+            }
+
+            var id = this.nodeRegistry.GetOrCreateId(current);
+            if (!ids.Add(id))
+            {
+                // Already visited — avoid cycles.
+                continue;
+            }
+
+            // Walk visual children.
+            if (current is System.Windows.Media.Visual visual)
+            {
+                var childCount = System.Windows.Media.VisualTreeHelper.GetChildrenCount(visual);
+                for (var i = 0; i < childCount; i++)
+                {
+                    var child = System.Windows.Media.VisualTreeHelper.GetChild(visual, i);
+                    if (child is not null)
+                    {
+                        queue.Enqueue(child);
+                    }
+                }
+            }
+            else if (current is System.Windows.Application app)
+            {
+                foreach (System.Windows.Window w in app.Windows)
+                {
+                    if (w is not null)
+                    {
+                        queue.Enqueue(w);
+                    }
+                }
+            }
+        }
     }
 
     /// <summary>
@@ -2394,5 +2778,27 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
 
             result.Add(dto);
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Private nested types
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Avoids ValueTuple syntax (not available in net462 without a NuGet polyfill)
+    /// when returning two values from a Dispatcher-marshalled lambda inside
+    /// <see cref="WaitForPropertyAsync"/>.
+    /// </summary>
+    private readonly struct WaitForPropertyPollResult
+    {
+        public WaitForPropertyPollResult(bool found, string? value)
+        {
+            this.Found = found;
+            this.Value = value;
+        }
+
+        public bool Found { get; }
+
+        public string? Value { get; }
     }
 }

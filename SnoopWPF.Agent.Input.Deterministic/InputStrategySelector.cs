@@ -137,6 +137,7 @@ public sealed class InputStrategySelector
     private static bool IsMutationIntent(InputIntentKind kind)
     {
         return kind is InputIntentKind.SetProperty
+                    or InputIntentKind.SetTextValue
                     or InputIntentKind.ExecuteCommand;
     }
 }
