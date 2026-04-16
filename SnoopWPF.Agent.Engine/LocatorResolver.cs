@@ -270,7 +270,8 @@ internal sealed class LocatorResolver
     private static bool MatchesPath(WpfLocator locator, TreeItem item)
     {
         // Path form is a backslash-separated list of type names.
-        // The final segment must match this item's short type name (documented: first match wins).
+        // Walk all segments bottom-up: the last segment must match this item,
+        // the second-to-last must match item.Parent, and so on.
         var segments = locator.Value.Split(
             new[] { '\\' }, StringSplitOptions.RemoveEmptyEntries);
 
@@ -279,8 +280,28 @@ internal sealed class LocatorResolver
             return false;
         }
 
-        var lastSegment = segments[segments.Length - 1];
+        TreeItem? cursor = item;
+        for (int i = segments.Length - 1; i >= 0; i--)
+        {
+            if (cursor is null)
+            {
+                return false;
+            }
+
+            if (!SegmentMatches(segments[i], cursor))
+            {
+                return false;
+            }
+
+            cursor = cursor.Parent;
+        }
+
+        return true;
+    }
+
+    private static bool SegmentMatches(string segment, TreeItem item)
+    {
         var shortName = item.TargetType?.Name ?? string.Empty;
-        return string.Equals(shortName, lastSegment, StringComparison.OrdinalIgnoreCase);
+        return string.Equals(shortName, segment, StringComparison.OrdinalIgnoreCase);
     }
 }
