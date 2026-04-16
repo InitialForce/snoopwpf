@@ -11,7 +11,10 @@
   <ItemGroup>
     <PackageReference Include="JetBrains.Annotations" PrivateAssets="all" IncludeAssets="build;compile" />
     
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" PrivateAssets="all" IncludeAssets="build;analyzers" />
+    <!-- IsRoslynAnalyzerProject=true projects add Microsoft.CodeAnalysis.CSharp themselves
+         with compile assets; skip the build-only entry here to avoid NU1504 duplicate. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" PrivateAssets="all" IncludeAssets="build;analyzers"
+                      Condition="'$(IsRoslynAnalyzerProject)' != 'true'" />
    
     <!--<PackageReference Include="ReflectionAnalyzers" version="0.1-dev" privateAssets="all" includeAssets="build;analyzers" />-->
 

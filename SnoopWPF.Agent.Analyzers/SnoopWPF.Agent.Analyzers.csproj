@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <!-- Analyzer projects must NOT copy to output; they are loaded as analyzers -->
+    <IsPackable>true</IsPackable>
+    <!-- RS1038: "Do not include workspaces layer in analyzer assembly" — suppressed because
+         this project deliberately includes the code fix provider (Workspaces layer) in the
+         same assembly as the diagnostic analyzer. This is the standard approach for small,
+         internal analyzer + code-fix combos shipped as a single DLL. -->
+    <!-- RS2008: suppress "Enable analyzer release tracking" for internal analyzer -->
+    <!-- EnforceExtendedAnalyzerRules satisfies RS1036; RS1038 is suppressed because we
+         intentionally bundle the code-fix (Workspaces layer) in the same assembly. -->
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+    <NoWarn>$(NoWarn);RS2008;RS1038</NoWarn>
+    <!-- Flag used in Directory.Build.targets to suppress the global build-only reference
+         and let this project add it with full compile assets instead. -->
+    <IsRoslynAnalyzerProject>true</IsRoslynAnalyzerProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The global Directory.Build.targets adds Microsoft.CodeAnalysis.CSharp with
+         IncludeAssets="build;analyzers" (no compile). This project needs to compile
+         against it. We exclude the global one via IsRoslynAnalyzerProject condition
+         (see Directory.Build.targets) and re-add it here with compile included. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp"
+                      PrivateAssets="all"
+                      IncludeAssets="compile; build; native; contentfiles; analyzers; buildtransitive" />
+    <!-- CSharp.Workspaces provides CodeFixProvider, Document, CodeAction, etc. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces"
+                      PrivateAssets="all"
+                      IncludeAssets="compile; build; native; contentfiles; analyzers; buildtransitive" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Analyzers">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>

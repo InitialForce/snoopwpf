@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <!-- M1-16: Analyzer tests — plain net8.0 (no WPF needed) -->
+    <!-- CA2007: ConfigureAwait in test project is intentionally omitted -->
+    <!-- RS0030/RS0031: test project is not a production analyzer -->
+    <NoWarn>$(NoWarn);RS0030;RS0031;CA2007</NoWarn>
+    <!-- Override the global Directory.Build.targets behavior so we can reference
+         Microsoft.CodeAnalysis.CSharp for compilation in the test project. -->
+    <IsRoslynAnalyzerProject>true</IsRoslynAnalyzerProject>
+    <!-- Isolated output directory: the global OutputPath puts all net8.0 assemblies
+         in the same folder, which confuses NUnit test discovery. -->
+    <OutputPath>$(MSBuildThisFileDirectory)..\bin\$(Configuration)\$(AssemblyName)\</OutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="NUnit" />
+    <PackageReference Include="NUnit3TestAdapter" />
+    <!-- Roslyn packages needed to compile and execute analyzers in tests.
+         IncludeAssets includes 'runtime' so DLLs are copied to the output directory. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SnoopWPF.Agent.Analyzers\SnoopWPF.Agent.Analyzers.csproj" />
+    <!-- No reference to SnoopWPF.Agent.Contracts: the attribute is defined inline in test source strings,
+         not loaded at test-project compile time. This avoids NU1702 (net462 fallback) at test runtime. -->
+  </ItemGroup>
+
+</Project>

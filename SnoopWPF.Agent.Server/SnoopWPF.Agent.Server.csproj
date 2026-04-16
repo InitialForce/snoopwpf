@@ -25,6 +25,11 @@
 
     <!-- Flatten Engine, Tools, and Contracts DLLs into lib/ instead of listing as deps -->
     <ItemGroup>
+        <!-- M1-16: Ship SWPF0001 analyzer with the server NuGet so consumers get it automatically -->
+        <ProjectReference Include="../SnoopWPF.Agent.Analyzers/SnoopWPF.Agent.Analyzers.csproj"
+                          OutputItemType="Analyzer"
+                          ReferenceOutputAssembly="false"
+                          PrivateAssets="all" />
         <ProjectReference Include="../SnoopWPF.Agent.Contracts/SnoopWPF.Agent.Contracts.csproj">
             <PrivateAssets>all</PrivateAssets>
         </ProjectReference>
