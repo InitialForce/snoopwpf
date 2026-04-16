@@ -63,7 +63,10 @@ public static class DtoProjection
         var name = prop.DisplayName ?? prop.Name ?? string.Empty;
         var propertyType = (Type?)prop.PropertyType;
 
-        var isRedacted = enableRedaction && RedactionFilter.IsRedacted(name, propertyType);
+        // MF-10 / FX-C4: structural sensitivity is unconditional — fires before
+        // enableRedaction check and before prop.StringValue (i.e. ToString()) is ever called.
+        var isStructural = RedactionFilter.IsStructurallySensitive(prop.Value);
+        var isRedacted = isStructural || (enableRedaction && RedactionFilter.IsRedacted(name, propertyType));
 
         // Use StringValue (uses value.ToString()) — NEVER TypeDescriptor.GetConverter()
         var value = isRedacted ? "[REDACTED]" : (prop.StringValue ?? string.Empty);
