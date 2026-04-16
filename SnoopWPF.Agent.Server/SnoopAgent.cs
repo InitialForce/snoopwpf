@@ -1,6 +1,8 @@
 namespace SnoopWPF.Agent.Server;
 
 using System;
+using System.Diagnostics;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -65,6 +67,19 @@ public static class SnoopAgent
             var handle = new SnoopAgentHandle(cts, inspector);
             activeHandle = handle;
 
+            // For pipe transport: resolve/generate pipe name and session token now, before
+            // handing off to the background task, so the caller can read them immediately.
+            if (options.Transport == TransportMode.Pipe)
+            {
+                handle.PipeName = !string.IsNullOrEmpty(options.PipeName)
+                    ? options.PipeName
+                    : "snoop-agent-" + Guid.NewGuid().ToString("N");
+
+                handle.SessionToken = !string.IsNullOrEmpty(options.SessionToken)
+                    ? options.SessionToken
+                    : Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+            }
+
             // Auto-stop when the application exits.
             var app = Application.Current;
             if (app != null)
@@ -74,10 +89,10 @@ public static class SnoopAgent
 
             // Run the server on the thread pool so we don't block the caller or the Dispatcher.
             _ = Task.Run(
-                () => RunServerAsync(inspector, options, cts.Token),
+                () => RunServerAsync(inspector, options, handle, cts.Token),
                 cts.Token);
 
-            Console.WriteLine($"SnoopWPF.Agent MCP server starting ({options.Transport} transport).");
+            Trace.TraceInformation("SnoopWPF.Agent MCP server starting ({0} transport).", options.Transport);
             return handle;
         }
     }
@@ -94,11 +109,12 @@ public static class SnoopAgent
     private static async Task RunServerAsync(
         SnoopInspector inspector,
         SnoopAgentOptions options,
+        SnoopAgentHandle handle,
         CancellationToken ct)
     {
         try
         {
-            await McpServerSetup.RunServerAsync(inspector, options, ct).ConfigureAwait(false);
+            await McpServerSetup.RunServerAsync(inspector, options, handle, ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -107,7 +123,7 @@ public static class SnoopAgent
         catch (Exception ex)
         {
             // Surface unexpected errors without crashing the host process.
-            Console.Error.WriteLine($"SnoopWPF.Agent MCP server error: {ex.Message}");
+            Trace.TraceError("SnoopWPF.Agent MCP server error: {0}", ex.Message);
         }
     }
 }

@@ -24,9 +24,21 @@ public sealed class SnoopAgentOptions
 
     /// <summary>
     /// Named-pipe name used when <see cref="Transport"/> is <see cref="TransportMode.Pipe"/>.
-    /// When null a name is auto-generated as <c>snoop-agent-{pid}</c>.
+    /// When null or empty a random name is auto-generated as <c>snoop-agent-{guid}</c>.
     /// </summary>
     public string? PipeName { get; init; }
+
+    /// <summary>
+    /// Session token used for the named-pipe handshake when <see cref="Transport"/> is
+    /// <see cref="TransportMode.Pipe"/>. When null or empty a cryptographically random
+    /// 256-bit token is generated automatically.
+    /// </summary>
+    /// <remarks>
+    /// The generated (or supplied) token is exposed via <see cref="SnoopAgentHandle.SessionToken"/>
+    /// so that the embedding application can deliver it to its client.
+    /// Treat the token like a password — do not log it or write it to stdout.
+    /// </remarks>
+    public string? SessionToken { get; init; }
 
     /// <summary>
     /// Per-operation Dispatcher timeout in milliseconds. Default 5000 ms.

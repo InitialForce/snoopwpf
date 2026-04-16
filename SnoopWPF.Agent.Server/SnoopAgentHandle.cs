@@ -21,6 +21,29 @@ public sealed class SnoopAgentHandle : IDisposable
     }
 
     /// <summary>
+    /// When <see cref="TransportMode.Pipe"/> is used, the name of the named pipe that the server
+    /// is listening on. <see langword="null"/> when <see cref="TransportMode.Stdio"/> is used.
+    /// </summary>
+    /// <remarks>
+    /// The embedding application is responsible for securely delivering this value to its
+    /// client. The pipe enforces <c>CurrentUserOnly</c> ACL; additionally the client must
+    /// supply the matching <see cref="SessionToken"/> during the opening handshake.
+    /// </remarks>
+    public string? PipeName { get; internal set; }
+
+    /// <summary>
+    /// When <see cref="TransportMode.Pipe"/> is used, the 256-bit (64 hex-character) session
+    /// token that the MCP client must echo back during the opening handshake.
+    /// <see langword="null"/> when <see cref="TransportMode.Stdio"/> is used.
+    /// </summary>
+    /// <remarks>
+    /// Treat this value like a password. Do not log it or write it to stdout.
+    /// The embedding application decides how to deliver it to its client (e.g., in-process
+    /// reference, secure IPC, environment variable scoped to the child process, etc.).
+    /// </remarks>
+    public string? SessionToken { get; internal set; }
+
+    /// <summary>
     /// Stops the MCP server and disposes resources.
     /// </summary>
     public void Dispose()
