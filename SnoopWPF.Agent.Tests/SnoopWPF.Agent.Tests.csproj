@@ -13,11 +13,13 @@
     <PackageReference Include="NUnit" />
     <PackageReference Include="NUnit3TestAdapter" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="ModelContextProtocol" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\SnoopWPF.Agent.Engine\SnoopWPF.Agent.Engine.csproj" />
     <ProjectReference Include="..\SnoopWPF.Agent.Contracts\SnoopWPF.Agent.Contracts.csproj" />
+    <ProjectReference Include="..\SnoopWPF.Agent.Tools\SnoopWPF.Agent.Tools.csproj" />
   </ItemGroup>
 
 </Project>
