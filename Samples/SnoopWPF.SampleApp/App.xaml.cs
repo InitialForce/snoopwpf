@@ -1,13 +1,22 @@
 namespace SnoopWPF.SampleApp;
 
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using SnoopWPF.Agent.Contracts;
+using SnoopWPF.Agent.Engine;
 using SnoopWPF.Agent.Server;
 
 /// <summary>
 /// Entry point for the SnoopWPF Sample Application.
-/// Demonstrates NuGet-mode MCP agent integration via SnoopAgent.StartCoLocated().
+/// Demonstrates NuGet-mode MCP agent integration.
+///
+/// Launch paths:
+///   (default / --mcp-stdio)    Co-located mode: MCP server on stdio transport.
+///   --snoop-pipe=NAME --snoop-token=HEX  Brokered mode: target connects to external broker.
+///   --smoke                     Self-test: start agent, call wpf_get_session_info,
+///                               assert windows.Count >= 1, exit 0 (non-zero on failure).
 /// </summary>
 public partial class App : Application
 {
@@ -19,28 +28,71 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
-        // Parse --no-agent flag to allow injection-mode testing without the NuGet agent running.
-        bool noAgent = Array.Exists(e.Args, a => a.Equals("--no-agent", StringComparison.OrdinalIgnoreCase));
+        string[] args = e.Args;
+
+        bool noAgent = HasFlag(args, "--no-agent");
+        bool smoke = HasFlag(args, "--smoke");
+
+        string? pipeName = GetFlagValue(args, "--snoop-pipe");
+        string? token = GetFlagValue(args, "--snoop-token");
+
+        // Brokered mode: both --snoop-pipe and --snoop-token must be present.
+        bool brokeredMode = !string.IsNullOrEmpty(pipeName) && !string.IsNullOrEmpty(token);
+
+        // Keep a hidden window open for the lifetime of the application.
+        this.hiddenWindow = new HiddenWindow();
+        this.hiddenWindow.Show();
+        this.hiddenWindow.Hide();
 
         if (!noAgent)
         {
-            // Start the MCP agent on stdio transport (default).
-            // The endpoint info is written to %TEMP%\snoop-agent-{pid}.json.
-            // Do NOT log the bearer token — integration tests read it from the discovery file.
-            this.agentHandle = SnoopAgent.StartCoLocated(new SnoopAgentOptions
+            if (brokeredMode)
             {
-                EnableMutation = false,
-                EnableRedaction = true,
-            });
+                // Brokered mode: target-side. Broker owns the MCP stdio channel.
+                // Console.Out is NOT redirected here — broker drains it.
+                this.agentHandle = SnoopAgent.StartBrokered(
+                    this,
+                    pipeName!,
+                    token!,
+                    new SnoopAgentOptions
+                    {
+                        EnableMutation = true,
+                        EnableRedaction = false,
+                    });
 
-            Console.WriteLine("SnoopWPF.Agent MCP server started (stdio transport).");
+                Console.Error.WriteLine(
+                    $"[SnoopWPF.SampleApp] Brokered mode started. Pipe={pipeName}");
+            }
+            else
+            {
+                // Co-located / --mcp-stdio mode: MCP server on stdio transport.
+                // Console.SetOut(TextWriter.Null) is called inside StartCoLocated (M1-19).
+                this.agentHandle = SnoopAgent.StartCoLocated(new SnoopAgentOptions
+                {
+                    EnableMutation = false,
+                    EnableRedaction = true,
+                });
+            }
         }
 
-        // Keep a hidden window open for the lifetime of the application.
-        // This tests wpf_get_windows with includeHidden=true/false and screenshot edge cases.
-        this.hiddenWindow = new HiddenWindow();
-        this.hiddenWindow.Show(); // Show then hide so the window is initialized and measurable
-        this.hiddenWindow.Hide();
+        if (smoke)
+        {
+            // Run smoke self-test on a background thread so the Dispatcher can pump.
+            var dispatcher = this.Dispatcher;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    int exitCode = await RunSmokeTestAsync(dispatcher).ConfigureAwait(false);
+                    dispatcher.Invoke(() => Application.Current.Shutdown(exitCode));
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"[smoke] unhandled exception: {ex.Message}");
+                    dispatcher.Invoke(() => Application.Current.Shutdown(2));
+                }
+            });
+        }
     }
 
     /// <inheritdoc/>
@@ -48,5 +100,86 @@ public partial class App : Application
     {
         this.agentHandle?.Dispose();
         base.OnExit(e);
+    }
+
+    // -------------------------------------------------------------------------
+    // Smoke test — calls wpf_get_session_info via the in-process inspector.
+    // Returns exit code: 0 = pass, 1 = assertion failure, 2 = exception.
+    // -------------------------------------------------------------------------
+
+    private static async Task<int> RunSmokeTestAsync(System.Windows.Threading.Dispatcher dispatcher)
+    {
+        // Give the agent a moment to initialise its background server.
+        await Task.Delay(300).ConfigureAwait(false);
+
+        try
+        {
+            // Create an in-process inspector backed by Application.Current.
+            var inspector = new SnoopInspector(
+                dispatcher,
+                rootTarget: Application.Current,
+                options: new SnoopInspectorOptions
+                {
+                    TimeoutMs = 10_000,
+                    EnableMutation = false,
+                    EnableRedaction = false,
+                });
+
+            using (inspector)
+            {
+                // wpf_get_session_info equivalent — verifies the agent can enumerate windows.
+                var windows = await inspector.GetWindowsAsync(includeHidden: false, CancellationToken.None)
+                    .ConfigureAwait(false);
+
+                if (windows.Count < 1)
+                {
+                    Console.Error.WriteLine(
+                        $"[smoke] FAIL: windows.Count = {windows.Count}, expected >= 1.");
+                    return 1;
+                }
+
+                Console.Error.WriteLine(
+                    $"[smoke] PASS: windows.Count = {windows.Count}.");
+                return 0;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[smoke] FAIL: exception: {ex.Message}");
+            return 2;
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Argument helpers
+    // -------------------------------------------------------------------------
+
+    private static bool HasFlag(string[] args, string flag)
+        => Array.Exists(args, a => a.Equals(flag, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Returns the value of a --key=value flag, or null if not present.
+    /// Supports both "--key=value" and "--key value" forms.
+    /// </summary>
+    private static string? GetFlagValue(string[] args, string prefix)
+    {
+        foreach (string arg in args)
+        {
+            if (arg.StartsWith(prefix + "=", StringComparison.OrdinalIgnoreCase))
+            {
+                return arg.Substring(prefix.Length + 1);
+            }
+        }
+
+        // "--key value" form
+        for (int i = 0; i < args.Length - 1; i++)
+        {
+            if (args[i].Equals(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                return args[i + 1];
+            }
+        }
+
+        return null;
     }
 }

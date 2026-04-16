@@ -1,8 +1,11 @@
 namespace SnoopWPF.Agent.IntegrationTests;
 
 using System;
+using System.Diagnostics;
 using System.IO;
+using System.Reflection;
 using System.Security.Cryptography;
+using System.Threading.Tasks;
 using NUnit.Framework;
 using SnoopWPF.Agent.Contracts;
 using SnoopWPF.Agent.Server;
@@ -235,5 +238,79 @@ public sealed class BrokeredRoundTripTests : WpfIntegrationTestBase
         {
             handle?.Dispose();
         }
+    }
+
+    /// <summary>
+    /// Cross-process smoke: spawns <c>SnoopWPF.SampleApp</c> with <c>--mcp-stdio --smoke</c>
+    /// and asserts it exits 0.
+    /// This validates the co-located <c>StartCoLocated</c> path end-to-end from a consumer
+    /// perspective and is the primary brokered-mode consumer deliverable gate (M2-19).
+    /// </summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task BrokeredRoundTrip_SampleApp_McpStdioSmoke_ExitsZero()
+    {
+        string sampleAppExe = ResolveSampleAppExe();
+
+        if (!File.Exists(sampleAppExe))
+        {
+            Assert.Ignore($"SnoopWPF.SampleApp.exe not found at '{sampleAppExe}'. Build first.");
+            return;
+        }
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = sampleAppExe,
+            Arguments = "--mcp-stdio --smoke",
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+
+        using var proc = Process.Start(psi)
+            ?? throw new InvalidOperationException("Failed to start SnoopWPF.SampleApp.");
+
+        // Drain output on background tasks to prevent pipe-full blocking.
+        _ = proc.StandardOutput.ReadToEndAsync();
+        string stderr = await proc.StandardError.ReadToEndAsync().ConfigureAwait(false);
+
+        bool exited = proc.WaitForExit(25_000);
+
+        if (!exited)
+        {
+            proc.Kill();
+            Assert.Fail("SnoopWPF.SampleApp --mcp-stdio --smoke did not exit within 25 s.");
+            return;
+        }
+
+        Assert.That(
+            proc.ExitCode,
+            Is.EqualTo(0),
+            $"SnoopWPF.SampleApp --mcp-stdio --smoke exited {proc.ExitCode}. Stderr: {stderr}");
+    }
+
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
+
+    private static string ResolveSampleAppExe()
+    {
+        // Look next to the running test assembly (both point to the same output directory
+        // when all projects share OutputPath or when test artifacts are copied).
+        string? thisDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+
+        if (thisDir is not null)
+        {
+            string candidate = Path.Combine(thisDir, "SnoopWPF.SampleApp.exe");
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return Path.Combine(
+            AppContext.BaseDirectory,
+            "SnoopWPF.SampleApp.exe");
     }
 }

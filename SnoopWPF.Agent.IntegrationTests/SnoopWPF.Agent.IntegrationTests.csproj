@@ -25,6 +25,10 @@
     <ProjectReference Include="..\SnoopWPF.Agent.Server\SnoopWPF.Agent.Server.csproj" />
     <ProjectReference Include="..\SnoopWPF.Agent.Tools\SnoopWPF.Agent.Tools.csproj" />
     <ProjectReference Include="..\SnoopWPF.Agent.BrokerHost\SnoopWPF.Agent.BrokerHost.csproj" />
+    <!-- Build dependency only — SampleApp.exe must be in the shared bin/ output for cross-process tests. -->
+    <ProjectReference Include="..\Samples\SnoopWPF.SampleApp\SnoopWPF.SampleApp.csproj"
+                      ReferenceOutputAssembly="false"
+                      SkipGetTargetFrameworkProperties="true" />
   </ItemGroup>
 
 </Project>

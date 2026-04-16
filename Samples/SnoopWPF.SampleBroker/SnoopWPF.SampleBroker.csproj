@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net8.0-windows</TargetFramework>
+        <LangVersion>latest</LangVersion>
+        <Nullable>enable</Nullable>
+        <OutputType>Exe</OutputType>
+        <ImplicitUsings>disable</ImplicitUsings>
+        <RootNamespace>SnoopWPF.SampleBroker</RootNamespace>
+        <AssemblyName>SnoopWPF.SampleBroker</AssemblyName>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../../SnoopWPF.Agent.Contracts/SnoopWPF.Agent.Contracts.csproj" />
+        <ProjectReference Include="../../SnoopWPF.Agent.BrokerHost/SnoopWPF.Agent.BrokerHost.csproj" />
+    </ItemGroup>
+
+</Project>
