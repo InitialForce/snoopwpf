@@ -62,4 +62,45 @@ public class SessionPolicyTests
         Assert.That(policy.MaxTier, Is.EqualTo(InputTier.L1));
         Assert.That(policy.Mode, Is.EqualTo(SessionMode.Brokered));
     }
+
+    // ── FX-N3: Gap 5 — matrix cells missing from original coverage ─────────────
+
+    /// <summary>
+    /// CoLocated mode must not clobber EnableAutomation=true supplied by the caller.
+    /// (CoLocated is an owned application — caller owns policy, no forced overrides.)
+    /// </summary>
+    [Test]
+    public void Create_CoLocated_PreservesEnableAutomation()
+    {
+        var opts = new SnoopAgentOptions { EnableAutomation = true };
+        var policy = SessionPolicy.Create(SessionMode.CoLocated, opts);
+        Assert.That(policy.EnableAutomation, Is.True,
+            "CoLocated must pass EnableAutomation=true through unchanged (FX-N3 gap 5).");
+    }
+
+    /// <summary>
+    /// Brokered mode must not clobber EnableMutation=true supplied by the caller.
+    /// Brokered is an owned-app session; caller owns the policy.
+    /// </summary>
+    [Test]
+    public void Create_Brokered_PreservesEnableMutation()
+    {
+        var opts = new SnoopAgentOptions { EnableMutation = true };
+        var policy = SessionPolicy.Create(SessionMode.Brokered, opts);
+        Assert.That(policy.EnableMutation, Is.True,
+            "Brokered must pass EnableMutation=true through unchanged (FX-N3 gap 5).");
+    }
+
+    /// <summary>
+    /// Brokered mode must not clobber AllowSensitiveRetention=true supplied by the caller.
+    /// Brokered is an owned-app session (not injection), so the clamp must NOT apply.
+    /// </summary>
+    [Test]
+    public void Create_Brokered_PreservesAllowSensitiveRetention()
+    {
+        var opts = new SnoopAgentOptions { AllowSensitiveRetention = true };
+        var policy = SessionPolicy.Create(SessionMode.Brokered, opts);
+        Assert.That(policy.AllowSensitiveRetention, Is.True,
+            "Brokered is owned-app — AllowSensitiveRetention must not be clamped (FX-N3 gap 5).");
+    }
 }

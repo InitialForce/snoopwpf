@@ -165,4 +165,138 @@ public sealed class LocatorResolutionTests
         Assert.That(nodeId, Is.Not.Null.And.Not.Empty,
             "Single-segment path=Button should resolve to the Button.");
     }
+
+    // -------------------------------------------------------------------------
+    // FX-N3: Gap 4 — LocatorResolver cap fires for all 4 locator forms
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// When a tree has more than <c>MaxNewEntries</c> (100) nodes and none match the
+    /// <c>automationId=</c> locator, the resolver must throw
+    /// <see cref="SnoopException"/> with <see cref="SnoopErrorCode.LocatorAmbiguous"/>
+    /// before exhausting memory.
+    ///
+    /// The tree is built with 101 plain TextBlock children (no AutomationId set) so the
+    /// cap fires at entry 100 without finding a match.
+    /// </summary>
+    [Test]
+    public void AutomationId_Cap_ThrowsLocatorAmbiguous_ForWideTree()
+    {
+        SnoopException? caught = null;
+
+        this.dispatcher.Invoke(() =>
+        {
+            var panel = new StackPanel();
+            // 101 children — resolver will visit 100 (the cap) and throw LocatorAmbiguous.
+            for (int i = 0; i < 101; i++)
+            {
+                panel.Children.Add(new TextBlock { Text = $"item-{i}" });
+            }
+
+            var resolver = new LocatorResolver(this.registry);
+            var locator = WpfLocatorParser.Parse("automationId=DOES_NOT_EXIST");
+
+            try
+            {
+                resolver.Resolve(locator, panel);
+            }
+            catch (SnoopException ex)
+            {
+                caught = ex;
+            }
+        });
+
+        Assert.That(caught, Is.Not.Null,
+            "Resolver must throw for a non-existent automationId= in a tree with 101+ nodes.");
+        Assert.That(
+            caught!.Code,
+            Is.EqualTo(SnoopErrorCode.LocatorAmbiguous),
+            $"Expected LocatorAmbiguous, got {caught.Code}.");
+    }
+
+    /// <summary>
+    /// When a tree has more than <c>MaxNewEntries</c> (100) nodes and none match the
+    /// <c>type=</c> locator value, the resolver must throw
+    /// <see cref="SnoopException"/> with <see cref="SnoopErrorCode.LocatorAmbiguous"/>.
+    ///
+    /// The tree is built with 101 Button children; the locator asks for <c>type=NoSuchType</c>
+    /// which matches nothing, so the cap fires at entry 100.
+    /// </summary>
+    [Test]
+    public void TypeName_Cap_ThrowsLocatorAmbiguous_ForWideTree()
+    {
+        SnoopException? caught = null;
+
+        this.dispatcher.Invoke(() =>
+        {
+            var panel = new StackPanel();
+            for (int i = 0; i < 101; i++)
+            {
+                panel.Children.Add(new Button { Content = $"btn-{i}" });
+            }
+
+            var resolver = new LocatorResolver(this.registry);
+            var locator = WpfLocatorParser.Parse("type=NoSuchTypeName");
+
+            try
+            {
+                resolver.Resolve(locator, panel);
+            }
+            catch (SnoopException ex)
+            {
+                caught = ex;
+            }
+        });
+
+        Assert.That(caught, Is.Not.Null,
+            "Resolver must throw for a non-existent type= in a tree with 101+ nodes.");
+        Assert.That(
+            caught!.Code,
+            Is.EqualTo(SnoopErrorCode.LocatorAmbiguous),
+            $"Expected LocatorAmbiguous, got {caught.Code}.");
+    }
+
+    /// <summary>
+    /// When a tree has more than <c>MaxNewEntries</c> (100) nodes and none match the
+    /// <c>path=</c> locator hierarchy, the resolver must throw
+    /// <see cref="SnoopException"/> with <see cref="SnoopErrorCode.LocatorAmbiguous"/>.
+    ///
+    /// The tree is built with 101 CheckBox children; the locator asks for
+    /// <c>path=NoParent\CheckBox</c>. Each CheckBox matches the last segment but not the
+    /// parent segment, so the cap fires at entry 100 without a full match.
+    /// </summary>
+    [Test]
+    public void Path_Cap_ThrowsLocatorAmbiguous_ForWideTree()
+    {
+        SnoopException? caught = null;
+
+        this.dispatcher.Invoke(() =>
+        {
+            var panel = new StackPanel();
+            for (int i = 0; i < 101; i++)
+            {
+                panel.Children.Add(new CheckBox { Content = $"chk-{i}" });
+            }
+
+            var resolver = new LocatorResolver(this.registry);
+            // path=NoParent\CheckBox: last segment (CheckBox) matches but parent (NoParent) never does.
+            var locator = WpfLocatorParser.Parse(@"path=NoParent\CheckBox");
+
+            try
+            {
+                resolver.Resolve(locator, panel);
+            }
+            catch (SnoopException ex)
+            {
+                caught = ex;
+            }
+        });
+
+        Assert.That(caught, Is.Not.Null,
+            "Resolver must throw for path=NoParent\\CheckBox in a tree with 101+ nodes.");
+        Assert.That(
+            caught!.Code,
+            Is.EqualTo(SnoopErrorCode.LocatorAmbiguous),
+            $"Expected LocatorAmbiguous, got {caught.Code}.");
+    }
 }
