@@ -37,7 +37,7 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
     // Max 3 concurrent Dispatcher operations.
     private readonly SemaphoreSlim concurrencySemaphore = new(3, 3);
 
-    private bool disposed;
+    private volatile bool disposed;
 
     /// <summary>
     /// Initializes a new SnoopInspector.
@@ -80,7 +80,7 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
     }
 
     // -------------------------------------------------------------------------
-    // ISnoopInspector — 7 implemented methods
+    // ISnoopInspector — implemented methods
     // -------------------------------------------------------------------------
 
     /// <inheritdoc/>
@@ -499,6 +499,27 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
 
                 foreach (var prop in props)
                 {
+                    // Apply includeDefaults filter before projecting to DTOs (cheaper).
+                    // When includeDefaults=false, only include non-default properties.
+                    if (!includeDefaults)
+                    {
+                        if (!prop.IsLocallySet && !prop.IsDatabound && !prop.IsInvalidBinding && !prop.IsExpression)
+                        {
+                            continue;
+                        }
+                    }
+
+                    // Apply category filter before projecting to DTOs (cheaper).
+                    // "all" or null means no category filter. Uses the PropertyDescriptor Category attribute.
+                    if (!string.IsNullOrEmpty(category) && !string.Equals(category, "all", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var propCategory = prop.Property?.Category ?? string.Empty;
+                        if (!string.Equals(propCategory, category, StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue;
+                        }
+                    }
+
                     var dto = DtoProjection.ToPropertyDto(prop, this.options.EnableRedaction);
                     allDtos.Add(dto);
                 }
@@ -691,7 +712,7 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
     }
 
     // -------------------------------------------------------------------------
-    // ISnoopInspector — 8 stubbed methods (filled in later beads)
+    // ISnoopInspector — additional methods
     // -------------------------------------------------------------------------
 
     /// <inheritdoc/>
@@ -939,6 +960,13 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
             if (propInfo is null)
             {
                 // Unknown property — condition cannot match.
+                return false;
+            }
+
+            // Guard: do not expose sensitive property values via comparison oracle.
+            // A caller could binary-search a password by issuing repeated FindElements calls.
+            if (this.options.EnableRedaction && RedactionFilter.IsRedacted(condition.Property, propInfo.PropertyType))
+            {
                 return false;
             }
 
@@ -1255,16 +1283,18 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
 
             var result = new List<TriggerDto>();
 
+            var enableRedaction = this.options.EnableRedaction;
+
             // Style triggers (including base styles via BasedOn chain).
             if (target is FrameworkElement fe)
             {
                 var style = Snoop.Infrastructure.Helpers.FrameworkElementHelper.GetStyle(fe);
-                CollectStyleTriggers(fe, style, "Style", result);
+                CollectStyleTriggers(fe, style, "Style", result, enableRedaction);
 
                 // Element-level triggers (FrameworkElement.Triggers).
                 foreach (System.Windows.TriggerBase tb in fe.Triggers)
                 {
-                    result.Add(ProjectTrigger(tb, "Element"));
+                    result.Add(ProjectTrigger(tb, "Element", enableRedaction));
                 }
 
                 // ControlTemplate triggers.
@@ -1272,14 +1302,14 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
                 {
                     foreach (System.Windows.TriggerBase tb in ct2.Triggers)
                     {
-                        result.Add(ProjectTrigger(tb, "ControlTemplate"));
+                        result.Add(ProjectTrigger(tb, "ControlTemplate", enableRedaction));
                     }
                 }
             }
             else if (target is System.Windows.FrameworkContentElement fce)
             {
                 var style = Snoop.Infrastructure.Helpers.FrameworkElementHelper.GetStyle(fce);
-                CollectStyleTriggersForFce(fce, style, "Style", result);
+                CollectStyleTriggersForFce(fce, style, "Style", result, enableRedaction);
             }
 
             // DataTemplate triggers (ContentControl / ContentPresenter).
@@ -1287,14 +1317,14 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
             {
                 foreach (System.Windows.TriggerBase tb in contentTemplate.Triggers)
                 {
-                    result.Add(ProjectTrigger(tb, "DataTemplate"));
+                    result.Add(ProjectTrigger(tb, "DataTemplate", enableRedaction));
                 }
             }
             else if (target is System.Windows.Controls.ContentPresenter { ContentTemplate: { } cpTemplate })
             {
                 foreach (System.Windows.TriggerBase tb in cpTemplate.Triggers)
                 {
-                    result.Add(ProjectTrigger(tb, "DataTemplate"));
+                    result.Add(ProjectTrigger(tb, "DataTemplate", enableRedaction));
                 }
             }
 
@@ -1319,8 +1349,9 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
 
             // Try both well-known Interaction libraries via reflection.
             // If the assembly isn't loaded, return empty (not an error).
-            CollectBehaviorsFromInteraction(depObj, "System.Windows.Interactivity.Interaction, System.Windows.Interactivity", result);
-            CollectBehaviorsFromInteraction(depObj, "Microsoft.Xaml.Behaviors.Interaction, Microsoft.Xaml.Behaviors", result);
+            var enableRedaction = this.options.EnableRedaction;
+            CollectBehaviorsFromInteraction(depObj, "System.Windows.Interactivity.Interaction, System.Windows.Interactivity", result, enableRedaction);
+            CollectBehaviorsFromInteraction(depObj, "Microsoft.Xaml.Behaviors.Interaction, Microsoft.Xaml.Behaviors", result, enableRedaction);
 
             return result;
         }, ct);
@@ -1366,6 +1397,9 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
 
             var dispatcherTask = dispatcherOp.Task;
 
+            // Track total budget elapsed so Phase 2 only waits for the *remaining* time.
+            var sw = Stopwatch.StartNew();
+
             // Phase 1: Did the Dispatcher accept (start) the work within the acceptance window?
             var acceptanceDeadline = Task.Delay(DispatcherAcceptanceTimeoutMs, timeoutCts.Token);
             var firstToFinish = await Task.WhenAny(dispatcherTask, acceptanceDeadline).ConfigureAwait(false);
@@ -1381,8 +1415,9 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
                     suggestions: new[] { SnoopSuggestions.DispatcherBusy });
             }
 
-            // Phase 2: Work was accepted. Wait for completion within total timeout.
-            var completionDeadline = Task.Delay(this.options.TimeoutMs, timeoutCts.Token);
+            // Phase 2: Work was accepted. Wait for completion within the *remaining* budget.
+            var remainingMs = Math.Max(0, this.options.TimeoutMs - (int)sw.ElapsedMilliseconds);
+            var completionDeadline = Task.Delay(remainingMs, timeoutCts.Token);
             var finalResult = await Task.WhenAny(dispatcherTask, completionDeadline).ConfigureAwait(false);
 
             if (finalResult == completionDeadline && !dispatcherTask.IsCompleted)
@@ -1682,14 +1717,14 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
     /// <summary>
     /// Walks the BasedOn chain of a FrameworkElement's Style and appends TriggerDtos.
     /// </summary>
-    private static void CollectStyleTriggers(FrameworkElement instance, System.Windows.Style? style, string source, List<TriggerDto> result)
+    private static void CollectStyleTriggers(FrameworkElement instance, System.Windows.Style? style, string source, List<TriggerDto> result, bool enableRedaction)
     {
         var current = style;
         while (current is not null)
         {
             foreach (System.Windows.TriggerBase tb in current.Triggers)
             {
-                result.Add(ProjectTrigger(tb, source));
+                result.Add(ProjectTrigger(tb, source, enableRedaction));
             }
 
             current = GetBaseStyle(instance, current);
@@ -1699,14 +1734,14 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
     /// <summary>
     /// Walks the BasedOn chain of a FrameworkContentElement's Style and appends TriggerDtos.
     /// </summary>
-    private static void CollectStyleTriggersForFce(FrameworkContentElement instance, System.Windows.Style? style, string source, List<TriggerDto> result)
+    private static void CollectStyleTriggersForFce(FrameworkContentElement instance, System.Windows.Style? style, string source, List<TriggerDto> result, bool enableRedaction)
     {
         var current = style;
         while (current is not null)
         {
             foreach (System.Windows.TriggerBase tb in current.Triggers)
             {
-                result.Add(ProjectTrigger(tb, source));
+                result.Add(ProjectTrigger(tb, source, enableRedaction));
             }
 
             // Walk BasedOn chain.
@@ -1744,8 +1779,9 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
     /// Projects a WPF TriggerBase to a TriggerDto.
     /// All WPF access happens synchronously on the Dispatcher (caller's responsibility).
     /// Does NOT use TypeDescriptor — values are obtained via .ToString() only.
+    /// Applies redaction to DP-keyed condition and setter values when enableRedaction is true.
     /// </summary>
-    private static TriggerDto ProjectTrigger(System.Windows.TriggerBase triggerBase, string source)
+    private static TriggerDto ProjectTrigger(System.Windows.TriggerBase triggerBase, string source, bool enableRedaction)
     {
         var dto = new TriggerDto
         {
@@ -1762,7 +1798,9 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
                 dto.Conditions.Add(new TriggerConditionDto
                 {
                     Property = $"{t.Property?.OwnerType?.Name}.{t.Property?.Name}",
-                    Value = t.Value?.ToString() ?? string.Empty,
+                    Value = enableRedaction
+                        ? RedactionFilter.Redact(t.Property?.Name ?? string.Empty, null, t.Value)
+                        : t.Value?.ToString() ?? string.Empty,
                 });
                 foreach (System.Windows.SetterBase sb in t.Setters)
                 {
@@ -1771,7 +1809,9 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
                         dto.Setters.Add(new TriggerSetterDto
                         {
                             Property = $"{s.Property?.OwnerType?.Name}.{s.Property?.Name}",
-                            Value = s.Value?.ToString() ?? string.Empty,
+                            Value = enableRedaction
+                                ? RedactionFilter.Redact(s.Property?.Name ?? string.Empty, null, s.Value)
+                                : s.Value?.ToString() ?? string.Empty,
                         });
                     }
                 }
@@ -1784,6 +1824,7 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
                     Property = dt.Binding is System.Windows.Data.Binding b
                         ? b.Path?.Path ?? string.Empty
                         : dt.Binding?.ToString() ?? string.Empty,
+                    // DataTrigger condition values are binding-path values — no DP name to redact against; leave as-is.
                     Value = dt.Value?.ToString() ?? string.Empty,
                 });
                 foreach (System.Windows.SetterBase sb in dt.Setters)
@@ -1793,7 +1834,9 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
                         dto.Setters.Add(new TriggerSetterDto
                         {
                             Property = $"{s.Property?.OwnerType?.Name}.{s.Property?.Name}",
-                            Value = s.Value?.ToString() ?? string.Empty,
+                            Value = enableRedaction
+                                ? RedactionFilter.Redact(s.Property?.Name ?? string.Empty, null, s.Value)
+                                : s.Value?.ToString() ?? string.Empty,
                         });
                     }
                 }
@@ -1806,7 +1849,9 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
                     dto.Conditions.Add(new TriggerConditionDto
                     {
                         Property = $"{cond.Property?.OwnerType?.Name}.{cond.Property?.Name}",
-                        Value = cond.Value?.ToString() ?? string.Empty,
+                        Value = enableRedaction
+                            ? RedactionFilter.Redact(cond.Property?.Name ?? string.Empty, null, cond.Value)
+                            : cond.Value?.ToString() ?? string.Empty,
                     });
                 }
 
@@ -1817,7 +1862,9 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
                         dto.Setters.Add(new TriggerSetterDto
                         {
                             Property = $"{s.Property?.OwnerType?.Name}.{s.Property?.Name}",
-                            Value = s.Value?.ToString() ?? string.Empty,
+                            Value = enableRedaction
+                                ? RedactionFilter.Redact(s.Property?.Name ?? string.Empty, null, s.Value)
+                                : s.Value?.ToString() ?? string.Empty,
                         });
                     }
                 }
@@ -1832,6 +1879,7 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
                         Property = cond.Binding is System.Windows.Data.Binding bCond
                             ? bCond.Path?.Path ?? string.Empty
                             : cond.Binding?.ToString() ?? string.Empty,
+                        // MultiDataTrigger condition values are binding-path values — no DP name to redact against; leave as-is.
                         Value = cond.Value?.ToString() ?? string.Empty,
                     });
                 }
@@ -1843,7 +1891,9 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
                         dto.Setters.Add(new TriggerSetterDto
                         {
                             Property = $"{s.Property?.OwnerType?.Name}.{s.Property?.Name}",
-                            Value = s.Value?.ToString() ?? string.Empty,
+                            Value = enableRedaction
+                                ? RedactionFilter.Redact(s.Property?.Name ?? string.Empty, null, s.Value)
+                                : s.Value?.ToString() ?? string.Empty,
                         });
                     }
                 }
@@ -1851,6 +1901,7 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
                 break;
 
             case System.Windows.EventTrigger et:
+                // EventTrigger has no DP-keyed value to redact — SourceName is an element name reference.
                 dto.Conditions.Add(new TriggerConditionDto
                 {
                     Property = et.RoutedEvent?.Name ?? string.Empty,
@@ -1865,8 +1916,9 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
     /// <summary>
     /// Reads behaviors via Interaction.GetBehaviors() reflection for one assembly-qualified type name.
     /// If the assembly is not loaded, returns without error.
+    /// Applies redaction to behavior property values when enableRedaction is true.
     /// </summary>
-    private static void CollectBehaviorsFromInteraction(DependencyObject depObj, string assemblyQualifiedName, List<BehaviorDto> result)
+    private static void CollectBehaviorsFromInteraction(DependencyObject depObj, string assemblyQualifiedName, List<BehaviorDto> result, bool enableRedaction)
     {
         var interactionType = Type.GetType(assemblyQualifiedName, throwOnError: false);
         if (interactionType is null)
@@ -1915,7 +1967,9 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
                     dto.Properties.Add(new NameValuePairDto
                     {
                         Name = prop.Name,
-                        Value = value?.ToString() ?? string.Empty,
+                        Value = enableRedaction
+                            ? RedactionFilter.Redact(prop.Name, prop.PropertyType, value)
+                            : value?.ToString() ?? string.Empty,
                     });
                 }
                 catch
