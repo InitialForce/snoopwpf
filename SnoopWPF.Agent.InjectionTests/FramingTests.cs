@@ -336,4 +336,64 @@ public sealed class FramingTests
 
         Assert.That(result, Is.Null, "Empty stream must return null (clean EOF)");
     }
+
+    // -----------------------------------------------------------------------
+    // Truncated frame (disconnect mid-body)
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Writes a valid 4-byte length header that claims N body bytes, but only M &lt; N bytes
+    /// follow before the stream ends. Simulates a peer disconnecting mid-frame.
+    /// Expected: <see cref="EndOfStreamException"/> — no hang, no garbage return value.
+    /// </summary>
+    [Test]
+    public void TruncatedFrame_BodyShorterThanDeclaredLength_ThrowsEndOfStream()
+    {
+        const int declaredBodyLength = 64;
+        const int actualBodyBytes = 10; // Far fewer than declared.
+
+        var ms = new MemoryStream();
+
+        // Write a valid-looking length header.
+        ms.Write(BitConverter.GetBytes(declaredBodyLength), 0, 4);
+
+        // Write only a partial body, then close the stream.
+        var partialBody = new byte[actualBodyBytes];
+        Array.Fill(partialBody, (byte)'{'); // Filler — will never be parsed.
+        ms.Write(partialBody, 0, actualBodyBytes);
+
+        // Rewind so FramedJsonTransport reads from the beginning.
+        ms.Seek(0, SeekOrigin.Begin);
+
+        var transport = new FramedJsonTransport(ms);
+
+        // ReceiveAsync must throw EndOfStreamException, not hang or return null.
+        Assert.ThrowsAsync<EndOfStreamException>(async () =>
+        {
+            await transport.ReceiveAsync<PipeRequest>(CancellationToken.None);
+        }, "Truncated frame body must raise EndOfStreamException, not silently return null or hang.");
+    }
+
+    /// <summary>
+    /// Writes only 2 bytes of the 4-byte length prefix, then closes the stream.
+    /// Simulates a peer dying right after the frame boundary.
+    /// Expected: <see cref="EndOfStreamException"/> from the header read loop.
+    /// </summary>
+    [Test]
+    public void TruncatedFrame_HeaderIncomplete_ThrowsEndOfStream()
+    {
+        var ms = new MemoryStream();
+
+        // Write only 2 of 4 length-prefix bytes.
+        ms.Write(new byte[] { 0x10, 0x00 }, 0, 2);
+
+        ms.Seek(0, SeekOrigin.Begin);
+
+        var transport = new FramedJsonTransport(ms);
+
+        Assert.ThrowsAsync<EndOfStreamException>(async () =>
+        {
+            await transport.ReceiveAsync<PipeRequest>(CancellationToken.None);
+        }, "Truncated length prefix must raise EndOfStreamException.");
+    }
 }

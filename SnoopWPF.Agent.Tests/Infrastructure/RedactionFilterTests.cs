@@ -191,6 +191,35 @@ public class RedactionFilterTests
         Assert.That(RedactionFilter.IsRedacted("SafeName", typeof(SecureString)), Is.True);
     }
 
+    /// <summary>
+    /// PasswordBox.Password is special-cased in RedactionFilter: the "Password" name combined
+    /// with a PasswordBox-assignable type must return true even before keyword matching.
+    /// </summary>
+    [Test]
+    public void IsRedacted_PasswordBoxPasswordProp_ReturnsTrue()
+    {
+        // RedactionFilter has an explicit branch for (propertyName == "Password" AND type is PasswordBox-assignable).
+        Assert.That(
+            RedactionFilter.IsRedacted("Password", typeof(System.Windows.Controls.PasswordBox)),
+            Is.True,
+            "Password property on PasswordBox type must be redacted via PasswordBox-specific branch.");
+    }
+
+    /// <summary>
+    /// "Password" as a property name should be redacted on any type because it matches the
+    /// "password" keyword, regardless of whether the owning type is PasswordBox.
+    /// </summary>
+    [Test]
+    public void IsRedacted_PasswordOnNonPasswordBox_StillRedactedByKeyword()
+    {
+        // The keyword list contains "password", so any property named "Password"
+        // (or containing it) must be redacted regardless of the owning type.
+        Assert.That(
+            RedactionFilter.IsRedacted("Password", typeof(string)),
+            Is.True,
+            "Property named 'Password' on a non-PasswordBox type must be redacted via keyword fallback.");
+    }
+
     [Test]
     public void IsRedacted_NullPropertyName_ReturnsFalse()
     {

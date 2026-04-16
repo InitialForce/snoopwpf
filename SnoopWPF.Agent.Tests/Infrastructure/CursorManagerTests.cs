@@ -185,6 +185,80 @@ public class CursorManagerTests : IDisposable
         Assert.Throws<ObjectDisposedException>(() => this.manager.CreateCursor(new[] { "a" }));
     }
 
+    // -----------------------------------------------------------------------
+    // Pagination edge cases
+    // -----------------------------------------------------------------------
+
+    [Test]
+    public void GetPage_ZeroItemSnapshot_TakeEqualsPageSize_ReturnsEmptyNoMore()
+    {
+        // Regression: take=50 against a zero-item snapshot must not return hasMore or a cursor.
+        var token = this.manager.CreateCursor(Array.Empty<string>());
+
+        var page = this.manager.GetPage(token, 50);
+
+        Assert.That(page.Items, Is.Empty, "items must be empty for 0-item snapshot");
+        Assert.That(page.TotalCount, Is.EqualTo(0), "totalCount must be 0");
+        Assert.That(page.HasMore, Is.False, "hasMore must be false for 0-item snapshot");
+        Assert.That(page.NextCursor, Is.Null, "no cursor should be returned when there are no items");
+    }
+
+    [Test]
+    public void GetPage_SnapshotExactlyFiftyItems_TakeFifty_HasMoreIsFalseNoCursor()
+    {
+        // Regression: when snapshot size == take the last page is fully consumed;
+        // hasMore must be false and no stale cursor should be left behind.
+        var ids = Enumerable.Range(1, 50).Select(i => $"node:{i}").ToArray();
+        var token = this.manager.CreateCursor(ids);
+
+        var page = this.manager.GetPage(token, 50);
+
+        Assert.That(page.Items.Count, Is.EqualTo(50), "all 50 items must be returned");
+        Assert.That(page.TotalCount, Is.EqualTo(50));
+        Assert.That(page.HasMore, Is.False, "hasMore must be false when snapshot fits exactly in one page");
+        Assert.That(page.NextCursor, Is.Null, "cursor must be null — no further pages");
+
+        // After consuming the cursor the entry should be removed; a subsequent call with
+        // the same token should behave as if the cursor was never created (empty page).
+        var stalePage = this.manager.GetPage(token, 50);
+        Assert.That(stalePage.Items, Is.Empty, "consumed cursor must not return items on re-use");
+    }
+
+    [Test]
+    public void GetPage_TakeOne_SingleItem_ReturnsItemAndNoMore()
+    {
+        var token = this.manager.CreateCursor(new[] { "only-item" });
+
+        var page = this.manager.GetPage(token, 1);
+
+        Assert.That(page.Items, Is.EqualTo(new[] { "only-item" }));
+        Assert.That(page.TotalCount, Is.EqualTo(1));
+        Assert.That(page.HasMore, Is.False);
+        Assert.That(page.NextCursor, Is.Null);
+    }
+
+    [Test]
+    public void GetPage_FiftyOnePlusOneRemainder_FirstPageHasMoreSecondPageDoesNot()
+    {
+        // take=50, snapshot=51 → first page: 50 items, hasMore=true, cursor returned;
+        // second page: 1 item, hasMore=false, no cursor.
+        var ids = Enumerable.Range(1, 51).Select(i => $"n:{i}").ToArray();
+        var token = this.manager.CreateCursor(ids);
+
+        var firstPage = this.manager.GetPage(token, 50);
+
+        Assert.That(firstPage.Items.Count, Is.EqualTo(50), "first page must contain 50 items");
+        Assert.That(firstPage.TotalCount, Is.EqualTo(51));
+        Assert.That(firstPage.HasMore, Is.True, "hasMore must be true — one item remains");
+        Assert.That(firstPage.NextCursor, Is.Not.Null, "cursor must be non-null when there are more pages");
+
+        var secondPage = this.manager.GetPage(firstPage.NextCursor, 50);
+
+        Assert.That(secondPage.Items.Count, Is.EqualTo(1), "second page must contain the single remaining item");
+        Assert.That(secondPage.HasMore, Is.False, "hasMore must be false on the final page");
+        Assert.That(secondPage.NextCursor, Is.Null, "no cursor after last page");
+    }
+
     [Test]
     public void GetPage_ConcurrentCallers_EachItemReturnedExactlyOnce()
     {

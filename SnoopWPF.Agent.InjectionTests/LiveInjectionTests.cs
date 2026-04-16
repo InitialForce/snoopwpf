@@ -192,6 +192,7 @@ public sealed class LiveInjectionTests
     [Test]
     public async Task LiveInject_SampleApp_GetWindows_ReturnsAtLeastOneWindow()
     {
+        // Start the sample app (--no-agent means it doesn't self-inject).
         this.sampleAppProcess = Process.Start(new ProcessStartInfo
         {
             FileName = SampleAppExe,
@@ -200,13 +201,119 @@ public sealed class LiveInjectionTests
             CreateNoWindow = false,
         })!;
 
+        Assert.That(this.sampleAppProcess, Is.Not.Null);
         int targetPid = this.sampleAppProcess.Id;
-        await Task.Delay(2000).ConfigureAwait(false);
-        Assert.That(this.sampleAppProcess.HasExited, Is.False);
 
-        // This test is intentionally left as a placeholder and documented as manual-run.
-        // It would spawn snoop-mcp and verify wpf_get_windows returns at least 1 window.
-        // The full implementation mirrors LiveInject_SampleApp_GetSessionInfo_ReturnsMatchingPid.
-        Assert.That(targetPid, Is.GreaterThan(0), "Sample app must have started.");
+        // Wait for the sample app to initialise.
+        await Task.Delay(2000).ConfigureAwait(false);
+        Assert.That(this.sampleAppProcess.HasExited, Is.False, "Sample app exited unexpectedly.");
+
+        // Run snoop-mcp with stdio transport, targeting the sample app by PID.
+        using var snoopMcp = new Process();
+        snoopMcp.StartInfo = new ProcessStartInfo
+        {
+            FileName = SnoopMcpExe,
+            Arguments = $"--pid {targetPid} --transport stdio",
+            UseShellExecute = false,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+        };
+
+        snoopMcp.Start();
+
+        try
+        {
+            // Send MCP initialize + tool call via stdin.
+            string initMsg = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{},\"clientInfo\":{\"name\":\"test\",\"version\":\"1.0\"}}}\n";
+            await snoopMcp.StandardInput.WriteAsync(initMsg).ConfigureAwait(false);
+            await snoopMcp.StandardInput.FlushAsync().ConfigureAwait(false);
+
+            // Read response lines (non-blocking with timeout).
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            string? initResponse = null;
+            while (!cts.IsCancellationRequested)
+            {
+                string? line = await snoopMcp.StandardOutput.ReadLineAsync().WaitAsync(cts.Token).ConfigureAwait(false);
+                if (line == null)
+                {
+                    break;
+                }
+
+                if (line.Contains("\"result\"") && line.Contains("\"serverInfo\""))
+                {
+                    initResponse = line;
+                    break;
+                }
+            }
+
+            Assert.That(initResponse, Is.Not.Null, "MCP initialize response not received.");
+
+            // Call wpf_get_windows.
+            string toolCallMsg =
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"wpf_get_windows\",\"arguments\":{\"includeHidden\":false}}}\n";
+            await snoopMcp.StandardInput.WriteAsync(toolCallMsg).ConfigureAwait(false);
+            await snoopMcp.StandardInput.FlushAsync().ConfigureAwait(false);
+
+            string? toolResponse = null;
+            using var cts2 = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            while (!cts2.IsCancellationRequested)
+            {
+                string? line = await snoopMcp.StandardOutput.ReadLineAsync().WaitAsync(cts2.Token).ConfigureAwait(false);
+                if (line == null)
+                {
+                    break;
+                }
+
+                if (line.Contains("\"id\":2") && line.Contains("\"result\""))
+                {
+                    toolResponse = line;
+                    break;
+                }
+            }
+
+            Assert.That(toolResponse, Is.Not.Null, "wpf_get_windows response not received.");
+
+            // Parse response and verify at least one window is returned.
+            using var doc = JsonDocument.Parse(toolResponse!);
+            var root = doc.RootElement;
+
+            // MCP content is in result.content[0].text (JSON string).
+            string contentText = root
+                .GetProperty("result")
+                .GetProperty("content")[0]
+                .GetProperty("text")
+                .GetString()!;
+
+            // contentText is either a JSON array of window objects or a JSON object wrapping them.
+            // Try parsing as an array first; if it's an object, look for a windows property.
+            using var windowsDoc = JsonDocument.Parse(contentText);
+            JsonElement windowsArray;
+            if (windowsDoc.RootElement.ValueKind == JsonValueKind.Array)
+            {
+                windowsArray = windowsDoc.RootElement;
+            }
+            else
+            {
+                // Some tool responses wrap the array: { "windows": [...] }
+                windowsArray = windowsDoc.RootElement.GetProperty("windows");
+            }
+
+            Assert.That(windowsArray.GetArrayLength(), Is.GreaterThan(0),
+                "wpf_get_windows must return at least one window for the running SampleApp.");
+        }
+        finally
+        {
+            try
+            {
+                snoopMcp.StandardInput.Close();
+                await snoopMcp.WaitForExitAsync(new CancellationTokenSource(3000).Token).ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+                try { snoopMcp.Kill(entireProcessTree: true); } catch { /* best effort */ }
+            }
+        }
     }
 }
