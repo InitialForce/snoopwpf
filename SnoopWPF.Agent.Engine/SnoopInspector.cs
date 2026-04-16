@@ -1265,20 +1265,9 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
 
             if (!stateChanged)
             {
-                return new StateDeltaDto
+                return StateDeltaSerializationHook.CreateUnchanged(locator: null) with
                 {
-                    Success = false,
                     ElementVisible = true,
-                    StateChanged = false,
-                    FailureReason = FailureReason.StateUnchanged,
-                    Suggestion = new SuggestionDto
-                    {
-                        Tool = "wpf_inspect_element",
-                        Args = new List<NameValuePairDto>
-                        {
-                            new() { Name = "nodeId", Value = nodeId },
-                        },
-                    },
                     PreviousValue = previousValue,
                     NewValue = newValue,
                 };
@@ -1755,11 +1744,22 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
             System.Diagnostics.Trace.WriteLine(
                 $"[SnoopWPF.Agent] SelectItem({selector.GetType().Name}): nodeId={nodeId}, index={resolvedIndex}, stateChanged={stateChanged}");
 
+            if (!stateChanged)
+            {
+                return StateDeltaSerializationHook.CreateUnchanged(locator: null) with
+                {
+                    ElementVisible = true,
+                    PreviousValue = previousValue,
+                    NewValue = newValue,
+                    ChosenTier = InputTier.L0,
+                };
+            }
+
             return new StateDeltaDto
             {
                 Success = true,
                 ElementVisible = true,
-                StateChanged = stateChanged,
+                StateChanged = true,
                 PreviousValue = previousValue,
                 NewValue = newValue,
                 ChosenTier = InputTier.L0,
@@ -2080,11 +2080,22 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
             System.Diagnostics.Trace.WriteLine(
                 $"[SnoopWPF.Agent] SetCheckState({depObj.GetType().Name}): nodeId={nodeId}, previous={previousValue}, new={newValue}");
 
+            if (!stateChanged)
+            {
+                return StateDeltaSerializationHook.CreateUnchanged(locator: null) with
+                {
+                    ElementVisible = true,
+                    PreviousValue = previousValue,
+                    NewValue = newValue,
+                    ChosenTier = InputTier.L0,
+                };
+            }
+
             return new StateDeltaDto
             {
                 Success = true,
                 ElementVisible = true,
-                StateChanged = stateChanged,
+                StateChanged = true,
                 PreviousValue = previousValue,
                 NewValue = newValue,
                 ChosenTier = InputTier.L0,
@@ -2166,11 +2177,22 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
                 System.Diagnostics.Trace.WriteLine(
                     $"[SnoopWPF.Agent] SetTextValue(TextBox): nodeId={nodeId}, stateChanged={stateChanged}");
 
+                if (!stateChanged)
+                {
+                    return StateDeltaSerializationHook.CreateUnchanged(locator: null) with
+                    {
+                        ElementVisible = true,
+                        PreviousValue = previousValue,
+                        NewValue = newValue,
+                        ChosenTier = InputTier.L0,
+                    };
+                }
+
                 return new StateDeltaDto
                 {
                     Success = true,
                     ElementVisible = true,
-                    StateChanged = stateChanged,
+                    StateChanged = true,
                     PreviousValue = previousValue,
                     NewValue = newValue,
                     ChosenTier = InputTier.L0,
@@ -2222,11 +2244,22 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
                 System.Diagnostics.Trace.WriteLine(
                     $"[SnoopWPF.Agent] SetTextValue(RichTextBox): nodeId={nodeId}, stateChanged={stateChanged}");
 
+                if (!stateChanged)
+                {
+                    return StateDeltaSerializationHook.CreateUnchanged(locator: null) with
+                    {
+                        ElementVisible = true,
+                        PreviousValue = previousValue,
+                        NewValue = newValue,
+                        ChosenTier = InputTier.L0,
+                    };
+                }
+
                 return new StateDeltaDto
                 {
                     Success = true,
                     ElementVisible = true,
-                    StateChanged = stateChanged,
+                    StateChanged = true,
                     PreviousValue = previousValue,
                     NewValue = newValue,
                     ChosenTier = InputTier.L0,
@@ -2320,11 +2353,22 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
                 $"[SnoopWPF.Agent] SetSliderValue({rangeBase.GetType().Name}): " +
                 $"normalized={normalized}, input={value}, target={targetValue}, stateChanged={stateChanged}");
 
+            if (!stateChanged)
+            {
+                return StateDeltaSerializationHook.CreateUnchanged(locator: null) with
+                {
+                    ElementVisible = true,
+                    PreviousValue = previousValue.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    NewValue = newValue.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    ChosenTier = InputTier.L0,
+                };
+            }
+
             return new StateDeltaDto
             {
                 Success = true,
                 ElementVisible = true,
-                StateChanged = stateChanged,
+                StateChanged = true,
                 PreviousValue = previousValue.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 NewValue = newValue.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 ChosenTier = InputTier.L0,

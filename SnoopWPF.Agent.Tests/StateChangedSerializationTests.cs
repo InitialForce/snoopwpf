@@ -162,13 +162,17 @@ public sealed class StateChangedSerializationTests : IDisposable
         Assert.That(actual, Is.EqualTo(0),
             "Post-condition: reverting callback must have reset the value to 0.");
 
-        // M1-11 acceptance criterion.
+        // M1-11 / FX-M10 acceptance criterion (PRD §7.6).
         Assert.That(result.StateChanged, Is.False,
             "stateChanged must be false when a reverting callback resets the value.");
-        Assert.That(result.Success, Is.False,
-            "success must be false when state did not actually change.");
+        Assert.That(result.Success, Is.True,
+            "success must be true for STATE_UNCHANGED — the operation completed, it was a no-op (PRD §7.6).");
         Assert.That(result.FailureReason, Is.EqualTo(FailureReason.StateUnchanged),
             "failureReason must be StateUnchanged.");
+        Assert.That(result.Suggestion, Is.Not.Null,
+            "suggestion must be populated for STATE_UNCHANGED so the agent can act.");
+        Assert.That(result.TreeVersionDelta, Is.EqualTo(0),
+            "treeVersionDelta must be 0 for a no-op.");
     }
 
     /// <summary>

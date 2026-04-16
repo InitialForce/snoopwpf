@@ -2,6 +2,8 @@ namespace SnoopWPF.Agent.Engine.StateDelta;
 
 using System;
 using System.Windows;
+using SnoopWPF.Agent.Contracts;
+using SnoopWPF.Agent.Contracts.Dtos;
 
 /// <summary>
 /// Serialization-time helper that recomputes <c>stateChanged</c> by reading the
@@ -57,5 +59,31 @@ public static class StateDeltaSerializationHook
         var currentString = currentRaw?.ToString() ?? string.Empty;
 
         return !string.Equals(previousValue, currentString, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Creates the canonical STATE_UNCHANGED <see cref="StateDeltaDto"/> per PRD §7.6:
+    /// <c>{ success: true, stateChanged: false, treeVersionDelta: 0,
+    /// failureReason: STATE_UNCHANGED, suggestion: wpf_wait_for_property }</c>.
+    /// </summary>
+    /// <param name="locator">
+    /// The locator context used to populate the suggestion args.  Pass
+    /// <see langword="null"/> when no element context is available.
+    /// </param>
+    /// <param name="hint">
+    /// Optional extra hint text forwarded to <see cref="FailureReasonDescriptor.Suggest"/>.
+    /// Currently unused by the descriptor but reserved for future overloads.
+    /// </param>
+    /// <returns>A fully-populated STATE_UNCHANGED <see cref="StateDeltaDto"/>.</returns>
+    public static StateDeltaDto CreateUnchanged(WpfLocator? locator, string? hint = null)
+    {
+        return new StateDeltaDto
+        {
+            Success = true,
+            StateChanged = false,
+            TreeVersionDelta = 0,
+            FailureReason = FailureReason.StateUnchanged,
+            Suggestion = FailureReasonDescriptor.Suggest(FailureReason.StateUnchanged, locator),
+        };
     }
 }
