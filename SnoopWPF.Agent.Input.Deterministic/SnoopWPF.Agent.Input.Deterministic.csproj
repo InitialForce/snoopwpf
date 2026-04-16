@@ -10,7 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\SnoopWPF.Agent.Contracts\SnoopWPF.Agent.Contracts.csproj" />
-    <ProjectReference Include="..\SnoopWPF.Agent.Engine\SnoopWPF.Agent.Engine.csproj" />
+    <!-- Engine dependency deferred; act-tool strategies (M2-01..07) will add it when needed -->
   </ItemGroup>
 
 </Project>

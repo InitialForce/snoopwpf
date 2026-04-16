@@ -499,7 +499,7 @@ public sealed class PipeProtocolTests
             Assert.That(windows, Has.Count.EqualTo(1));
             Assert.That(windows[0].Title, Is.EqualTo("Main"));
 
-            var tree = await proxy.GetVisualTreeAsync(null, 5, "Visual", null, CancellationToken.None).ConfigureAwait(false);
+            var tree = await proxy.GetVisualTreeAsync((string?)null, 5, "Visual", null, CancellationToken.None).ConfigureAwait(false);
             Assert.That(tree.Root, Is.Not.Null);
             Assert.That(tree.Root!.TypeName, Is.EqualTo("Window"));
         }
