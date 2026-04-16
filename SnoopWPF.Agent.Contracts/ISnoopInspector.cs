@@ -161,6 +161,21 @@ public interface ISnoopInspector
     /// <summary>Locator overload for <see cref="GetBehaviorsAsync(string,CancellationToken)"/>.</summary>
     Task<List<BehaviorDto>> GetBehaviorsAsync(WpfLocator locator, CancellationToken ct);
 
+    // ── M2-03: wpf_set_check_state ───────────────────────────────────────────
+
+    /// <summary>
+    /// Sets the <c>IsChecked</c> state of a <c>CheckBox</c> or <c>RadioButton</c>
+    /// identified by <paramref name="nodeId"/> via <c>SetValue(ToggleButton.IsCheckedProperty, …)</c>
+    /// (L0, M2-03). Accepts <c>"checked"</c>, <c>"unchecked"</c>, or <c>"indeterminate"</c>.
+    /// Bare <c>ToggleButton</c> (not CheckBox/RadioButton) is rejected with
+    /// <see cref="FailureReason.PatternNotSupported"/> and a <c>wpf_toggle</c> suggestion.
+    /// Returns a <see cref="StateDeltaDto"/> describing the outcome.
+    /// </summary>
+    Task<StateDeltaDto> SetCheckStateAsync(string nodeId, string state, CancellationToken ct);
+
+    /// <summary>Locator overload for <see cref="SetCheckStateAsync(string,string,CancellationToken)"/>.</summary>
+    Task<StateDeltaDto> SetCheckStateAsync(WpfLocator locator, string state, CancellationToken ct);
+
     // ── M2-02: wpf_set_text_value ─────────────────────────────────────────────
 
     /// <summary>
@@ -186,6 +201,23 @@ public interface ISnoopInspector
 
     /// <summary>Locator overload for <see cref="ExecuteCommandAsync(string,CancellationToken)"/>.</summary>
     Task<StateDeltaDto> ExecuteCommandAsync(WpfLocator locator, CancellationToken ct);
+
+    // ── M2-05: wpf_click ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Invokes the primary click action on the element identified by <paramref name="nodeId"/>
+    /// via the UI Automation <see cref="System.Windows.Automation.Provider.IInvokeProvider"/>
+    /// pattern (L1, M2-05).
+    /// Automation must be enabled (<c>EnableAutomation=true</c> in options).
+    /// When a <see cref="System.Windows.Input.ICommand"/> is bound via
+    /// <c>ButtonBase.CommandProperty</c>, the response includes a
+    /// <c>wpf_execute_command</c> suggestion (L0 is preferred for command-bound elements).
+    /// Returns a <see cref="StateDeltaDto"/> describing the outcome.
+    /// </summary>
+    Task<StateDeltaDto> ClickAsync(string nodeId, CancellationToken ct);
+
+    /// <summary>Locator overload for <see cref="ClickAsync(string,CancellationToken)"/>.</summary>
+    Task<StateDeltaDto> ClickAsync(WpfLocator locator, CancellationToken ct);
 
     // ── M2-08: wpf_resolve_binding ────────────────────────────────────────────
 

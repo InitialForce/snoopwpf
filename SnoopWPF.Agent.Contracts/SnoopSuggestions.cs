@@ -40,4 +40,7 @@ public static class SnoopSuggestions
 
     public const string BlobNotFound =
         "Blob has expired (5-minute TTL) or the key is invalid; re-run the originating tool to get a fresh blobRef";
+
+    public const string WaitForPropertyTimeout =
+        "Call wpf_pump_until_idle before wpf_wait_for_property to ensure animations and bindings have settled";
 }

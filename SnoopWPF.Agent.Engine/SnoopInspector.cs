@@ -1860,6 +1860,107 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
         return await this.ExecuteCommandAsync(nodeId, ct).ConfigureAwait(false);
     }
 
+    // ── M2-05: wpf_click ─────────────────────────────────────────────────────
+
+    /// <inheritdoc/>
+    public Task<StateDeltaDto> ClickAsync(string nodeId, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(nodeId))
+        {
+            throw new ArgumentException("nodeId must not be null or empty.", nameof(nodeId));
+        }
+
+        return this.RunOnDispatcherAsync(() =>
+        {
+            // Guard: automation must be explicitly enabled (L1 requires EnableAutomation).
+            if (!this.options.EnableAutomation)
+            {
+                throw new SnoopException(
+                    SnoopErrorCode.MutationDisabled,
+                    "Automation is disabled. Set EnableAutomation=true in SnoopInspectorOptions to allow wpf_click.",
+                    targetId: nodeId,
+                    suggestions: new[] { SnoopSuggestions.MutationDisabled });
+            }
+
+            var target = this.ResolveNodeOrThrow(nodeId);
+            this.VerifyElementConnectivity(target, nodeId);
+
+            if (target is not System.Windows.UIElement uiElement)
+            {
+                return new StateDeltaDto
+                {
+                    Success = false,
+                    ElementVisible = false,
+                    StateChanged = false,
+                    FailureReason = FailureReason.PatternNotSupported,
+                    Suggestion = FailureReasonDescriptor.Suggest(FailureReason.PatternNotSupported, null),
+                };
+            }
+
+            // Obtain automation peer and IInvokeProvider.
+            var peer = System.Windows.Automation.Peers.UIElementAutomationPeer.CreatePeerForElement(uiElement);
+            var invokeProvider = peer?.GetPattern(
+                System.Windows.Automation.Peers.PatternInterface.Invoke)
+                as System.Windows.Automation.Provider.IInvokeProvider;
+
+            if (invokeProvider is null)
+            {
+                return new StateDeltaDto
+                {
+                    Success = false,
+                    ElementVisible = true,
+                    StateChanged = false,
+                    FailureReason = FailureReason.PatternNotSupported,
+                    Suggestion = FailureReasonDescriptor.Suggest(FailureReason.PatternNotSupported, null),
+                };
+            }
+
+            // Detect whether a Command is bound — if so, suggest wpf_execute_command (L0 preferred).
+            var hasCommandBound =
+                target.GetValue(System.Windows.Controls.Primitives.ButtonBase.CommandProperty)
+                is System.Windows.Input.ICommand;
+
+            // Invoke via IInvokeProvider.
+            invokeProvider.Invoke();
+
+            System.Diagnostics.Trace.WriteLine(
+                $"[SnoopWPF.Agent] ClickAsync: nodeId={nodeId}, hasCommandBound={hasCommandBound}");
+
+            // When a Command is bound, attach a hint suggesting wpf_execute_command (L0).
+            SuggestionDto? suggestion = hasCommandBound
+                ? new SuggestionDto
+                {
+                    Tool = "wpf_execute_command",
+                    Args = new System.Collections.Generic.List<NameValuePairDto>
+                    {
+                        new() { Name = "nodeId", Value = nodeId },
+                        new()
+                        {
+                            Name = "hint",
+                            Value = "Element has a Command bound; prefer wpf_execute_command (L0) over wpf_click (L1).",
+                        },
+                    },
+                }
+                : null;
+
+            return new StateDeltaDto
+            {
+                Success = true,
+                ElementVisible = true,
+                StateChanged = true,
+                ChosenTier = InputTier.L1,
+                Suggestion = suggestion,
+            };
+        }, ct);
+    }
+
+    /// <inheritdoc/>
+    public async Task<StateDeltaDto> ClickAsync(WpfLocator locator, CancellationToken ct)
+    {
+        var nodeId = await this.ResolveLocatorAsync(locator, ct).ConfigureAwait(false);
+        return await this.ClickAsync(nodeId, ct).ConfigureAwait(false);
+    }
+
     // ── M2-08: wpf_resolve_binding ────────────────────────────────────────────
 
     /// <inheritdoc/>
@@ -2086,27 +2187,43 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
 
     /// <summary>
     /// Recursively walks the visual tree from <paramref name="root"/> and collects
-    /// stable node IDs for all reachable objects. Must be called on the Dispatcher thread.
+    /// stable node IDs for all reachable objects that are already registered in the
+    /// NodeRegistry. Must be called on the Dispatcher thread.
+    ///
+    /// Deliberately uses <see cref="NodeRegistry.GetExistingId"/> (not GetOrCreateId)
+    /// so that the tree walk does NOT increment the version counter or register new
+    /// nodes. This keeps the treeVersion stable across back-to-back poll calls when
+    /// the tree has not actually mutated.
     /// </summary>
     private void CollectLiveNodeIds(object root, System.Collections.Generic.HashSet<string> ids)
     {
         const int maxNodes = 5000;
+        // visitedObjects prevents re-queuing the same object even when it has no
+        // registered ID yet (avoids infinite loops through unregistered subtrees).
+#if NET5_0_OR_GREATER
+        var visitedObjects = new System.Collections.Generic.HashSet<object>(
+            ReferenceEqualityComparer.Instance);
+#else
+        var visitedObjects = new System.Collections.Generic.HashSet<object>(
+            Infrastructure.ObjectReferenceEqualityComparer.Instance);
+#endif
         var queue = new Queue<object>();
         queue.Enqueue(root);
 
         while (queue.Count > 0 && ids.Count < maxNodes)
         {
             var current = queue.Dequeue();
-            if (current is null)
+            if (current is null || !visitedObjects.Add(current))
             {
                 continue;
             }
 
-            var id = this.nodeRegistry.GetOrCreateId(current);
-            if (!ids.Add(id))
+            // Only include nodes that are already in the registry.
+            // GetExistingId does NOT create new registrations.
+            var id = this.nodeRegistry.GetExistingId(current);
+            if (id is not null)
             {
-                // Already visited — avoid cycles.
-                continue;
+                ids.Add(id);
             }
 
             // Walk visual children.
