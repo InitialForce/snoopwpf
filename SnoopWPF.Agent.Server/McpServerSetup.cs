@@ -15,8 +15,10 @@ using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using SnoopWPF.Agent.Contracts;
+using SnoopWPF.Agent.Contracts.Audit;
 using SnoopWPF.Agent.Contracts.Protocol;
 using SnoopWPF.Agent.Engine;
+using SnoopWPF.Agent.Engine.Audit;
 using SnoopWPF.Agent.Engine.Blob;
 
 /// <summary>
@@ -55,14 +57,14 @@ internal static class McpServerSetup
         switch (options.Transport)
         {
             case TransportMode.Stdio:
-                return RunWithStdioAsync(inspector, policy, serverOptions, ct);
+                return RunWithStdioAsync(inspector, policy, handle.AuditWriter, serverOptions, ct);
 
             case TransportMode.Pipe:
                 // PipeName and SessionToken were resolved in SnoopAgent.StartCoLocated() before the
                 // background task was launched, so handle properties are guaranteed non-null here.
                 var pipeName = handle.PipeName!;
                 var sessionToken = handle.SessionToken!;
-                return RunWithPipeAsync(inspector, policy, serverOptions, pipeName, sessionToken, ct);
+                return RunWithPipeAsync(inspector, policy, handle.AuditWriter, serverOptions, pipeName, sessionToken, ct);
 
             default:
                 throw new ArgumentOutOfRangeException(nameof(options), $"Unknown transport: {options.Transport}");
@@ -72,11 +74,14 @@ internal static class McpServerSetup
     private static async Task RunWithStdioAsync(
         ISnoopInspector inspector,
         SessionPolicy policy,
+        AuditLogWriter? auditWriter,
         McpServerOptions serverOptions,
         CancellationToken ct)
     {
-        var services = BuildServiceCollection(inspector, policy);
+        var services = BuildServiceCollection(inspector, policy, auditWriter);
         var sp = services.BuildServiceProvider();
+
+        await EmitSessionStartEntryAsync(auditWriter, ct).ConfigureAwait(false);
 
         // StdioServerTransport reads from Console.In / writes to Console.Out.
         var transport = new StdioServerTransport(serverOptions);
@@ -87,12 +92,13 @@ internal static class McpServerSetup
     private static async Task RunWithPipeAsync(
         ISnoopInspector inspector,
         SessionPolicy policy,
+        AuditLogWriter? auditWriter,
         McpServerOptions serverOptions,
         string pipeName,
         string sessionToken,
         CancellationToken ct)
     {
-        var services = BuildServiceCollection(inspector, policy);
+        var services = BuildServiceCollection(inspector, policy, auditWriter);
         var sp = services.BuildServiceProvider();
 
         // PipeOptions.CurrentUserOnly restricts the pipe ACL to the current Windows user,
@@ -123,6 +129,8 @@ internal static class McpServerSetup
             Trace.TraceWarning("SnoopWPF.Agent pipe handshake failed. Connection rejected.");
             return;
         }
+
+        await EmitSessionStartEntryAsync(auditWriter, ct).ConfigureAwait(false);
 
         var transport = new StreamServerTransport(pipeServer, pipeServer);
         await using var server = McpServer.Create(transport, serverOptions, serviceProvider: sp);
@@ -292,7 +300,8 @@ internal static class McpServerSetup
         SessionPolicy policy,
         string pipeName,
         string sessionTokenHex,
-        CancellationToken ct)
+        CancellationToken ct,
+        AuditLogWriter? auditWriter = null)
     {
         var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
         var serverOptions = new McpServerOptions
@@ -304,7 +313,7 @@ internal static class McpServerSetup
             },
         };
 
-        var services = BuildServiceCollection(inspector, policy);
+        var services = BuildServiceCollection(inspector, policy, auditWriter);
         var sp = services.BuildServiceProvider();
 
         // Reconnect loop: re-create the pipe after each client disconnect.
@@ -354,6 +363,8 @@ internal static class McpServerSetup
                     continue;
                 }
 
+                await EmitSessionStartEntryAsync(auditWriter, ct).ConfigureAwait(false);
+
                 Trace.TraceInformation("SnoopWPF.Agent (Brokered) client connected and authenticated.");
                 var transport = new StreamServerTransport(pipeServer, pipeServer);
                 await using var server = McpServer.Create(transport, serverOptions, serviceProvider: sp);
@@ -392,10 +403,39 @@ internal static class McpServerSetup
     // -------------------------------------------------------------------------
 
     /// <summary>
+    /// Emits a "session_start" audit entry to prove the writer is wired. No-op when
+    /// <paramref name="auditWriter"/> is <see langword="null"/>.
+    /// </summary>
+    private static async Task EmitSessionStartEntryAsync(AuditLogWriter? auditWriter, CancellationToken ct)
+    {
+        if (auditWriter is null)
+        {
+            return;
+        }
+
+        var entry = new AuditEntry
+        {
+            Seq = 1,
+            At = DateTimeOffset.UtcNow,
+            ToolName = "session_start",
+            SessionId = "server",
+            Outcome = "ok",
+            Reason = null,
+            CounterNonce = 1,
+            Hmac = string.Empty,
+        };
+
+        await auditWriter.Writer.WriteAsync(entry, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Builds a <see cref="IServiceCollection"/> with <see cref="ISnoopInspector"/> and all tool types
     /// from <c>SnoopWPF.Agent.Tools</c> registered.
     /// </summary>
-    private static IServiceCollection BuildServiceCollection(ISnoopInspector inspector, SessionPolicy policy)
+    private static IServiceCollection BuildServiceCollection(
+        ISnoopInspector inspector,
+        SessionPolicy policy,
+        AuditLogWriter? auditWriter = null)
     {
         var services = new ServiceCollection();
 
@@ -407,6 +447,13 @@ internal static class McpServerSetup
 
         // Register BlobStore so FetchBlobTool (and future blob-producing tools) share one store.
         services.AddSingleton<BlobStore>();
+
+        // Register AuditLogWriter if audit logging is enabled (N1).
+        // Tools that want to emit audit entries can inject AuditLogWriter? from DI.
+        if (auditWriter is not null)
+        {
+            services.AddSingleton<AuditLogWriter>(auditWriter);
+        }
 
         // Register every tool class from the Tools assembly via the MCP builder.
         var toolsAssembly = typeof(SnoopWPF.Agent.Tools.SessionInfoTool).Assembly;

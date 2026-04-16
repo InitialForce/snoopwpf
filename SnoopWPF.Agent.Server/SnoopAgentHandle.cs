@@ -3,6 +3,7 @@ namespace SnoopWPF.Agent.Server;
 using System;
 using System.Threading;
 using SnoopWPF.Agent.Contracts;
+using SnoopWPF.Agent.Engine.Audit;
 
 /// <summary>
 /// Represents a running SnoopWPF MCP server session. Dispose to stop the server.
@@ -22,6 +23,12 @@ public sealed class SnoopAgentHandle : IDisposable
         this.inspector = inspector ?? throw new ArgumentNullException(nameof(inspector));
         this.Policy = policy ?? throw new ArgumentNullException(nameof(policy));
     }
+
+    /// <summary>
+    /// Optional audit log writer. Non-null when <see cref="SnoopAgentOptions.AuditLogPath"/> is set.
+    /// Disposed on handle disposal.
+    /// </summary>
+    internal AuditLogWriter? AuditWriter { get; set; }
 
     /// <summary>
     /// The immutable session policy for this session. Constructed once at session start (S1).
@@ -65,6 +72,15 @@ public sealed class SnoopAgentHandle : IDisposable
         this.cts.Cancel();
         this.cts.Dispose();
         this.inspector.Dispose();
+
+        // Stop the audit writer and wait for it to drain (fire-and-forget async dispose via sync wrapper).
+        if (this.AuditWriter != null)
+        {
+            // DisposeAsync drains the channel before closing the file.
+            // We run it synchronously here because Dispose() is synchronous.
+            this.AuditWriter.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            this.AuditWriter = null;
+        }
 
         SnoopAgent.ClearHandle();
     }

@@ -10,6 +10,7 @@ using System.Windows;
 using System.Windows.Threading;
 using SnoopWPF.Agent.Contracts;
 using SnoopWPF.Agent.Engine;
+using SnoopWPF.Agent.Engine.Audit;
 
 /// <summary>
 /// Public entry point for embedding the SnoopWPF MCP server in a WPF application.
@@ -91,6 +92,12 @@ public static class SnoopAgent
                     : Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
             }
 
+            // Wire audit log writer if requested (N1: AuditLogWriter production wiring).
+            if (!string.IsNullOrEmpty(options.AuditLogPath))
+            {
+                handle.AuditWriter = new AuditLogWriter(options.AuditLogPath);
+            }
+
             // Auto-stop when the application exits.
             var app = Application.Current;
             if (app != null)
@@ -160,6 +167,7 @@ public static class SnoopAgent
             TimeoutMs = options.TimeoutMs,
             EnableMutation = options.EnableMutation,
             EnableRedaction = options.EnableRedaction,
+            AuditLogPath = options.AuditLogPath,
         };
 
         lock (Lock)
@@ -195,13 +203,19 @@ public static class SnoopAgent
             handle.SessionToken = sessionToken;
             activeHandle = handle;
 
+            // Wire audit log writer if requested (N1: AuditLogWriter production wiring).
+            if (!string.IsNullOrEmpty(options.AuditLogPath))
+            {
+                handle.AuditWriter = new AuditLogWriter(options.AuditLogPath);
+            }
+
             // Auto-stop when the application exits.
             app.Exit += (_, _) => handle.Dispose();
 
             // Run the brokered reconnect loop on the thread pool.
             // NOTE: unlike StartCoLocated, self-tests are skipped here because the WPF dispatcher
             // and HwndSource may not yet be fully initialised at StartBrokered call time.
-            _ = Task.Run(() => RunBrokeredAsync(inspector, policy, pipeName, sessionToken, cts.Token));
+            _ = Task.Run(() => RunBrokeredAsync(inspector, policy, pipeName, sessionToken, handle.AuditWriter, cts.Token));
 
             return handle;
         }
@@ -249,6 +263,7 @@ public static class SnoopAgent
         SessionPolicy policy,
         string pipeName,
         string sessionTokenHex,
+        SnoopWPF.Agent.Engine.Audit.AuditLogWriter? auditWriter,
         CancellationToken ct)
     {
         try
@@ -257,7 +272,7 @@ public static class SnoopAgent
             SelfTest.UnsafeAccessorBindings();
             SelfTest.HwndSourcePresent();
 
-            await McpServerSetup.RunBrokeredPipeAsync(inspector, policy, pipeName, sessionTokenHex, ct)
+            await McpServerSetup.RunBrokeredPipeAsync(inspector, policy, pipeName, sessionTokenHex, ct, auditWriter)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException)

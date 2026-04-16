@@ -78,4 +78,17 @@ public sealed class SnoopAgentOptions
     /// Default false (safe by default).
     /// </summary>
     public bool AllowSensitiveRetention { get; init; } = false;
+
+    /// <summary>
+    /// Optional session identifier for the HMAC-chained audit log.
+    /// When set, every tool invocation produces an <see cref="SnoopWPF.Agent.Contracts.Audit.AuditEntry"/>
+    /// appended to <c>%LOCALAPPDATA%\SnoopWPF\audit\{AuditLogPath}.jsonl</c>.
+    /// When <see langword="null"/> (default) audit logging is disabled.
+    /// </summary>
+    /// <remarks>
+    /// The value is used as the log session ID. Only alphanumeric characters, hyphens,
+    /// and underscores are valid; other characters are replaced with underscores by
+    /// <c>AuditLogWriter</c>. A stable per-session identifier (e.g. a GUID string) is recommended.
+    /// </remarks>
+    public string? AuditLogPath { get; init; }
 }
