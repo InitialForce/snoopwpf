@@ -10,6 +10,55 @@ You can change property values, view triggers, set breakpoints on property chang
 [![Chocolatey version](http://img.shields.io/chocolatey/v/snoop.svg?style=flat-square)](https://chocolatey.org/packages/snoop)
 [![Chocolatey download count](http://img.shields.io/chocolatey/dt/snoop.svg?style=flat-square)](https://chocolatey.org/packages/snoop)
 
+## MCP Agent (AI-Driven Inspection)
+
+SnoopWPF includes an [MCP (Model Context Protocol)](https://modelcontextprotocol.io/)
+server that enables AI agents — primarily Claude Code and Claude Desktop — to inspect
+WPF applications programmatically.
+
+**Features:**
+
+- 15 MCP tools: visual tree, properties, binding diagnostics, screenshots, triggers, behaviors
+- Two integration modes: NuGet (compile-in) and Injection (no app changes needed)
+- Read-only by default; property mutations opt-in
+- Sensitive property redaction; localhost-only; session-token pipe handshake
+
+**Quick start (NuGet mode):**
+
+```xml
+<PackageReference Include="SnoopWPF.Agent" />
+```
+
+```csharp
+// App.xaml.cs
+protected override void OnStartup(StartupEventArgs e)
+{
+    base.OnStartup(e);
+    SnoopAgent.Start();
+}
+```
+
+**Quick start (injection mode):**
+
+```json
+// .mcp.json
+{
+  "mcpServers": {
+    "snoop": { "command": "snoop-mcp", "args": ["--pid", "12345"] }
+  }
+}
+```
+
+**Documentation:**
+
+- [MCP Agent Overview](docs/mcp-agent.md)
+- [NuGet Mode](docs/nuget-mode.md)
+- [Injection Mode](docs/injection-mode.md)
+- [MCP Tools Reference](docs/mcp-tools-reference.md)
+- [Security Model](docs/security.md)
+
+---
+
 ## Contact
 
 - [![Join the chat at https://gitter.im/snoopwpf/Lobby](https://img.shields.io/badge/GITTER-join%20chat-green.svg?style=flat-square)](https://gitter.im/snoopwpf/Lobby?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)

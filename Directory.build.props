@@ -22,7 +22,7 @@
     </PropertyGroup>
 
     <PropertyGroup>
-        <LangVersion>10</LangVersion>
+        <LangVersion>latest</LangVersion>
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
         <Nullable>enable</Nullable>
         <NoWarn>$(NoWarn);NU1503;NETSDK1138;NETSDK1222;MSB3277;CA1021;CA1063;CA1816</NoWarn>
@@ -35,6 +35,12 @@
 
     <PropertyGroup>
         <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <!-- Lock NuGet packages in CI to ensure reproducible builds -->
+        <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
+        <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     </PropertyGroup>
 
     <!-- Assembly info -->

@@ -245,6 +245,104 @@ class Build : NukeBuild
                 .SetResultsDirectory(TestResultDirectory));
         });
 
+    Target TestAgent => _ => _
+        .After(Compile)
+        .Before(Pack)
+        .Produces(TestResultDirectory / "*.trx")
+        .Produces(TestResultDirectory / "*.xml")
+        .Executes(() =>
+        {
+            DotNetTest(s => s
+                .SetProjectFile(Solution.SnoopWPF_Agent_Tests)
+                .SetConfiguration(Configuration)
+                .SetVerbosity(DotNetVerbosity.normal)
+                .AddLoggers("trx")
+                .EnableNoBuild()
+                .SetResultsDirectory(TestResultDirectory));
+
+            DotNetTest(s => s
+                .SetProjectFile(Solution.SnoopWPF_Agent_IntegrationTests)
+                .SetConfiguration(Configuration)
+                .SetVerbosity(DotNetVerbosity.normal)
+                .AddLoggers("trx")
+                .EnableNoBuild()
+                .SetResultsDirectory(TestResultDirectory));
+
+            DotNetTest(s => s
+                .SetProjectFile(Solution.SnoopWPF_Agent_InjectionTests)
+                .SetConfiguration(Configuration)
+                .SetVerbosity(DotNetVerbosity.normal)
+                .AddLoggers("trx")
+                .EnableNoBuild()
+                .SetResultsDirectory(TestResultDirectory));
+        });
+
+    Target PackAgent => _ => _
+        .DependsOn(Compile)
+        .Produces(ArtifactsDirectory / "*.nupkg")
+        .Executes(() =>
+        {
+            DotNetPack(s => s
+                .SetProject(Solution.SnoopWPF_Agent_Server)
+                .SetConfiguration(Configuration)
+                .SetVersion(SemVer)
+                .SetAssemblyVersion(AssemblySemVer)
+                .SetFileVersion(AssemblySemFileVer)
+                .SetInformationalVersion(InformationalVersion)
+                .SetOutputDirectory(ArtifactsDirectory)
+                .EnableNoBuild()
+                .SetVerbosity(DotNetVerbosity.minimal));
+
+            var nupkg = ArtifactsDirectory / $"SnoopWPF.Agent.{SemVer}.nupkg";
+            if (nupkg.FileExists())
+            {
+                CheckSumFiles.Add(nupkg);
+                AppVeyor.Instance?.PushArtifact(nupkg);
+            }
+        });
+
+    Target PublishAgentExecutables => _ => _
+        .DependsOn(Compile)
+        .Produces(ArtifactsDirectory / "snoop-mcp-*.zip", ArtifactsDirectory / "snoop-cli-*.zip")
+        .Executes(() =>
+        {
+            var snoopMcpPublishDir = TemporaryDirectory / "snoop-mcp-publish";
+            var snoopCliPublishDir = TemporaryDirectory / "snoop-cli-publish";
+
+            DotNetPublish(s => s
+                .SetProject(Solution.SnoopWPF_Agent_Host)
+                .SetConfiguration(Configuration)
+                .SetRuntime("win-x64")
+                .SetSelfContained(false)
+                .SetOutput(snoopMcpPublishDir)
+                .SetAssemblyVersion(AssemblySemVer)
+                .SetFileVersion(AssemblySemFileVer)
+                .SetInformationalVersion(InformationalVersion)
+                .SetVerbosity(DotNetVerbosity.minimal));
+
+            DotNetPublish(s => s
+                .SetProject(Solution.SnoopWPF_Agent_Cli)
+                .SetConfiguration(Configuration)
+                .SetRuntime("win-x64")
+                .SetFramework("net8.0-windows")
+                .SetSelfContained(false)
+                .SetOutput(snoopCliPublishDir)
+                .SetAssemblyVersion(AssemblySemVer)
+                .SetFileVersion(AssemblySemFileVer)
+                .SetInformationalVersion(InformationalVersion)
+                .SetVerbosity(DotNetVerbosity.minimal));
+
+            var snoopMcpZip = ArtifactsDirectory / $"snoop-mcp.{SemVer}.zip";
+            snoopMcpPublishDir.CompressTo(snoopMcpZip);
+            CheckSumFiles.Add(snoopMcpZip);
+            AppVeyor.Instance?.PushArtifact(snoopMcpZip);
+
+            var snoopCliZip = ArtifactsDirectory / $"snoop-cli.{SemVer}.zip";
+            snoopCliPublishDir.CompressTo(snoopCliZip);
+            CheckSumFiles.Add(snoopCliZip);
+            AppVeyor.Instance?.PushArtifact(snoopCliZip);
+        });
+
     Target Pack => _ => _
         .DependsOn(CleanOutput)
         .DependsOn(Compile)
@@ -363,5 +461,5 @@ class Build : NukeBuild
 
     // ReSharper disable once InconsistentNaming
     Target CI => _ => _
-        .DependsOn(Compile, Test, Pack, Setup, SignArtifacts);
+        .DependsOn(Compile, Test, TestAgent, Pack, PackAgent, PublishAgentExecutables, Setup, SignArtifacts);
 }

@@ -37,3 +37,18 @@ jobs:
         with:
           name: artifacts
           path: artifacts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agent-nupkg
+          path: artifacts/SnoopWPF.Agent.*.nupkg
+        if: ${{ always() }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: snoop-mcp
+          path: artifacts/snoop-mcp.*.zip
+        if: ${{ always() }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: snoop-cli
+          path: artifacts/snoop-cli.*.zip
+        if: ${{ always() }}

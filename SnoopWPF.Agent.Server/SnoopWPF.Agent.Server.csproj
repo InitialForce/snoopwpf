@@ -11,10 +11,29 @@
         <NoWarn>$(NoWarn);CA1063;CA1816</NoWarn>
     </PropertyGroup>
 
+    <!-- NuGet package metadata -->
+    <PropertyGroup>
+        <PackageId>SnoopWPF.Agent</PackageId>
+        <Description>MCP server for WPF runtime inspection via SnoopWPF. Exposes visual tree, properties, triggers, behaviors, and screenshots as MCP tools for AI-assisted debugging.</Description>
+        <Authors>Cory Plotts, Bastian Schmidt, and contributors</Authors>
+        <PackageTags>wpf;mcp;inspector;snoop;claude;ai;debug;visualtree</PackageTags>
+        <PackageLicenseExpression>MS-PL</PackageLicenseExpression>
+        <PackageProjectUrl>https://github.com/snoopwpf/snoopwpf</PackageProjectUrl>
+        <RepositoryUrl>https://github.com/snoopwpf/snoopwpf</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+    </PropertyGroup>
+
+    <!-- Flatten Engine, Tools, and Contracts DLLs into lib/ instead of listing as deps -->
     <ItemGroup>
-        <ProjectReference Include="../SnoopWPF.Agent.Contracts/SnoopWPF.Agent.Contracts.csproj" />
-        <ProjectReference Include="../SnoopWPF.Agent.Engine/SnoopWPF.Agent.Engine.csproj" />
-        <ProjectReference Include="../SnoopWPF.Agent.Tools/SnoopWPF.Agent.Tools.csproj" />
+        <ProjectReference Include="../SnoopWPF.Agent.Contracts/SnoopWPF.Agent.Contracts.csproj">
+            <PrivateAssets>all</PrivateAssets>
+        </ProjectReference>
+        <ProjectReference Include="../SnoopWPF.Agent.Engine/SnoopWPF.Agent.Engine.csproj">
+            <PrivateAssets>all</PrivateAssets>
+        </ProjectReference>
+        <ProjectReference Include="../SnoopWPF.Agent.Tools/SnoopWPF.Agent.Tools.csproj">
+            <PrivateAssets>all</PrivateAssets>
+        </ProjectReference>
     </ItemGroup>
 
     <ItemGroup>
