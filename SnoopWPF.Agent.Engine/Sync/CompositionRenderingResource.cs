@@ -82,6 +82,11 @@ public sealed class CompositionRenderingResource : IIdlingResource, IDisposable
 
     private void OnRendering(object? sender, EventArgs e)
     {
+        if (this.disposed)
+        {
+            return;
+        }
+
         // A frame is being rendered — mark busy.
         this.SetIdle(false);
 
@@ -129,8 +134,8 @@ public sealed class CompositionRenderingResource : IIdlingResource, IDisposable
         }
 
         this.disposed = true;
-        this.dispatcher.InvokeAsync(this.Unsubscribe, DispatcherPriority.Send);
         this.idleProbe?.Abort();
         this.idleProbe = null;
+        this.dispatcher.InvokeAsync(this.Unsubscribe, DispatcherPriority.Send);
     }
 }
