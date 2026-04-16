@@ -74,10 +74,11 @@ internal static class FailureReasonDescriptor
 
             FailureReason.ElementOutsideViewport => new SuggestionDto
             {
-                Tool = "wpf_scroll_into_view",
+                Tool = "wpf_select_item",
                 Args = new List<NameValuePairDto>
                 {
                     new() { Name = "locator", Value = locator },
+                    new() { Name = "hint",    Value = "Use the scrollable parent container as locator to bring item into view." },
                 },
             },
 

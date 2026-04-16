@@ -99,13 +99,14 @@ public class FailureReasonDescriptorTests
     // ── ElementOutsideViewport ───────────────────────────────────────────────────
 
     [Test]
-    public void ElementOutsideViewport_ReturnsScrollIntoView()
+    public void ElementOutsideViewport_ReturnsSelectItem()
     {
         var result = FailureReasonDescriptor.Suggest(FailureReason.ElementOutsideViewport, SampleLocator);
 
         Assert.That(result, Is.Not.Null);
-        Assert.That(result!.Tool, Is.EqualTo("wpf_scroll_into_view"));
+        Assert.That(result!.Tool, Is.EqualTo("wpf_select_item"));
         AssertArg(result, "locator", SampleLocator.Raw);
+        Assert.That(result.Args, Has.Some.Matches<Contracts.Dtos.NameValuePairDto>(a => a.Name == "hint"));
     }
 
     // ── CannotExecuteCommand ─────────────────────────────────────────────────────
