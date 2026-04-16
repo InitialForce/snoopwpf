@@ -2,6 +2,7 @@ namespace SnoopWPF.Agent.Tests;
 
 using System;
 using System.IO;
+using System.IO.Pipelines;
 using System.IO.Pipes;
 using System.Text.Json;
 using System.Threading;
@@ -14,7 +15,9 @@ using SnoopWPF.Agent.Remote;
 /// <summary>
 /// Tests for <see cref="FramedJsonTransport"/>: framing correctness, max-frame enforcement,
 /// cancel frame processing, and malformed message handling.
-/// Uses in-process <see cref="NamedPipeServerStream"/>/<see cref="NamedPipeClientStream"/> pairs.
+/// Uses in-process <see cref="System.IO.Pipelines.Pipe"/>-backed stream pairs rather than
+/// <see cref="NamedPipeServerStream"/>/<see cref="NamedPipeClientStream"/> because WSL1's
+/// Windows named-pipe emulation does not reliably signal async reads, causing tests to hang.
 /// </summary>
 [TestFixture]
 public sealed class PipeTransportTests
@@ -23,32 +26,114 @@ public sealed class PipeTransportTests
     // Helpers
     // -------------------------------------------------------------------------
 
-    private static string UniquePipeName() => $"SnpTest_{Guid.NewGuid():N}";
+    /// <summary>
+    /// A fully in-process bidirectional stream pair backed by two
+    /// <see cref="System.IO.Pipelines.Pipe"/> objects (one per direction).
+    /// Both <see cref="ServerStream"/> and <see cref="ClientStream"/> are duplex
+    /// <see cref="Stream"/> objects suitable for passing to <see cref="FramedJsonTransport"/>.
+    /// Unlike OS-level named/anonymous pipes, <see cref="System.IO.Pipelines.Pipe"/> does not
+    /// involve kernel handles and therefore works reliably on WSL1.
+    /// </summary>
+    private sealed class InProcessPipePair : IAsyncDisposable
+    {
+        // Pipe A carries data from server to client.
+        private readonly Pipe serverToClient = new Pipe();
+
+        // Pipe B carries data from client to server.
+        private readonly Pipe clientToServer = new Pipe();
+
+        /// <summary>Server-side stream: writes go to client, reads come from client.</summary>
+        internal Stream ServerStream { get; }
+
+        /// <summary>Client-side stream: writes go to server, reads come from server.</summary>
+        internal Stream ClientStream { get; }
+
+        internal InProcessPipePair()
+        {
+            this.ServerStream = new DuplexStream(
+                readFrom: this.clientToServer.Reader.AsStream(),
+                writeTo: this.serverToClient.Writer.AsStream());
+
+            this.ClientStream = new DuplexStream(
+                readFrom: this.serverToClient.Reader.AsStream(),
+                writeTo: this.clientToServer.Writer.AsStream());
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await this.serverToClient.Writer.CompleteAsync().ConfigureAwait(false);
+            await this.clientToServer.Writer.CompleteAsync().ConfigureAwait(false);
+        }
+    }
 
     /// <summary>
-    /// Creates a connected in-process server/client pipe pair.
+    /// Combines a separate read stream and write stream into a single <see cref="Stream"/>
+    /// so that <see cref="FramedJsonTransport"/> (which takes one stream) can read from one
+    /// anonymous pipe and write to another.
+    /// Lifetime of the underlying streams is managed by <see cref="InProcessPipePair"/>;
+    /// <see cref="DuplexStream"/> does not own them and does not dispose them.
     /// </summary>
-    private static (NamedPipeServerStream Server, NamedPipeClientStream Client) CreatePipePair(string name)
+    private sealed class DuplexStream : Stream
     {
-        var server = new NamedPipeServerStream(
-            name,
-            PipeDirection.InOut,
-            maxNumberOfServerInstances: 1,
-            PipeTransmissionMode.Byte,
-            PipeOptions.Asynchronous);
+        // Streams are borrowed — owned and disposed by InProcessPipePair.
+#pragma warning disable CA2213 // Disposable fields should be disposed — ownership belongs to InProcessPipePair
+        private readonly Stream readFrom;
+        private readonly Stream writeTo;
+#pragma warning restore CA2213
 
-        var client = new NamedPipeClientStream(
-            ".",
-            name,
-            PipeDirection.InOut,
-            PipeOptions.Asynchronous);
+        internal DuplexStream(Stream readFrom, Stream writeTo)
+        {
+            this.readFrom = readFrom;
+            this.writeTo = writeTo;
+        }
 
-        // Connect synchronously for test simplicity.
-        var connectTask = Task.Run(() => server.WaitForConnectionAsync());
-        client.Connect(timeout: 5000);
-        connectTask.GetAwaiter().GetResult();
+        public override bool CanRead => true;
 
-        return (server, client);
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => true;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override void Flush() => this.writeTo.Flush();
+
+        public override Task FlushAsync(CancellationToken cancellationToken)
+            => this.writeTo.FlushAsync(cancellationToken);
+
+        public override int Read(byte[] buffer, int offset, int count)
+            => this.readFrom.Read(buffer, offset, count);
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+            => this.readFrom.ReadAsync(buffer, offset, count, cancellationToken);
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+            => this.readFrom.ReadAsync(buffer, cancellationToken);
+
+        public override void Write(byte[] buffer, int offset, int count)
+            => this.writeTo.Write(buffer, offset, count);
+
+        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+            => this.writeTo.WriteAsync(buffer, offset, count, cancellationToken);
+
+        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+            => this.writeTo.WriteAsync(buffer, cancellationToken);
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        // DuplexStream does not own its underlying streams — disposal is a no-op.
+        protected override void Dispose(bool disposing) => base.Dispose(disposing);
+
+#pragma warning disable CA2215 // Call base class Dispose — base.DisposeAsync delegates to Dispose(true) which is correct
+        public override ValueTask DisposeAsync() => ValueTask.CompletedTask;
+#pragma warning restore CA2215
     }
 
     // -------------------------------------------------------------------------
@@ -58,77 +143,65 @@ public sealed class PipeTransportTests
     [Test]
     public async Task SendAndReceive_RoundTripsPipeRequest()
     {
-        var (server, client) = CreatePipePair(UniquePipeName());
-        await using (server)
-        await using (client)
-        {
-            var senderTransport = new FramedJsonTransport(server);
-            var receiverTransport = new FramedJsonTransport(client);
+        await using var pipes = new InProcessPipePair();
+        var senderTransport = new FramedJsonTransport(pipes.ServerStream);
+        var receiverTransport = new FramedJsonTransport(pipes.ClientStream);
 
-            var original = new PipeRequest { Id = 42, Method = "GetWindows", ParamsJson = "{\"includeHidden\":false}" };
-            await senderTransport.SendAsync(original, CancellationToken.None);
+        var original = new PipeRequest { Id = 42, Method = "GetWindows", ParamsJson = "{\"includeHidden\":false}" };
+        await senderTransport.SendAsync(original, CancellationToken.None);
 
-            var received = await receiverTransport.ReceiveAsync<PipeRequest>(CancellationToken.None);
+        var received = await receiverTransport.ReceiveAsync<PipeRequest>(CancellationToken.None);
 
-            Assert.That(received, Is.Not.Null);
-            Assert.That(received!.Id, Is.EqualTo(42));
-            Assert.That(received.Method, Is.EqualTo("GetWindows"));
-            Assert.That(received.ParamsJson, Is.EqualTo("{\"includeHidden\":false}"));
-        }
+        Assert.That(received, Is.Not.Null);
+        Assert.That(received!.Id, Is.EqualTo(42));
+        Assert.That(received.Method, Is.EqualTo("GetWindows"));
+        Assert.That(received.ParamsJson, Is.EqualTo("{\"includeHidden\":false}"));
     }
 
     [Test]
     public async Task SendAndReceive_RoundTripsPipeResponse()
     {
-        var (server, client) = CreatePipePair(UniquePipeName());
-        await using (server)
-        await using (client)
-        {
-            var senderTransport = new FramedJsonTransport(client);
-            var receiverTransport = new FramedJsonTransport(server);
+        await using var pipes = new InProcessPipePair();
+        var senderTransport = new FramedJsonTransport(pipes.ClientStream);
+        var receiverTransport = new FramedJsonTransport(pipes.ServerStream);
 
-            var original = new PipeResponse { Id = 7, ResultJson = "{\"processName\":\"TestApp\",\"pid\":1234}" };
-            await senderTransport.SendAsync(original, CancellationToken.None);
+        var original = new PipeResponse { Id = 7, ResultJson = "{\"processName\":\"TestApp\",\"pid\":1234}" };
+        await senderTransport.SendAsync(original, CancellationToken.None);
 
-            var received = await receiverTransport.ReceiveAsync<PipeResponse>(CancellationToken.None);
+        var received = await receiverTransport.ReceiveAsync<PipeResponse>(CancellationToken.None);
 
-            Assert.That(received, Is.Not.Null);
-            Assert.That(received!.Id, Is.EqualTo(7));
-            Assert.That(received.ResultJson, Does.Contain("\"processName\""));
-            Assert.That(received.Error, Is.Null);
-        }
+        Assert.That(received, Is.Not.Null);
+        Assert.That(received!.Id, Is.EqualTo(7));
+        Assert.That(received.ResultJson, Does.Contain("\"processName\""));
+        Assert.That(received.Error, Is.Null);
     }
 
     [Test]
     public async Task SendAndReceive_ErrorResponse_PreservesErrorPayload()
     {
-        var (server, client) = CreatePipePair(UniquePipeName());
-        await using (server)
-        await using (client)
+        await using var pipes = new InProcessPipePair();
+        var senderTransport = new FramedJsonTransport(pipes.ClientStream);
+        var receiverTransport = new FramedJsonTransport(pipes.ServerStream);
+
+        var original = new PipeResponse
         {
-            var senderTransport = new FramedJsonTransport(client);
-            var receiverTransport = new FramedJsonTransport(server);
-
-            var original = new PipeResponse
+            Id = 99,
+            ResultJson = null,
+            Error = new PipeErrorPayload
             {
-                Id = 99,
-                ResultJson = null,
-                Error = new PipeErrorPayload
-                {
-                    Code = "NodeNotFound",
-                    Message = "Node 0:42 not found",
-                    Suggestion = SnoopSuggestions.NodeNotFound,
-                },
-            };
+                Code = "NodeNotFound",
+                Message = "Node 0:42 not found",
+                Suggestion = SnoopSuggestions.NodeNotFound,
+            },
+        };
 
-            await senderTransport.SendAsync(original, CancellationToken.None);
-            var received = await receiverTransport.ReceiveAsync<PipeResponse>(CancellationToken.None);
+        await senderTransport.SendAsync(original, CancellationToken.None);
+        var received = await receiverTransport.ReceiveAsync<PipeResponse>(CancellationToken.None);
 
-            Assert.That(received, Is.Not.Null);
-            Assert.That(received!.Error, Is.Not.Null);
-            Assert.That(received.Error!.Code, Is.EqualTo("NodeNotFound"));
-            Assert.That(received.Error.Suggestion, Is.EqualTo(SnoopSuggestions.NodeNotFound));
-        }
+        Assert.That(received, Is.Not.Null);
+        Assert.That(received!.Error, Is.Not.Null);
+        Assert.That(received.Error!.Code, Is.EqualTo("NodeNotFound"));
+        Assert.That(received.Error.Suggestion, Is.EqualTo(SnoopSuggestions.NodeNotFound));
     }
 
     // -------------------------------------------------------------------------
@@ -138,22 +211,18 @@ public sealed class PipeTransportTests
     [Test]
     public async Task SendAndReceive_CancelPayload_RoundTrips()
     {
-        var (server, client) = CreatePipePair(UniquePipeName());
-        await using (server)
-        await using (client)
-        {
-            var senderTransport = new FramedJsonTransport(server);
-            var receiverTransport = new FramedJsonTransport(client);
+        await using var pipes = new InProcessPipePair();
+        var senderTransport = new FramedJsonTransport(pipes.ServerStream);
+        var receiverTransport = new FramedJsonTransport(pipes.ClientStream);
 
-            var cancel = new PipeCancelPayload { Id = 5, Cancel = true };
-            await senderTransport.SendAsync(cancel, CancellationToken.None);
+        var cancel = new PipeCancelPayload { Id = 5, Cancel = true };
+        await senderTransport.SendAsync(cancel, CancellationToken.None);
 
-            var received = await receiverTransport.ReceiveAsync<PipeCancelPayload>(CancellationToken.None);
+        var received = await receiverTransport.ReceiveAsync<PipeCancelPayload>(CancellationToken.None);
 
-            Assert.That(received, Is.Not.Null);
-            Assert.That(received!.Id, Is.EqualTo(5));
-            Assert.That(received.Cancel, Is.True);
-        }
+        Assert.That(received, Is.Not.Null);
+        Assert.That(received!.Id, Is.EqualTo(5));
+        Assert.That(received.Cancel, Is.True);
     }
 
     // -------------------------------------------------------------------------
@@ -253,41 +322,37 @@ public sealed class PipeTransportTests
     [Test]
     public async Task Handshake_ChallengeAndResponse_RoundTrip()
     {
-        var (server, client) = CreatePipePair(UniquePipeName());
-        await using (server)
-        await using (client)
+        await using var pipes = new InProcessPipePair();
+        var hostTransport = new FramedJsonTransport(pipes.ServerStream);
+        var agentTransport = new FramedJsonTransport(pipes.ClientStream);
+
+        // Host sends challenge.
+        var challenge = new HandshakeChallenge
         {
-            var hostTransport = new FramedJsonTransport(server);
-            var agentTransport = new FramedJsonTransport(client);
+            SessionToken = "tok-abc-123",
+            ProtocolVersion = ProtocolConstants.ProtocolVersion,
+        };
+        await hostTransport.SendAsync(challenge, CancellationToken.None);
 
-            // Host sends challenge.
-            var challenge = new HandshakeChallenge
-            {
-                SessionToken = "tok-abc-123",
-                ProtocolVersion = ProtocolConstants.ProtocolVersion,
-            };
-            await hostTransport.SendAsync(challenge, CancellationToken.None);
+        // Agent reads challenge and sends response.
+        var receivedChallenge = await agentTransport.ReceiveAsync<HandshakeChallenge>(CancellationToken.None);
+        Assert.That(receivedChallenge!.SessionToken, Is.EqualTo("tok-abc-123"));
+        Assert.That(receivedChallenge.ProtocolVersion, Is.EqualTo(ProtocolConstants.ProtocolVersion));
 
-            // Agent reads challenge and sends response.
-            var receivedChallenge = await agentTransport.ReceiveAsync<HandshakeChallenge>(CancellationToken.None);
-            Assert.That(receivedChallenge!.SessionToken, Is.EqualTo("tok-abc-123"));
-            Assert.That(receivedChallenge.ProtocolVersion, Is.EqualTo(ProtocolConstants.ProtocolVersion));
+        var response = new HandshakeResponse
+        {
+            ProtocolVersion = ProtocolConstants.ProtocolVersion,
+            AgentVersion = "1.0.0",
+            TargetRuntime = "net8.0",
+            SessionToken = receivedChallenge.SessionToken, // echo back
+        };
+        await agentTransport.SendAsync(response, CancellationToken.None);
 
-            var response = new HandshakeResponse
-            {
-                ProtocolVersion = ProtocolConstants.ProtocolVersion,
-                AgentVersion = "1.0.0",
-                TargetRuntime = "net8.0",
-                SessionToken = receivedChallenge.SessionToken, // echo back
-            };
-            await agentTransport.SendAsync(response, CancellationToken.None);
-
-            // Host reads response.
-            var receivedResponse = await hostTransport.ReceiveAsync<HandshakeResponse>(CancellationToken.None);
-            Assert.That(receivedResponse!.ProtocolVersion, Is.EqualTo(ProtocolConstants.ProtocolVersion));
-            Assert.That(receivedResponse.SessionToken, Is.EqualTo("tok-abc-123"));
-            Assert.That(receivedResponse.AgentVersion, Is.EqualTo("1.0.0"));
-        }
+        // Host reads response.
+        var receivedResponse = await hostTransport.ReceiveAsync<HandshakeResponse>(CancellationToken.None);
+        Assert.That(receivedResponse!.ProtocolVersion, Is.EqualTo(ProtocolConstants.ProtocolVersion));
+        Assert.That(receivedResponse.SessionToken, Is.EqualTo("tok-abc-123"));
+        Assert.That(receivedResponse.AgentVersion, Is.EqualTo("1.0.0"));
     }
 
     // -------------------------------------------------------------------------
