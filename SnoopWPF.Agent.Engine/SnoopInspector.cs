@@ -49,9 +49,12 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
     // Max 3 concurrent Dispatcher operations.
     private readonly SemaphoreSlim concurrencySemaphore = new(3, 3);
 
-    // M2-11: nested-pump guard — tracks active PumpUntilIdleAsync call depth per thread.
-    [ThreadStatic]
-    private static int pumpDepth;
+    // FX-C1: CTS cancelled in Dispose() to unblock concurrent WaitAsync calls gracefully.
+    private readonly CancellationTokenSource disposeCts = new();
+
+    // M2-11: nested-pump guard — 0 = idle, 1 = pump in progress.
+    // Instance-level so it is safe across thread-pool continuation migrations.
+    private int pumpInProgress;
 
     private volatile bool disposed;
 
@@ -2846,12 +2849,13 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
     {
         this.ThrowIfDisposed();
 
-        // Nested-pump guard (PRD §8.2): reject re-entrant calls on the same thread.
-        if (pumpDepth > 0)
+        // Nested-pump guard (PRD §8.2): reject concurrent calls regardless of thread.
+        // Interlocked.CompareExchange atomically sets pumpInProgress to 1 if it was 0.
+        if (Interlocked.CompareExchange(ref this.pumpInProgress, 1, 0) != 0)
         {
             throw new SnoopException(
                 SnoopErrorCode.DispatcherBusy,
-                "wpf_pump_until_idle cannot be called re-entrantly: a pump is already in progress on this thread.",
+                "wpf_pump_until_idle cannot be called re-entrantly: a pump is already in progress.",
                 suggestions: new[] { SnoopSuggestions.DispatcherBusy });
         }
 
@@ -2859,14 +2863,13 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
         const int MaxTimeoutMs = 5000;
         var clampedTimeout = Math.Min(timeoutMs, MaxTimeoutMs);
 
-        pumpDepth++;
         try
         {
             return await this.PumpUntilIdleCoreAsync(clampedTimeout, resources, ct).ConfigureAwait(false);
         }
         finally
         {
-            pumpDepth--;
+            Interlocked.Exchange(ref this.pumpInProgress, 0);
         }
     }
 
