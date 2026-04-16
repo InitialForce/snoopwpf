@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWpf>true</UseWpf>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <!-- Standalone spike — not in Snoop.sln, not under Central Package Management -->
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+    <!-- Override global TreatWarningsAsErrors so benchmark noise doesn't fail the build -->
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <Optimize>true</Optimize>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Don't lock packages — standalone spike has no packages.lock.json -->
+    <RestoreLockedMode>false</RestoreLockedMode>
+    <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Explicit version: standalone project outside Central Package Management -->
+    <PackageReference Include="BenchmarkDotNet" Version="0.14.0" />
+  </ItemGroup>
+
+  <!-- Pull in NodeRegistry source directly to avoid cross-project dep graph issues -->
+  <ItemGroup>
+    <Compile Include="..\..\SnoopWPF.Agent.Engine\Infrastructure\NodeRegistry.cs">
+      <Link>NodeRegistry.cs</Link>
+    </Compile>
+  </ItemGroup>
+
+</Project>

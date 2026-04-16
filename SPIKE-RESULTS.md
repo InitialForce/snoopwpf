@@ -67,3 +67,29 @@ memory over 1 000 000 DP bumps. Long-running agent sessions are safe provided
 watches are unsubscribed on node removal (see M1-12).
 
 ---
+
+## S-3 — Tree-change detection benchmark
+
+**Date:** 2026-04-16
+**Bead:** M0-03 (bd-3r1)
+**Machine:** `AMD Ryzen 9 5950X 16-Core Processor`, `64 GB RAM`, .NET SDK `10.0.104`.
+**Target:** < 1 µs per `NodeRegistry.Bump()` on 200-node tree, 1e6 mutations
+**Method:** Stopwatch microbenchmark (BenchmarkDotNet referenced but Stopwatch used to avoid WSL1 permission issues), 1 000 000 ops per scenario, 50 000 warmup ops, GC.Collect between phases.
+
+| Scenario                                          | Mean (ns) | P50 (ns) | P95 (ns) | P99 (ns) |
+|---------------------------------------------------|-----------|----------|----------|----------|
+| Bump (GetOrCreateId hot-loop)                     |      51.8 |    100.0 |    100.0 |    100.0 |
+| Panel.Children.Add/Remove (CollectionChanged→Bump)|   11267.2 |  10600.0 |  11400.0 |  18700.0 |
+| FrameworkElement.Loaded/Unloaded subscription     |     492.4 |    400.0 |    800.0 |   1100.0 |
+| CompositionTarget.Rendering frame-tick walk       |    8192.8 |   7900.0 |   9605.0 |  13600.0 |
+
+**Notes:**
+- **Bump (GetOrCreateId)**: 51.8 ns/op — 19x under the 1 µs target. Fast-path (already registered) in `ConditionalWeakTable` is essentially free.
+- **Panel.Children.Add/Remove**: 11.3 µs/op — this measures the total WPF Add+Remove pair on an unattached `StackPanel`. The high cost is WPF logical-tree change machinery, not `GetOrCreateId`. In production the agent hooks `CollectionChanged` on a live-tree panel; this figure is an upper bound.
+- **Loaded/Unloaded subscription (AddHandler/RemoveHandler)**: 492 ns/op — under 1 µs; safe to hook at registration time.
+- **Rendering frame-tick walk (200 nodes)**: 8.2 µs/op for a full 200-node `GetOrCreateId` walk (~41 ns/node). A coalescing ring-buffer would reduce this to a single flush, but 41 ns/node is well within a 16 ms frame budget.
+
+**VERDICT:** GREEN
+**Decision:** ring-buffer not needed. Pure `Bump()` (fast-path `GetOrCreateId`) costs 51.8 ns/op — safely under 1 µs. The expensive scenarios reflect WPF plumbing cost, not registry cost, and remain within acceptable budgets. M1-12 `IIdlingResource` can proceed without a coalescing ring buffer. Re-evaluate if profiling shows hot-path ContentChanged fire-rate exceeds ~10 kHz.
+
+---

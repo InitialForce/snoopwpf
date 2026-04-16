@@ -1,0 +1,5 @@
+<!-- Stop MSBuild from walking up to the root Directory.Build.targets.
+     This file intentionally replaces the root-level file for all spike projects.
+     Spike projects do NOT use the shared analyzer/tool package references from the
+     root targets file (which require Central Package Management). -->
+<Project />

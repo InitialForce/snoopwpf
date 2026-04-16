@@ -1,0 +1,13 @@
+<!-- Stop MSBuild from walking up to the root Directory.Build.props.
+     This file intentionally replaces the root-level file for all spike projects. -->
+<Project>
+  <PropertyGroup>
+    <!-- Disable Central Package Management — spikes use explicit versions -->
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>false</CentralPackageTransitivePinningEnabled>
+    <RestoreLockedMode>false</RestoreLockedMode>
+    <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <NoWarn>$(NoWarn);NU1503;NETSDK1138;NETSDK1222;MSB3277;CA1021;CA1063;CA1816;SA1200;SA1633</NoWarn>
+  </PropertyGroup>
+</Project>
