@@ -177,6 +177,17 @@ public sealed class TestWpfApp : IDisposable
         testListBox.Items.Add("Item Three");
         rootPanel.Children.Add(testListBox);
 
+        // PasswordBox: Name="testPasswordBox" — used by redaction integration tests.
+        // The Password property is redacted by RedactionFilter (PasswordBox-specific branch).
+        var testPasswordBox = new PasswordBox
+        {
+            Name = "testPasswordBox",
+            Width = 200,
+            Height = 24,
+            Password = "s3cr3t!",
+        };
+        rootPanel.Children.Add(testPasswordBox);
+
         var window = new Window
         {
             Title = "SnoopWPF Integration Test Window",

@@ -225,12 +225,18 @@ public sealed class FindElementsIntegrationTests : WpfIntegrationTestBase
                 ct: default)
             .ConfigureAwait(false);
 
-        // The condition filters by the Name DependencyProperty.
-        // Result may be empty if the property is not accessible via reflection path —
-        // that is acceptable. We verify no exception is thrown and result is non-null.
+        // The condition filters by the Name DependencyProperty (value "testButton").
+        // TestWpfApp guarantees a Button named "testButton" exists, so we must find it.
         Assert.That(result, Is.Not.Null,
             "FindElementsAsync with property conditions must return a non-null result.");
         Assert.That(result.Results, Is.Not.Null);
+        Assert.That(result.Results, Is.Not.Empty,
+            "Property condition Name=testButton must match at least one element in TestWpfApp.");
+        Assert.That(
+            result.Results.Any(h => string.Equals(
+                h.Node.Name, "testButton", System.StringComparison.OrdinalIgnoreCase)),
+            Is.True,
+            "At least one hit must have Name='testButton' when filtering by Name=testButton.");
     }
 
     /// <summary>

@@ -68,7 +68,7 @@ public sealed class TriggersIntegrationTests : WpfIntegrationTestBase
 
         if (nodeId == null)
         {
-            Assert.Ignore("Button not found in visual tree; test inconclusive.");
+            Assert.Fail("Button not found in visual tree; TestWpfApp must contain a Button.");
             return;
         }
 
@@ -91,7 +91,7 @@ public sealed class TriggersIntegrationTests : WpfIntegrationTestBase
 
         if (nodeId == null)
         {
-            Assert.Ignore("Button not found in visual tree; test inconclusive.");
+            Assert.Fail("Button not found in visual tree; TestWpfApp must contain a Button.");
             return;
         }
 
@@ -116,7 +116,7 @@ public sealed class TriggersIntegrationTests : WpfIntegrationTestBase
 
         if (nodeId == null)
         {
-            Assert.Ignore("Button not found in visual tree; test inconclusive.");
+            Assert.Fail("Button not found in visual tree; TestWpfApp must contain a Button.");
             return;
         }
 
@@ -141,7 +141,7 @@ public sealed class TriggersIntegrationTests : WpfIntegrationTestBase
 
         if (nodeId == null)
         {
-            Assert.Ignore("Button not found in visual tree; test inconclusive.");
+            Assert.Fail("Button not found in visual tree; TestWpfApp must contain a Button.");
             return;
         }
 
@@ -170,7 +170,7 @@ public sealed class TriggersIntegrationTests : WpfIntegrationTestBase
 
         if (nodeId == null)
         {
-            Assert.Ignore("TextBox not found in visual tree; test inconclusive.");
+            Assert.Fail("TextBox not found in visual tree; TestWpfApp must contain a TextBox.");
             return;
         }
 
@@ -191,7 +191,7 @@ public sealed class TriggersIntegrationTests : WpfIntegrationTestBase
 
         if (nodeId == null)
         {
-            Assert.Ignore("Button not found in visual tree; test inconclusive.");
+            Assert.Fail("Button not found in visual tree; TestWpfApp must contain a Button.");
             return;
         }
 
