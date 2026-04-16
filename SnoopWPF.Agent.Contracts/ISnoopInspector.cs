@@ -257,6 +257,21 @@ public interface ISnoopInspector
     /// <summary>Locator overload for <see cref="ToggleAsync(string,CancellationToken)"/>.</summary>
     Task<StateDeltaDto> ToggleAsync(WpfLocator locator, CancellationToken ct);
 
+    // ── M2-07: wpf_expand_collapse ───────────────────────────────────────────
+
+    /// <summary>
+    /// Expands or collapses the element identified by <paramref name="nodeId"/>
+    /// via the UI Automation <see cref="System.Windows.Automation.Provider.IExpandCollapseProvider"/>
+    /// pattern (L1, M2-07).
+    /// <paramref name="action"/> must be <c>"expand"</c> or <c>"collapse"</c> (case-insensitive).
+    /// Automation must be enabled (<c>EnableAutomation=true</c> in options).
+    /// Returns a <see cref="StateDeltaDto"/> describing the outcome.
+    /// </summary>
+    Task<StateDeltaDto> ExpandCollapseAsync(string nodeId, string action, CancellationToken ct);
+
+    /// <summary>Locator overload for <see cref="ExpandCollapseAsync(string,string,CancellationToken)"/>.</summary>
+    Task<StateDeltaDto> ExpandCollapseAsync(WpfLocator locator, string action, CancellationToken ct);
+
     // ── M2-08: wpf_resolve_binding ────────────────────────────────────────────
 
     /// <summary>

@@ -2,6 +2,7 @@ namespace SnoopWPF.Agent.Engine.Infrastructure;
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
 
@@ -17,11 +18,18 @@ public sealed class NodeRegistry : IDisposable
     // Reverse: nodeId string → weak ref to object
     private readonly ConcurrentDictionary<string, WeakReference<object>> reverse = new();
 
-    private int counter;
+    /// <summary>Version counter. Incremented on every new node registration (M2-10).</summary>
+    private long treeVersion;
 
     private readonly Timer sweepTimer;
 
     private volatile bool disposed;
+
+    /// <summary>
+    /// Monotonically increasing version counter. Incremented on every new node registration.
+    /// Safe to read from any thread via <see cref="Interlocked.Read(ref long)"/>.
+    /// </summary>
+    public long Version => Interlocked.Read(ref this.treeVersion);
 
     /// <summary>
     /// Creates a NodeRegistry with a configurable sweep interval (default 60s).
@@ -60,7 +68,7 @@ public sealed class NodeRegistry : IDisposable
         }
 
         // Slow path: create new registration
-        var newCounter = Interlocked.Increment(ref this.counter);
+        var newCounter = Interlocked.Increment(ref this.treeVersion);
         var id = $"0:{newCounter}";
         var registration = new NodeRegistration(id, element);
 
@@ -97,6 +105,20 @@ public sealed class NodeRegistry : IDisposable
     }
 
     /// <summary>
+    /// Returns the existing stable node ID for <paramref name="element"/> if it is already
+    /// registered, or <see langword="null"/> if it has never been registered.
+    /// Unlike <see cref="GetOrCreateId"/>, this method does NOT create a new registration
+    /// and does NOT increment <see cref="Version"/>. Used by poll-changes tree walks to
+    /// avoid polluting the version counter.
+    /// </summary>
+    public string? GetExistingId(object element)
+    {
+        ThrowIfDisposed(this.disposed, this);
+
+        return this.forward.TryGetValue(element, out var existing) ? existing.Id : null;
+    }
+
+    /// <summary>
     /// Resolves a node ID back to the live WPF object.
     /// Returns null if the object has been garbage collected or the ID is unknown.
     /// </summary>
@@ -128,7 +150,61 @@ public sealed class NodeRegistry : IDisposable
 
         this.reverse.Clear();
         this.ClearForwardTable();
-        Interlocked.Exchange(ref this.counter, 0);
+        Interlocked.Exchange(ref this.treeVersion, 0);
+    }
+
+    /// <summary>
+    /// Returns all node IDs that were registered at or before <paramref name="sinceVersion"/>
+    /// but whose objects are no longer present in <paramref name="liveNodeIds"/>.
+    /// Used by PollChangesAsync (M2-10) to detect structural removals.
+    /// </summary>
+    public IReadOnlyList<string> CollectRemovedSince(long sinceVersion, HashSet<string> liveNodeIds)
+    {
+        var removed = new List<string>();
+
+        foreach (var pair in this.reverse)
+        {
+            var nodeId = pair.Key;
+
+            // Skip nodes registered after sinceVersion (they are "added", not "removed").
+            if (!TryParseNodeVersion(nodeId, out var nodeVersion) || nodeVersion > sinceVersion)
+            {
+                continue;
+            }
+
+            // Skip nodes whose backing object has been garbage collected. GC'd entries are
+            // transient registry artefacts (e.g. short-lived TreeItem helper objects created
+            // during GetVisualTree walks), not genuine structural removals. They will be swept
+            // from the reverse map the next time ForceSweep or TryResolve runs.
+            if (!pair.Value.TryGetTarget(out _))
+            {
+                continue;
+            }
+
+            // If it was registered before the baseline but is not in the live tree, it was removed.
+            if (!liveNodeIds.Contains(nodeId))
+            {
+                removed.Add(nodeId);
+            }
+        }
+
+        return removed;
+    }
+
+    /// <summary>
+    /// Parses the sequence number embedded in a node ID (format "0:N").
+    /// Uses string overload of IndexOf to satisfy CA1307 across all TFMs.
+    /// </summary>
+    private static bool TryParseNodeVersion(string nodeId, out long version)
+    {
+        version = 0;
+        var colonIdx = nodeId.IndexOf(":", StringComparison.Ordinal);
+        if (colonIdx < 0)
+        {
+            return false;
+        }
+
+        return long.TryParse(nodeId.Substring(colonIdx + 1), out version);
     }
 
     private void ClearForwardTable()

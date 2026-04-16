@@ -148,6 +148,29 @@ internal sealed class LocatorResolver
             });
     }
 
+    /// <summary>
+    /// Non-throwing variant: resolves <paramref name="locator"/> against the live tree and
+    /// returns the matched object, or <c>null</c> if not found.
+    /// Used internally by poll-changes to scope the tree walk without surfacing errors.
+    /// </summary>
+    public object? TryResolve(WpfLocator locator, object rootTarget)
+    {
+        if (locator is null || rootTarget is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            var nodeId = this.Resolve(locator, rootTarget);
+            return this.nodeRegistry.TryResolve(nodeId);
+        }
+        catch (SnoopException)
+        {
+            return null;
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------

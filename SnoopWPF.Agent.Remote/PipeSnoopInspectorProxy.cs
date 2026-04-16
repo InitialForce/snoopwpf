@@ -566,6 +566,14 @@ public sealed class PipeSnoopInspectorProxy : ISnoopInspector, IAsyncDisposable,
         => throw new NotImplementedException("M2-06");
 
     /// <inheritdoc/>
+    public Task<StateDeltaDto> ExpandCollapseAsync(string nodeId, string action, CancellationToken ct)
+        => this.InvokeAsync<StateDeltaDto>("ExpandCollapse", new { nodeId, action }, ct);
+
+    /// <inheritdoc/>
+    public Task<StateDeltaDto> ExpandCollapseAsync(WpfLocator locator, string action, CancellationToken ct)
+        => throw new NotImplementedException("M2-07");
+
+    /// <inheritdoc/>
     public Task<BindingResolutionDto> ResolveBindingAsync(string nodeId, string propertyName, CancellationToken ct)
         => this.InvokeAsync<BindingResolutionDto>("ResolveBinding", new { nodeId, propertyName }, ct);
 

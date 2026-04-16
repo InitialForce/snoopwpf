@@ -210,6 +210,12 @@ public sealed class FakeSnoopInspector : ISnoopInspector
     public Task<StateDeltaDto> ToggleAsync(WpfLocator locator, CancellationToken ct)
         => throw new NotImplementedException("M2-06");
 
+    public Task<StateDeltaDto> ExpandCollapseAsync(string nodeId, string action, CancellationToken ct)
+        => throw new NotImplementedException("M2-07");
+
+    public Task<StateDeltaDto> ExpandCollapseAsync(WpfLocator locator, string action, CancellationToken ct)
+        => throw new NotImplementedException("M2-07");
+
     public Task<WaitForPropertyResultDto> WaitForPropertyAsync(
         WpfLocator locator, string propertyName, string? expectedValue, int timeoutMs, string presenceExpected, CancellationToken ct)
         => throw new NotImplementedException("M2-09");

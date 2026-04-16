@@ -39,6 +39,12 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
     private readonly LocatorResolver locatorResolver;
     private readonly Binding.BindingResolver bindingResolver = new();
 
+    // M2-10: last-poll snapshot for incremental "removed" detection.
+    // Stores the liveNodeIds captured at the most-recently returned TreeVersion.
+    // Access only on the Dispatcher thread (set inside RunOnDispatcherAsync).
+    private long lastPollVersion = -1;
+    private System.Collections.Generic.HashSet<string>? lastPollLiveIds;
+
     // Max 3 concurrent Dispatcher operations.
     private readonly SemaphoreSlim concurrencySemaphore = new(3, 3);
 
@@ -1617,7 +1623,12 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
         return await this.GetBehaviorsAsync(nodeId, ct).ConfigureAwait(false);
     }
 
-    // ── M2-04a: wpf_select_item (L0 basic — non-virtualized) ─────────────────
+    // ── M2-04a/M2-04b: wpf_select_item (L0 — non-virtualized + virtualized scroll) ──────────
+
+    /// <summary>
+    /// Maximum number of scroll-materialise iterations before giving up for virtualised lists.
+    /// </summary>
+    private const int VirtualizedScrollMaxIterations = 20;
 
     /// <inheritdoc/>
     public Task<StateDeltaDto> SelectItemAsync(string nodeId, string identifier, CancellationToken ct)
@@ -1674,6 +1685,34 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
                 };
             }
 
+            // ── M2-04b: virtualised path ─────────────────────────────────────────
+            // When the selector uses a VirtualizingStackPanel, the container for
+            // off-screen items may not yet be materialised. Scroll the item into
+            // view first; the panel materialises containers on demand. We pump the
+            // Dispatcher between scroll requests to allow WPF layout to run.
+            // Budget: VirtualizedScrollMaxIterations attempts before we give up.
+            if (IsVirtualizingSelector(selector) &&
+                !IsItemContainerMaterialized(selector, resolvedIndex))
+            {
+                var materialized = ScrollMaterializeItem(selector, resolvedIndex);
+                if (!materialized)
+                {
+                    System.Diagnostics.Trace.WriteLine(
+                        $"[SnoopWPF.Agent] SelectItem({selector.GetType().Name}): item at index {resolvedIndex} " +
+                        $"not materialized after {VirtualizedScrollMaxIterations} scroll iterations — " +
+                        "returning ElementOutsideViewport.");
+
+                    return new StateDeltaDto
+                    {
+                        Success = false,
+                        ElementVisible = true,
+                        StateChanged = false,
+                        FailureReason = FailureReason.ElementOutsideViewport,
+                        Suggestion = StateDelta.FailureReasonDescriptor.Suggest(FailureReason.ElementOutsideViewport, null),
+                    };
+                }
+            }
+
             var previousIndex = selector.SelectedIndex;
             var previousValue = previousIndex >= 0 && previousIndex < selector.Items.Count
                 ? selector.Items[previousIndex]?.ToString()
@@ -1700,6 +1739,113 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
                 ChosenTier = InputTier.L0,
             };
         }, ct);
+    }
+
+    /// <summary>
+    /// Returns the ItemsHost panel for an <see cref="System.Windows.Controls.ItemsControl"/>
+    /// using reflection (ItemsHost is an internal property in WPF).
+    /// </summary>
+    private static System.Windows.Controls.Panel? GetItemsHost(System.Windows.Controls.ItemsControl itemsControl)
+    {
+        var prop = typeof(System.Windows.Controls.ItemsControl)
+            .GetProperty("ItemsHost", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        return prop?.GetValue(itemsControl) as System.Windows.Controls.Panel;
+    }
+
+    /// <summary>
+    /// Returns <see langword="true"/> when <paramref name="selector"/> is backed by a
+    /// <see cref="System.Windows.Controls.VirtualizingStackPanel"/> (i.e. UI-virtualisation
+    /// is active and item containers may not yet be materialised).
+    /// </summary>
+    private static bool IsVirtualizingSelector(System.Windows.Controls.Primitives.Selector selector)
+    {
+        // VirtualizingPanel.IsVirtualizing attached DP is the canonical flag.
+        var isVirtualizing = (bool)selector.GetValue(
+            System.Windows.Controls.VirtualizingPanel.IsVirtualizingProperty);
+        if (!isVirtualizing)
+        {
+            return false;
+        }
+
+        // Confirm the items host is actually a VirtualizingStackPanel.
+        if (selector is System.Windows.Controls.ItemsControl itemsControl)
+        {
+            var panel = GetItemsHost(itemsControl);
+            return panel is System.Windows.Controls.VirtualizingStackPanel;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Returns <see langword="true"/> when the item container for
+    /// <paramref name="index"/> is already materialised (the generator's status
+    /// for that position is <see cref="System.Windows.Controls.Primitives.GeneratorStatus.ContainersGenerated"/>
+    /// and <see cref="System.Windows.Controls.Primitives.ItemContainerGenerator.ContainerFromIndex"/>
+    /// returns a non-null element).
+    /// </summary>
+    private static bool IsItemContainerMaterialized(
+        System.Windows.Controls.Primitives.Selector selector,
+        int index)
+    {
+        var generator = selector.ItemContainerGenerator;
+        if (generator.Status != System.Windows.Controls.Primitives.GeneratorStatus.ContainersGenerated)
+        {
+            return false;
+        }
+
+        return generator.ContainerFromIndex(index) != null;
+    }
+
+    /// <summary>
+    /// Attempts to scroll-materialise the container for item at <paramref name="index"/>
+    /// within <paramref name="selector"/> by issuing up to
+    /// <see cref="VirtualizedScrollMaxIterations"/> <c>BringIndexIntoView</c> / <c>ScrollIntoView</c>
+    /// calls and pumping the Dispatcher between each.
+    /// Returns <see langword="true"/> when the container is materialised before the
+    /// budget is exhausted.
+    /// </summary>
+    private static bool ScrollMaterializeItem(
+        System.Windows.Controls.Primitives.Selector selector,
+        int index)
+    {
+        for (var iteration = 0; iteration < VirtualizedScrollMaxIterations; iteration++)
+        {
+            // Request the panel to bring the item into view (materialises its container).
+            if (selector is System.Windows.Controls.ItemsControl itemsControl)
+            {
+                itemsControl.UpdateLayout();
+
+                // VirtualizingStackPanel.BringIndexIntoViewPublic is internal; use the
+                // public ScrollViewer.ScrollIntoView path via ItemsControl.
+                var panel = GetItemsHost(itemsControl) as System.Windows.Controls.VirtualizingStackPanel;
+                if (panel != null)
+                {
+                    // Calling BringIndexIntoView on VirtualizingStackPanel scrolls the panel
+                    // without requiring the container to already exist.
+                    panel.BringIndexIntoViewPublic(index);
+                }
+
+                // Also ask the ScrollViewer (if present) to ensure visibility.
+                if (selector is System.Windows.Controls.ListBox listBox)
+                {
+                    if (index >= 0 && index < listBox.Items.Count)
+                    {
+                        listBox.ScrollIntoView(listBox.Items[index]);
+                    }
+                }
+
+                // Pump layout so the panel can materialise containers.
+                itemsControl.UpdateLayout();
+            }
+
+            if (IsItemContainerMaterialized(selector, index))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <inheritdoc/>
@@ -2374,6 +2520,98 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
         return await this.ToggleAsync(nodeId, ct).ConfigureAwait(false);
     }
 
+    // ── M2-07: wpf_expand_collapse ───────────────────────────────────────────
+
+    /// <inheritdoc/>
+    public Task<StateDeltaDto> ExpandCollapseAsync(string nodeId, string action, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(nodeId))
+        {
+            throw new ArgumentException("nodeId must not be null or empty.", nameof(nodeId));
+        }
+
+        if (string.IsNullOrEmpty(action) ||
+            (!string.Equals(action, "expand", StringComparison.OrdinalIgnoreCase) &&
+             !string.Equals(action, "collapse", StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new ArgumentException("action must be \"expand\" or \"collapse\".", nameof(action));
+        }
+
+        return this.RunOnDispatcherAsync(() =>
+        {
+            // Guard: automation must be explicitly enabled (L1 requires EnableAutomation).
+            if (!this.options.EnableAutomation)
+            {
+                throw new SnoopException(
+                    SnoopErrorCode.MutationDisabled,
+                    "Automation is disabled. Set EnableAutomation=true in SnoopInspectorOptions to allow wpf_expand_collapse.",
+                    targetId: nodeId,
+                    suggestions: new[] { SnoopSuggestions.MutationDisabled });
+            }
+
+            var target = this.ResolveNodeOrThrow(nodeId);
+            this.VerifyElementConnectivity(target, nodeId);
+
+            if (target is not System.Windows.UIElement uiElement)
+            {
+                return new StateDeltaDto
+                {
+                    Success = false,
+                    ElementVisible = false,
+                    StateChanged = false,
+                    FailureReason = FailureReason.PatternNotSupported,
+                    Suggestion = FailureReasonDescriptor.Suggest(FailureReason.PatternNotSupported, null),
+                };
+            }
+
+            // Obtain automation peer and IExpandCollapseProvider.
+            var peer = System.Windows.Automation.Peers.UIElementAutomationPeer.CreatePeerForElement(uiElement);
+            var provider = peer?.GetPattern(
+                System.Windows.Automation.Peers.PatternInterface.ExpandCollapse)
+                as System.Windows.Automation.Provider.IExpandCollapseProvider;
+
+            if (provider is null)
+            {
+                return new StateDeltaDto
+                {
+                    Success = false,
+                    ElementVisible = true,
+                    StateChanged = false,
+                    FailureReason = FailureReason.PatternNotSupported,
+                    Suggestion = FailureReasonDescriptor.Suggest(FailureReason.PatternNotSupported, null),
+                };
+            }
+
+            bool expand = string.Equals(action, "expand", StringComparison.OrdinalIgnoreCase);
+            if (expand)
+            {
+                provider.Expand();
+            }
+            else
+            {
+                provider.Collapse();
+            }
+
+            System.Diagnostics.Trace.WriteLine(
+                $"[SnoopWPF.Agent] ExpandCollapseAsync: nodeId={nodeId}, action={action}, type={uiElement.GetType().Name}");
+
+            return new StateDeltaDto
+            {
+                Success = true,
+                ElementVisible = true,
+                StateChanged = true,
+                ChosenTier = InputTier.L1,
+            };
+        }, ct);
+    }
+
+    /// <inheritdoc/>
+    public async Task<StateDeltaDto> ExpandCollapseAsync(WpfLocator locator, string action, CancellationToken ct)
+    {
+        var nodeId = await this.ResolveLocatorAsync(locator, ct).ConfigureAwait(false);
+        return await this.ExpandCollapseAsync(nodeId, action, ct).ConfigureAwait(false);
+    }
+
     // ── M2-08: wpf_resolve_binding ────────────────────────────────────────────
 
     /// <inheritdoc/>
@@ -2560,8 +2798,23 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
                 }
             }
 
-            // "removed" = registered <= sinceVersion AND no longer in live tree.
-            var removedIds = this.nodeRegistry.CollectRemovedSince(sinceVersion, liveNodeIds);
+            // "removed" — prefer snapshot-based diff when we have a cached live set from the
+            // previous poll at exactly sinceVersion (incremental case).  Fall back to the
+            // registry-scan (CollectRemovedSince) for the initial / catch-up case.
+            IEnumerable<string> removedIds;
+            if (this.lastPollVersion == sinceVersion && this.lastPollLiveIds is not null)
+            {
+                // Incremental: anything that was alive last time but is not alive now.
+                removedIds = this.lastPollLiveIds
+                    .Where(id => !liveNodeIds.Contains(id))
+                    .ToList();
+            }
+            else
+            {
+                // Catch-up: fall back to registry scan for nodes registered <= sinceVersion.
+                removedIds = this.nodeRegistry.CollectRemovedSince(sinceVersion, liveNodeIds);
+            }
+
             foreach (var removedId in removedIds)
             {
                 changes.Add(new Contracts.Dtos.NodeChangeEntryDto
@@ -2570,6 +2823,10 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
                     ChangeKind = "removed",
                 });
             }
+
+            // Cache this poll's live snapshot so the next incremental poll can diff against it.
+            this.lastPollVersion = currentVersion;
+            this.lastPollLiveIds = liveNodeIds;
 
             return new Contracts.Dtos.PollChangesResultDto
             {
