@@ -13,12 +13,6 @@ using SnoopWPF.Agent.Contracts;
 [McpServerToolType]
 public sealed class ExecuteCommandTool(ISnoopInspector inspector)
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = false,
-    };
-
     [McpServerTool(Name = "wpf_execute_command")]
     [Description(
         "Execute the ICommand bound to a WPF element (e.g. Button.Command). " +
@@ -45,7 +39,7 @@ public sealed class ExecuteCommandTool(ISnoopInspector inspector)
         try
         {
             var result = await inspector.ExecuteCommandAsync(nodeId, ct).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, SerializerOptions);
+            return JsonSerializer.Serialize(result, ToolSerializerOptions.Default);
         }
         catch (SnoopException ex)
         {

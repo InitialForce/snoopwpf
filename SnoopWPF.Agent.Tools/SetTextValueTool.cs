@@ -13,12 +13,6 @@ using SnoopWPF.Agent.Contracts;
 [McpServerToolType]
 public sealed class SetTextValueTool(ISnoopInspector inspector)
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = false,
-    };
-
     [McpServerTool(Name = "wpf_set_text_value")]
     [Description(
         "Set the text content of a TextBox, PasswordBox, or RichTextBox via SetValue on the text " +
@@ -48,7 +42,7 @@ public sealed class SetTextValueTool(ISnoopInspector inspector)
         try
         {
             var result = await inspector.SetTextValueAsync(nodeId, value, ct).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, SerializerOptions);
+            return JsonSerializer.Serialize(result, ToolSerializerOptions.Default);
         }
         catch (SnoopException ex)
         {

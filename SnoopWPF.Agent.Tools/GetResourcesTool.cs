@@ -13,12 +13,6 @@ using SnoopWPF.Agent.Contracts;
 [McpServerToolType]
 public sealed class GetResourcesTool(ISnoopInspector inspector)
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = false,
-    };
-
     [McpServerTool(Name = "wpf_get_resources")]
     [Description("Get cursor-paginated resource dictionary entries visible from a node (merged dictionaries included). " +
                  "Each entry includes key, valueTypeName, valueSummary, origin (Application/Window/Element), and dictionarySource. " +
@@ -34,7 +28,7 @@ public sealed class GetResourcesTool(ISnoopInspector inspector)
         try
         {
             var result = await inspector.GetResourcesAsync(nodeId, resourceKey, cursor, take, ct).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, SerializerOptions);
+            return JsonSerializer.Serialize(result, ToolSerializerOptions.Default);
         }
         catch (SnoopException ex)
         {

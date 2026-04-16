@@ -24,12 +24,6 @@ using SnoopWPF.Agent.Engine.Blob;
 [McpServerToolType]
 public sealed class FetchBlobTool(BlobStore blobStore)
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = false,
-    };
-
     [McpServerTool(Name = "wpf_fetch_blob")]
     [Description(
         "Fetch a large payload (screenshot, property dump) by its blobRef key. " +
@@ -57,7 +51,7 @@ public sealed class FetchBlobTool(BlobStore blobStore)
             sizeBytes = entry.Data.Length,
         };
 
-        var metadataJson = JsonSerializer.Serialize(metadata, SerializerOptions);
+        var metadataJson = JsonSerializer.Serialize(metadata, ToolSerializerOptions.Default);
         var textBlock = new TextContentBlock { Text = metadataJson };
 
         ContentBlock dataBlock = entry.MimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)

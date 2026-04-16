@@ -14,12 +14,6 @@ using SnoopWPF.Agent.Contracts;
 [McpServerToolType]
 public sealed class ToggleTool(ISnoopInspector inspector)
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = false,
-    };
-
     [McpServerTool(Name = "wpf_toggle")]
     [Description(
         "Flip the toggle state of a WPF element using the UI Automation TogglePattern (L1). " +
@@ -48,7 +42,7 @@ public sealed class ToggleTool(ISnoopInspector inspector)
         try
         {
             var result = await inspector.ToggleAsync(nodeId, ct).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, SerializerOptions);
+            return JsonSerializer.Serialize(result, ToolSerializerOptions.Default);
         }
         catch (SnoopException ex)
         {

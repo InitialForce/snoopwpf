@@ -77,7 +77,7 @@ public class SetPropertyToolTests
         var doc = JsonNode.Parse(json)!;
         Assert.That(doc["success"]!.GetValue<bool>(), Is.False);
         Assert.That(doc["stateChanged"]!.GetValue<bool>(), Is.False);
-        Assert.That(doc["failureReason"]!.GetValue<int>(), Is.EqualTo((int)FailureReason.StateUnchanged));
+        Assert.That(doc["failureReason"]!.GetValue<string>(), Is.EqualTo("STATE_UNCHANGED"));
         Assert.That(doc["suggestion"]!["tool"]!.GetValue<string>(), Is.EqualTo("wpf_inspect_element"));
     }
 

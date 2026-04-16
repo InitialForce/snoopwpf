@@ -13,12 +13,6 @@ using SnoopWPF.Agent.Contracts;
 [McpServerToolType]
 public sealed class SetPropertyTool(ISnoopInspector inspector)
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = false,
-    };
-
     [McpServerTool(Name = "wpf_set_property")]
     [Description("Set a WPF element property value at runtime (mutation must be enabled in SnoopAgentOptions). " +
                  "Returns StateDeltaDto with success flag, stateChanged, previousValue, newValue, and failureReason/suggestion if failed. " +
@@ -34,7 +28,7 @@ public sealed class SetPropertyTool(ISnoopInspector inspector)
         try
         {
             var result = await inspector.SetPropertyAsync(nodeId, propertyName, value, ct).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, SerializerOptions);
+            return JsonSerializer.Serialize(result, ToolSerializerOptions.Default);
         }
         catch (SnoopException ex)
         {

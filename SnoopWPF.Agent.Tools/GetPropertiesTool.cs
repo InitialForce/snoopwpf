@@ -13,12 +13,6 @@ using SnoopWPF.Agent.Contracts;
 [McpServerToolType]
 public sealed class GetPropertiesTool(ISnoopInspector inspector)
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = false,
-    };
-
     [McpServerTool(Name = "wpf_get_properties")]
     [Description("Get cursor-paginated properties of a WPF element. Each property includes name, typeName, value, " +
                  "valueSource, isLocallySet, isDataBound, hasBindingError, bindingError, isReadOnly, hasTypeConverter, isRedacted. " +
@@ -35,7 +29,7 @@ public sealed class GetPropertiesTool(ISnoopInspector inspector)
         try
         {
             var result = await inspector.GetPropertiesAsync(nodeId, filter, category, includeDefaults, cursor, take, ct).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, SerializerOptions);
+            return JsonSerializer.Serialize(result, ToolSerializerOptions.Default);
         }
         catch (SnoopException ex)
         {

@@ -14,12 +14,6 @@ using SnoopWPF.Agent.Contracts;
 [McpServerToolType]
 public sealed class ExpandCollapseTool(ISnoopInspector inspector)
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = false,
-    };
-
     [McpServerTool(Name = "wpf_expand_collapse")]
     [Description(
         "Expand or collapse a WPF element using the UI Automation ExpandCollapsePattern (L1). " +
@@ -50,7 +44,7 @@ public sealed class ExpandCollapseTool(ISnoopInspector inspector)
         try
         {
             var result = await inspector.ExpandCollapseAsync(nodeId, action, ct).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, SerializerOptions);
+            return JsonSerializer.Serialize(result, ToolSerializerOptions.Default);
         }
         catch (SnoopException ex)
         {

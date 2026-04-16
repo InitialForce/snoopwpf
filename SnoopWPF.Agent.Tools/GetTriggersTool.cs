@@ -13,12 +13,6 @@ using SnoopWPF.Agent.Contracts;
 [McpServerToolType]
 public sealed class GetTriggersTool(ISnoopInspector inspector)
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = false,
-    };
-
     [McpServerTool(Name = "wpf_get_triggers")]
     [Description("Get all triggers defined on a WPF element (from Style, ControlTemplate, DataTemplate, or the element itself). " +
                  "Each TriggerDto includes triggerType, isActive, source (\"Style\"|\"ControlTemplate\"|\"DataTemplate\"|\"Element\"), " +
@@ -31,7 +25,7 @@ public sealed class GetTriggersTool(ISnoopInspector inspector)
         try
         {
             var result = await inspector.GetTriggersAsync(nodeId, ct).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, SerializerOptions);
+            return JsonSerializer.Serialize(result, ToolSerializerOptions.Default);
         }
         catch (SnoopException ex)
         {

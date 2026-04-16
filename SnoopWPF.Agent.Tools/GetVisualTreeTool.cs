@@ -14,12 +14,6 @@ using SnoopWPF.Agent.Contracts;
 [McpServerToolType]
 public sealed class GetVisualTreeTool(ISnoopInspector inspector)
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = false,
-    };
-
     [McpServerTool(Name = "wpf_get_visual_tree")]
     [Description("Get the visual tree starting from a node. Returns a depth-limited tree with truncation metadata. " +
                  "Nodes at the cut boundary have childrenTruncated: true. Hard cap: 5000 nodes. " +
@@ -34,7 +28,7 @@ public sealed class GetVisualTreeTool(ISnoopInspector inspector)
         try
         {
             var result = await inspector.GetVisualTreeAsync(rootNodeId, maxDepth, treeType, includeProperties, ct).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, SerializerOptions);
+            return JsonSerializer.Serialize(result, ToolSerializerOptions.Default);
         }
         catch (SnoopException ex)
         {

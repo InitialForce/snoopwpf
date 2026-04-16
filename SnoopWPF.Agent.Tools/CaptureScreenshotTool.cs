@@ -17,12 +17,6 @@ using SnoopWPF.Agent.Contracts;
 [McpServerToolType]
 public sealed class CaptureScreenshotTool(ISnoopInspector inspector)
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = false,
-    };
-
     [McpServerTool(Name = "wpf_capture_screenshot")]
     [Description("Capture a PNG screenshot of a WPF element or window. " +
                  "When nodeId is omitted, captures the first visible window. " +
@@ -38,7 +32,7 @@ public sealed class CaptureScreenshotTool(ISnoopInspector inspector)
         {
             var result = await inspector.CaptureScreenshotAsync(nodeId, ct).ConfigureAwait(false);
 
-            var metadataJson = JsonSerializer.Serialize(result.Metadata, SerializerOptions);
+            var metadataJson = JsonSerializer.Serialize(result.Metadata, ToolSerializerOptions.Default);
             var textBlock = new TextContentBlock { Text = metadataJson };
 
             var imageBlock = new ImageContentBlock

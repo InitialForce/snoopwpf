@@ -13,12 +13,6 @@ using SnoopWPF.Agent.Contracts;
 [McpServerToolType]
 public sealed class ResolveBindingTool(ISnoopInspector inspector)
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = false,
-    };
-
     [McpServerTool(Name = "wpf_resolve_binding")]
     [Description("Resolve the full data-binding chain for a dependency property on a WPF element. " +
                  "Returns: path (e.g. 'SelectedSession.User.Name'), sourceTypeName, sourceValue, " +
@@ -34,7 +28,7 @@ public sealed class ResolveBindingTool(ISnoopInspector inspector)
         try
         {
             var result = await inspector.ResolveBindingAsync(nodeId, propertyName, ct).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, SerializerOptions);
+            return JsonSerializer.Serialize(result, ToolSerializerOptions.Default);
         }
         catch (SnoopException ex)
         {

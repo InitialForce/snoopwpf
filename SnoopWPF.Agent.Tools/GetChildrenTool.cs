@@ -13,12 +13,6 @@ using SnoopWPF.Agent.Contracts;
 [McpServerToolType]
 public sealed class GetChildrenTool(ISnoopInspector inspector)
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = false,
-    };
-
     [McpServerTool(Name = "wpf_get_children")]
     [Description("Get cursor-paginated direct children of a node. Uses snapshot-based cursors to prevent " +
                  "gaps/duplicates when the visual tree changes between pages. " +
@@ -34,7 +28,7 @@ public sealed class GetChildrenTool(ISnoopInspector inspector)
         try
         {
             var result = await inspector.GetChildrenAsync(nodeId, treeType, cursor, take, ct).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, SerializerOptions);
+            return JsonSerializer.Serialize(result, ToolSerializerOptions.Default);
         }
         catch (SnoopException ex)
         {
