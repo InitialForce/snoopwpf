@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net462;net6.0-windows;net8.0-windows</TargetFrameworks>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <!-- CA1819: PngBytes must be byte[] for pipe serialization; CA1032: SnoopException
+         uses richer constructor pattern that satisfies the intent -->
+    <NoWarn>$(NoWarn);CA1819;CA1032</NoWarn>
+  </PropertyGroup>
+
+</Project>
