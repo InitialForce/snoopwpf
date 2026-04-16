@@ -467,55 +467,91 @@ public sealed class PipeSnoopInspectorProxy : ISnoopInspector, IAsyncDisposable,
         return new SnoopException(code, err.Message, suggestions: suggestions);
     }
 
-    // ── WpfLocator overloads (M1-06 stubs — full implementation in M1-06) ──
+    // ── WpfLocator overloads (M1-06) ──
 
     /// <inheritdoc/>
     public Task<VisualTreeResultDto> GetVisualTreeAsync(WpfLocator locator, int maxDepth, string treeType, List<string>? includeProperties, CancellationToken ct)
-        => throw new NotImplementedException("M1-06");
+        => this.InvokeAsync<VisualTreeResultDto>(
+            "GetVisualTreeByLocator",
+            new { locator, maxDepth, treeType, includeProperties },
+            ct);
 
     /// <inheritdoc/>
     public Task<CursorPage<NodeDto>> GetChildrenAsync(WpfLocator locator, string treeType, string? cursor, int take, CancellationToken ct)
-        => throw new NotImplementedException("M1-06");
+        => this.InvokeAsync<CursorPage<NodeDto>>(
+            "GetChildrenByLocator",
+            new { locator, treeType, cursor, take },
+            ct);
 
     /// <inheritdoc/>
     public Task<List<AncestorDto>> GetAncestorsAsync(WpfLocator locator, int? maxLevels, CancellationToken ct)
-        => throw new NotImplementedException("M1-06");
+        => this.InvokeAsync<List<AncestorDto>>(
+            "GetAncestorsByLocator",
+            new { locator, maxLevels },
+            ct);
 
     /// <inheritdoc/>
     public Task<InspectElementDto> InspectElementAsync(WpfLocator locator, CancellationToken ct)
-        => throw new NotImplementedException("M1-06");
+        => this.InvokeAsync<InspectElementDto>(
+            "InspectElementByLocator",
+            new { locator },
+            ct);
 
     /// <inheritdoc/>
     public Task<CursorPage<PropertyDto>> GetPropertiesAsync(WpfLocator locator, string? filter, string? category, bool includeDefaults, string? cursor, int take, CancellationToken ct)
-        => throw new NotImplementedException("M1-06");
+        => this.InvokeAsync<CursorPage<PropertyDto>>(
+            "GetPropertiesByLocator",
+            new { locator, filter, category, includeDefaults, cursor, take },
+            ct);
 
     /// <inheritdoc/>
     public Task<StateDeltaDto> SetPropertyAsync(WpfLocator locator, string propertyName, string value, CancellationToken ct)
-        => throw new NotImplementedException("M1-06");
+        => this.InvokeAsync<StateDeltaDto>(
+            "SetPropertyByLocator",
+            new { locator, propertyName, value },
+            ct);
 
     /// <inheritdoc/>
     public Task<BindingInfoDto> GetBindingInfoAsync(WpfLocator locator, string propertyName, CancellationToken ct)
-        => throw new NotImplementedException("M1-06");
+        => this.InvokeAsync<BindingInfoDto>(
+            "GetBindingInfoByLocator",
+            new { locator, propertyName },
+            ct);
 
     /// <inheritdoc/>
     public Task<CursorPage<DiagnosticItemDto>> RunDiagnosticsAsync(WpfLocator locator, List<string>? providers, string? minLevel, string? cursor, int take, CancellationToken ct)
-        => throw new NotImplementedException("M1-06");
+        => this.InvokeAsync<CursorPage<DiagnosticItemDto>>(
+            "RunDiagnosticsByLocator",
+            new { locator, providers, minLevel, cursor, take },
+            ct);
 
     /// <inheritdoc/>
     public Task<CursorPage<ResourceDto>> GetResourcesAsync(WpfLocator locator, string? resourceKey, string? cursor, int take, CancellationToken ct)
-        => throw new NotImplementedException("M1-06");
+        => this.InvokeAsync<CursorPage<ResourceDto>>(
+            "GetResourcesByLocator",
+            new { locator, resourceKey, cursor, take },
+            ct);
 
     /// <inheritdoc/>
     public Task<ScreenshotResultDto> CaptureScreenshotAsync(WpfLocator locator, CancellationToken ct)
-        => throw new NotImplementedException("M1-06");
+        => this.InvokeAsync<ScreenshotResultDto>(
+            "CaptureScreenshotByLocator",
+            new { locator },
+            ct);
 
     /// <inheritdoc/>
     public Task<List<TriggerDto>> GetTriggersAsync(WpfLocator locator, CancellationToken ct)
-        => throw new NotImplementedException("M1-06");
+        => this.InvokeAsync<List<TriggerDto>>(
+            "GetTriggersByLocator",
+            new { locator },
+            ct);
 
     /// <inheritdoc/>
     public Task<List<BehaviorDto>> GetBehaviorsAsync(WpfLocator locator, CancellationToken ct)
-        => throw new NotImplementedException("M1-06");
+        => this.InvokeAsync<List<BehaviorDto>>(
+            "GetBehaviorsByLocator",
+            new { locator },
+            ct);
 
     /// <inheritdoc/>
     public Task<StateDeltaDto> SelectItemAsync(string nodeId, string identifier, CancellationToken ct)
@@ -523,7 +559,10 @@ public sealed class PipeSnoopInspectorProxy : ISnoopInspector, IAsyncDisposable,
 
     /// <inheritdoc/>
     public Task<StateDeltaDto> SelectItemAsync(WpfLocator locator, string identifier, CancellationToken ct)
-        => throw new NotImplementedException("M2-04a");
+        => this.InvokeAsync<StateDeltaDto>(
+            "SelectItemByLocator",
+            new { locator, identifier },
+            ct);
 
     /// <inheritdoc/>
     public Task<StateDeltaDto> SetCheckStateAsync(string nodeId, string state, CancellationToken ct)
@@ -531,7 +570,10 @@ public sealed class PipeSnoopInspectorProxy : ISnoopInspector, IAsyncDisposable,
 
     /// <inheritdoc/>
     public Task<StateDeltaDto> SetCheckStateAsync(WpfLocator locator, string state, CancellationToken ct)
-        => throw new NotImplementedException("M2-03");
+        => this.InvokeAsync<StateDeltaDto>(
+            "SetCheckStateByLocator",
+            new { locator, state },
+            ct);
 
     /// <inheritdoc/>
     public Task<StateDeltaDto> SetTextValueAsync(string nodeId, string value, CancellationToken ct)
@@ -539,7 +581,10 @@ public sealed class PipeSnoopInspectorProxy : ISnoopInspector, IAsyncDisposable,
 
     /// <inheritdoc/>
     public Task<StateDeltaDto> SetTextValueAsync(WpfLocator locator, string value, CancellationToken ct)
-        => throw new NotImplementedException("M2-02");
+        => this.InvokeAsync<StateDeltaDto>(
+            "SetTextValueByLocator",
+            new { locator, value },
+            ct);
 
     /// <inheritdoc/>
     public Task<StateDeltaDto> SetSliderValueAsync(string nodeId, double value, bool normalized, CancellationToken ct)
@@ -547,7 +592,10 @@ public sealed class PipeSnoopInspectorProxy : ISnoopInspector, IAsyncDisposable,
 
     /// <inheritdoc/>
     public Task<StateDeltaDto> SetSliderValueAsync(WpfLocator locator, double value, bool normalized, CancellationToken ct)
-        => throw new NotImplementedException("M2-16");
+        => this.InvokeAsync<StateDeltaDto>(
+            "SetSliderValueByLocator",
+            new { locator, value, normalized },
+            ct);
 
     /// <inheritdoc/>
     public Task<StateDeltaDto> ExecuteCommandAsync(string nodeId, CancellationToken ct)
@@ -555,7 +603,10 @@ public sealed class PipeSnoopInspectorProxy : ISnoopInspector, IAsyncDisposable,
 
     /// <inheritdoc/>
     public Task<StateDeltaDto> ExecuteCommandAsync(WpfLocator locator, CancellationToken ct)
-        => throw new NotImplementedException("M2-01");
+        => this.InvokeAsync<StateDeltaDto>(
+            "ExecuteCommandByLocator",
+            new { locator },
+            ct);
 
     /// <inheritdoc/>
     public Task<StateDeltaDto> ClickAsync(string nodeId, CancellationToken ct)
@@ -563,7 +614,10 @@ public sealed class PipeSnoopInspectorProxy : ISnoopInspector, IAsyncDisposable,
 
     /// <inheritdoc/>
     public Task<StateDeltaDto> ClickAsync(WpfLocator locator, CancellationToken ct)
-        => throw new NotImplementedException("M2-05");
+        => this.InvokeAsync<StateDeltaDto>(
+            "ClickByLocator",
+            new { locator },
+            ct);
 
     /// <inheritdoc/>
     public Task<StateDeltaDto> ToggleAsync(string nodeId, CancellationToken ct)
@@ -571,7 +625,10 @@ public sealed class PipeSnoopInspectorProxy : ISnoopInspector, IAsyncDisposable,
 
     /// <inheritdoc/>
     public Task<StateDeltaDto> ToggleAsync(WpfLocator locator, CancellationToken ct)
-        => throw new NotImplementedException("M2-06");
+        => this.InvokeAsync<StateDeltaDto>(
+            "ToggleByLocator",
+            new { locator },
+            ct);
 
     /// <inheritdoc/>
     public Task<StateDeltaDto> ExpandCollapseAsync(string nodeId, string action, CancellationToken ct)
@@ -579,7 +636,10 @@ public sealed class PipeSnoopInspectorProxy : ISnoopInspector, IAsyncDisposable,
 
     /// <inheritdoc/>
     public Task<StateDeltaDto> ExpandCollapseAsync(WpfLocator locator, string action, CancellationToken ct)
-        => throw new NotImplementedException("M2-07");
+        => this.InvokeAsync<StateDeltaDto>(
+            "ExpandCollapseByLocator",
+            new { locator, action },
+            ct);
 
     /// <inheritdoc/>
     public Task<BindingResolutionDto> ResolveBindingAsync(string nodeId, string propertyName, CancellationToken ct)
@@ -587,20 +647,32 @@ public sealed class PipeSnoopInspectorProxy : ISnoopInspector, IAsyncDisposable,
 
     /// <inheritdoc/>
     public Task<BindingResolutionDto> ResolveBindingAsync(WpfLocator locator, string propertyName, CancellationToken ct)
-        => throw new NotImplementedException("M2-08");
+        => this.InvokeAsync<BindingResolutionDto>(
+            "ResolveBindingByLocator",
+            new { locator, propertyName },
+            ct);
 
     /// <inheritdoc/>
     public Task<WaitForPropertyResultDto> WaitForPropertyAsync(
         WpfLocator locator, string propertyName, string? expectedValue, int timeoutMs, string presenceExpected, CancellationToken ct)
-        => throw new NotImplementedException("M2-09");
+        => this.InvokeAsync<WaitForPropertyResultDto>(
+            "WaitForProperty",
+            new { locator, propertyName, expectedValue, timeoutMs, presenceExpected },
+            ct);
 
     /// <inheritdoc/>
     public Task<PollChangesResultDto> PollChangesAsync(long sinceVersion, WpfLocator? rootLocator, CancellationToken ct)
-        => throw new NotImplementedException("M2-10");
+        => this.InvokeAsync<PollChangesResultDto>(
+            "PollChanges",
+            new { sinceVersion, rootLocator },
+            ct);
 
     /// <inheritdoc/>
     public Task<PumpUntilIdleResultDto> PumpUntilIdleAsync(int timeoutMs, IReadOnlyList<string>? resources, CancellationToken ct)
-        => throw new NotImplementedException("M2-11");
+        => this.InvokeAsync<PumpUntilIdleResultDto>(
+            "PumpUntilIdle",
+            new { timeoutMs, resources },
+            ct);
 
     // --------------------------------------------------------------------------
     // Inner types

@@ -126,109 +126,109 @@ public sealed class FakeSnoopInspector : ISnoopInspector
         => (this.OnGetBehaviors ?? throw new NotImplementedException("OnGetBehaviors not set"))
             .Invoke(nodeId, ct);
 
-    // ── WpfLocator overloads (M1-06 stubs) ──
+    // ── WpfLocator overloads (M1-06) ──
 
     public Task<VisualTreeResultDto> GetVisualTreeAsync(WpfLocator locator, int maxDepth, string treeType, List<string>? includeProperties, CancellationToken ct)
-        => throw new NotImplementedException("M1-06");
+        => Task.FromResult(new VisualTreeResultDto());
 
     public Task<CursorPage<NodeDto>> GetChildrenAsync(WpfLocator locator, string treeType, string? cursor, int take, CancellationToken ct)
-        => throw new NotImplementedException("M1-06");
+        => Task.FromResult(new CursorPage<NodeDto>());
 
     public Task<List<AncestorDto>> GetAncestorsAsync(WpfLocator locator, int? maxLevels, CancellationToken ct)
-        => throw new NotImplementedException("M1-06");
+        => Task.FromResult(new List<AncestorDto>());
 
     public Task<InspectElementDto> InspectElementAsync(WpfLocator locator, CancellationToken ct)
-        => throw new NotImplementedException("M1-06");
+        => Task.FromResult(new InspectElementDto());
 
     public Task<CursorPage<PropertyDto>> GetPropertiesAsync(WpfLocator locator, string? filter, string? category, bool includeDefaults, string? cursor, int take, CancellationToken ct)
-        => throw new NotImplementedException("M1-06");
+        => Task.FromResult(new CursorPage<PropertyDto>());
 
     public Task<StateDeltaDto> SetPropertyAsync(WpfLocator locator, string propertyName, string value, CancellationToken ct)
-        => throw new NotImplementedException("M1-06");
+        => Task.FromResult(new StateDeltaDto { Success = true });
 
     public Task<BindingInfoDto> GetBindingInfoAsync(WpfLocator locator, string propertyName, CancellationToken ct)
-        => throw new NotImplementedException("M1-06");
+        => Task.FromResult(new BindingInfoDto());
 
     public Task<CursorPage<DiagnosticItemDto>> RunDiagnosticsAsync(WpfLocator locator, List<string>? providers, string? minLevel, string? cursor, int take, CancellationToken ct)
-        => throw new NotImplementedException("M1-06");
+        => Task.FromResult(new CursorPage<DiagnosticItemDto>());
 
     public Task<CursorPage<ResourceDto>> GetResourcesAsync(WpfLocator locator, string? resourceKey, string? cursor, int take, CancellationToken ct)
-        => throw new NotImplementedException("M1-06");
+        => Task.FromResult(new CursorPage<ResourceDto>());
 
     public Task<ScreenshotResultDto> CaptureScreenshotAsync(WpfLocator locator, CancellationToken ct)
-        => throw new NotImplementedException("M1-06");
+        => Task.FromResult(new ScreenshotResultDto());
 
     public Task<List<TriggerDto>> GetTriggersAsync(WpfLocator locator, CancellationToken ct)
-        => throw new NotImplementedException("M1-06");
+        => Task.FromResult(new List<TriggerDto>());
 
     public Task<List<BehaviorDto>> GetBehaviorsAsync(WpfLocator locator, CancellationToken ct)
-        => throw new NotImplementedException("M1-06");
+        => Task.FromResult(new List<BehaviorDto>());
 
     public Task<BindingResolutionDto> ResolveBindingAsync(string nodeId, string propertyName, CancellationToken ct)
-        => throw new NotImplementedException("M2-08");
+        => Task.FromResult(new BindingResolutionDto { Status = "NoBinding" });
 
     public Task<BindingResolutionDto> ResolveBindingAsync(WpfLocator locator, string propertyName, CancellationToken ct)
-        => throw new NotImplementedException("M2-08");
+        => Task.FromResult(new BindingResolutionDto { Status = "NoBinding" });
 
     public Task<StateDeltaDto> SelectItemAsync(string nodeId, string identifier, CancellationToken ct)
         => (this.OnSelectItem ?? throw new NotImplementedException("OnSelectItem not set"))
             .Invoke(nodeId, identifier, ct);
 
     public Task<StateDeltaDto> SelectItemAsync(WpfLocator locator, string identifier, CancellationToken ct)
-        => throw new NotImplementedException("M2-04a");
+        => Task.FromResult(new StateDeltaDto { Success = true });
 
     public Task<StateDeltaDto> SetCheckStateAsync(string nodeId, string state, CancellationToken ct)
         => (this.OnSetCheckState ?? throw new NotImplementedException("OnSetCheckState not set"))
             .Invoke(nodeId, state, ct);
 
     public Task<StateDeltaDto> SetCheckStateAsync(WpfLocator locator, string state, CancellationToken ct)
-        => throw new NotImplementedException("M2-03");
+        => Task.FromResult(new StateDeltaDto { Success = true });
 
     public Task<StateDeltaDto> SetTextValueAsync(string nodeId, string value, CancellationToken ct)
         => (this.OnSetTextValue ?? throw new NotImplementedException("OnSetTextValue not set"))
             .Invoke(nodeId, value, ct);
 
     public Task<StateDeltaDto> SetTextValueAsync(WpfLocator locator, string value, CancellationToken ct)
-        => throw new NotImplementedException("M2-02");
+        => Task.FromResult(new StateDeltaDto { Success = true });
 
     public Task<StateDeltaDto> SetSliderValueAsync(string nodeId, double value, bool normalized, CancellationToken ct)
-        => throw new NotImplementedException("M2-16");
+        => Task.FromResult(new StateDeltaDto { Success = true });
 
     public Task<StateDeltaDto> SetSliderValueAsync(WpfLocator locator, double value, bool normalized, CancellationToken ct)
-        => throw new NotImplementedException("M2-16");
+        => Task.FromResult(new StateDeltaDto { Success = true });
 
     public Task<StateDeltaDto> ExecuteCommandAsync(string nodeId, CancellationToken ct)
         => (this.OnExecuteCommand ?? throw new NotImplementedException("OnExecuteCommand not set"))
             .Invoke(nodeId, ct);
 
     public Task<StateDeltaDto> ExecuteCommandAsync(WpfLocator locator, CancellationToken ct)
-        => throw new NotImplementedException("M2-01");
+        => Task.FromResult(new StateDeltaDto { Success = true });
 
     public Task<StateDeltaDto> ClickAsync(string nodeId, CancellationToken ct)
-        => throw new NotImplementedException("M2-05");
+        => Task.FromResult(new StateDeltaDto { Success = true });
 
     public Task<StateDeltaDto> ClickAsync(WpfLocator locator, CancellationToken ct)
-        => throw new NotImplementedException("M2-05");
+        => Task.FromResult(new StateDeltaDto { Success = true });
 
     public Task<StateDeltaDto> ToggleAsync(string nodeId, CancellationToken ct)
-        => throw new NotImplementedException("M2-06");
+        => Task.FromResult(new StateDeltaDto { Success = true });
 
     public Task<StateDeltaDto> ToggleAsync(WpfLocator locator, CancellationToken ct)
-        => throw new NotImplementedException("M2-06");
+        => Task.FromResult(new StateDeltaDto { Success = true });
 
     public Task<StateDeltaDto> ExpandCollapseAsync(string nodeId, string action, CancellationToken ct)
-        => throw new NotImplementedException("M2-07");
+        => Task.FromResult(new StateDeltaDto { Success = true });
 
     public Task<StateDeltaDto> ExpandCollapseAsync(WpfLocator locator, string action, CancellationToken ct)
-        => throw new NotImplementedException("M2-07");
+        => Task.FromResult(new StateDeltaDto { Success = true });
 
     public Task<WaitForPropertyResultDto> WaitForPropertyAsync(
         WpfLocator locator, string propertyName, string? expectedValue, int timeoutMs, string presenceExpected, CancellationToken ct)
-        => throw new NotImplementedException("M2-09");
+        => Task.FromResult(new WaitForPropertyResultDto { ConditionMet = true });
 
     public Task<PollChangesResultDto> PollChangesAsync(long sinceVersion, WpfLocator? rootLocator, CancellationToken ct)
-        => throw new NotImplementedException("M2-10");
+        => Task.FromResult(new PollChangesResultDto { TreeVersion = sinceVersion, SinceVersion = sinceVersion });
 
     public Task<PumpUntilIdleResultDto> PumpUntilIdleAsync(int timeoutMs, IReadOnlyList<string>? resources, CancellationToken ct)
-        => throw new NotImplementedException("M2-11");
+        => Task.FromResult(new PumpUntilIdleResultDto { IdleReached = true });
 }
