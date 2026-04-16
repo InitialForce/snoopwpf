@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 
@@ -194,6 +195,27 @@ public sealed class TestWpfApp : IDisposable
             Password = "s3cr3t!",
         };
         rootPanel.Children.Add(testPasswordBox);
+
+        // Button with a Command bound (M1-07 hasCommandBinding tests).
+        var commandButton = new Button
+        {
+            Name = "testCommandButton",
+            Content = "With Command",
+            Width = 120,
+            Height = 32,
+            Command = ApplicationCommands.Copy,
+        };
+        rootPanel.Children.Add(commandButton);
+
+        // Button without a Command (M1-07 hasCommandBinding tests — must be false).
+        var noCommandButton = new Button
+        {
+            Name = "testNoCommandButton",
+            Content = "No Command",
+            Width = 120,
+            Height = 32,
+        };
+        rootPanel.Children.Add(noCommandButton);
 
         // VirtualizingStackPanel-backed ListBox with 10 000 items (M1-06 / M2-04b).
         var testBigList = new ListBox

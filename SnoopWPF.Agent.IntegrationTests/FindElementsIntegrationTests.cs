@@ -313,4 +313,60 @@ public sealed class FindElementsIntegrationTests : WpfIntegrationTestBase
                 "FindElementHitDto.Path must not be null.");
         }
     }
+
+    // -------------------------------------------------------------------------
+    // FindElementsAsync — hasCommandBinding (M1-07)
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Verifies that a Button with ApplicationCommands.Copy set has HasCommandBinding=true.
+    /// TestWpfApp creates "testCommandButton" with Command=ApplicationCommands.Copy.
+    /// </summary>
+    [Test]
+    public async Task FindElements_HasCommandBinding_ButtonWithCommand_ReturnsTrue()
+    {
+        var result = await this.Client.Inspector
+            .FindElementsAsync(
+                typeName: null,
+                name: "testCommandButton",
+                rootNodeId: null,
+                conditions: null,
+                treeType: "visual",
+                maxResults: 10,
+                ct: default)
+            .ConfigureAwait(false);
+
+        Assert.That(result.Results, Is.Not.Empty,
+            "testCommandButton must be found in the visual tree.");
+
+        var hit = result.Results.First();
+        Assert.That(hit.HasCommandBinding, Is.True,
+            "testCommandButton has Command=ApplicationCommands.Copy, so HasCommandBinding must be true.");
+    }
+
+    /// <summary>
+    /// Verifies that a Button without a Command has HasCommandBinding=false.
+    /// TestWpfApp creates "testNoCommandButton" with no Command set.
+    /// </summary>
+    [Test]
+    public async Task FindElements_HasCommandBinding_ButtonWithoutCommand_ReturnsFalse()
+    {
+        var result = await this.Client.Inspector
+            .FindElementsAsync(
+                typeName: null,
+                name: "testNoCommandButton",
+                rootNodeId: null,
+                conditions: null,
+                treeType: "visual",
+                maxResults: 10,
+                ct: default)
+            .ConfigureAwait(false);
+
+        Assert.That(result.Results, Is.Not.Empty,
+            "testNoCommandButton must be found in the visual tree.");
+
+        var hit = result.Results.First();
+        Assert.That(hit.HasCommandBinding, Is.False,
+            "testNoCommandButton has no Command set, so HasCommandBinding must be false.");
+    }
 }

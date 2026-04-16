@@ -14,6 +14,9 @@ public sealed class FindElementHitDto
 
     [DataMember(Name = "path")]
     public List<string> Path { get; set; } = new List<string>();
+
+    [DataMember(Name = "hasCommandBinding")]
+    public bool HasCommandBinding { get; init; }
 }
 
 /// <summary>

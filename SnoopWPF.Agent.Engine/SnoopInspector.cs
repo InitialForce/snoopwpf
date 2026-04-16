@@ -9,6 +9,8 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls.Primitives;
+using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Snoop.Data.Tree;
@@ -924,6 +926,7 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
                     {
                         Node = nodeDto,
                         Path = new List<string>(pathSoFar),
+                        HasCommandBinding = HasCommandBinding(current),
                     });
                 }
 
@@ -947,6 +950,30 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
                 Truncated = truncated,
             };
         }, ct);
+    }
+
+    /// <summary>
+    /// Returns true if the element has a Command dependency property with a non-null value
+    /// or an active binding expression on <see cref="ButtonBase.CommandProperty"/>.
+    /// Called only on the Dispatcher thread.
+    /// </summary>
+    private static bool HasCommandBinding(TreeItem item)
+    {
+        if (item.Target is not DependencyObject depObj)
+        {
+            return false;
+        }
+
+        // A set local value (e.g. Command="{Binding ...}" after binding resolves, or literal).
+        var commandValue = depObj.GetValue(ButtonBase.CommandProperty);
+        if (commandValue != null)
+        {
+            return true;
+        }
+
+        // A binding expression that hasn't resolved yet (e.g. in design mode or before DataContext).
+        var bindingExpr = BindingOperations.GetBindingExpression(depObj, ButtonBase.CommandProperty);
+        return bindingExpr != null;
     }
 
     /// <summary>
