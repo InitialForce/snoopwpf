@@ -2,11 +2,11 @@ namespace SnoopWPF.Agent.Engine.Infrastructure;
 
 using System;
 using System.Security;
-using System.Windows.Controls;
 
 /// <summary>
 /// Determines whether a property should be redacted for security reasons.
-/// Pure function — no WPF dependency at runtime except for the PasswordBox type check.
+/// Pure function — no WPF dependency at runtime.
+/// PasswordBox.Password is covered by the "password" keyword in <see cref="SensitiveKeywords"/>.
 /// </summary>
 public static class RedactionFilter
 {
@@ -56,16 +56,10 @@ public static class RedactionFilter
             return true;
         }
 
-        // PasswordBox.Password — special-cased: PasswordBox component with "Password" name
-        if (string.Equals(propertyName, "Password", StringComparison.OrdinalIgnoreCase)
-            && propertyType is not null
-            && (typeof(PasswordBox).IsAssignableFrom(propertyType)
-                || (propertyType.DeclaringType is not null && typeof(PasswordBox).IsAssignableFrom(propertyType.DeclaringType))))
-        {
-            return true;
-        }
-
-        // Contains-match on keyword list (case-insensitive)
+        // Contains-match on keyword list (case-insensitive).
+        // Note: PasswordBox.Password is covered by the "password" keyword below —
+        // propertyType here is the VALUE type (e.g. string), not the declaring type,
+        // so a PasswordBox-specific type check would never fire.
         foreach (var keyword in SensitiveKeywords)
         {
             if (propertyName.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0)

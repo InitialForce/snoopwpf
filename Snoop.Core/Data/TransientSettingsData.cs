@@ -2,6 +2,7 @@
 namespace Snoop.Data;
 
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Security.AccessControl;
 using System.Security.Principal;
@@ -66,6 +67,7 @@ public sealed class TransientSettingsData
         if (sid is null)
         {
             // Cannot determine current user SID — skip DACL hardening rather than crash.
+            Trace.TraceWarning("SnoopWPF.Agent settings file: WindowsIdentity.GetCurrent().User returned null; DACL not applied.");
             return;
         }
 

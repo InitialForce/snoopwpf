@@ -1,6 +1,7 @@
 namespace SnoopWPF.Agent.Remote;
 
 using System;
+using System.Diagnostics;
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
@@ -208,6 +209,7 @@ public sealed class PipeConnection : IDisposable
         if (actualPid < 0)
         {
             // Could not read client PID — log and continue rather than blocking injection.
+            Trace.TraceWarning("SnoopWPF.Agent VerifyClientPid: GetNamedPipeClientProcessId failed, skipping PID verification.");
             return;
         }
 

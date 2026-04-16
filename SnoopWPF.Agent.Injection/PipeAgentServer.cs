@@ -31,7 +31,7 @@ internal sealed class PipeAgentServer : IDisposable
     private readonly SemaphoreSlim writeLock = new SemaphoreSlim(1, 1);
 
     private NamedPipeClientStream? pipeStream;
-    private bool disposed;
+    private volatile bool disposed;
 
     /// <summary>
     /// Dispatch table: method name → handler that takes paramsJson and a ct, returns resultJson.

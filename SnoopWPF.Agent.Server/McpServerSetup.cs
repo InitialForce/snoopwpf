@@ -100,6 +100,10 @@ internal static class McpServerSetup
             PipeTransmissionMode.Byte,
             PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
 
+        // NOTE: NuGet-mode agent accepts a single client per lifetime.
+        // When the client disconnects, the pipe closes and the agent terminates.
+        // To support multiple sessions in the same host process, wrap this in a loop
+        // that re-creates the NamedPipeServerStream on each iteration.
         Trace.TraceInformation("SnoopWPF.Agent pipe server waiting for connection.");
         await pipeServer.WaitForConnectionAsync(ct).ConfigureAwait(false);
 
@@ -194,8 +198,12 @@ internal static class McpServerSetup
 
     // -------------------------------------------------------------------------
     // Minimal framing helpers (4-byte LE length prefix + UTF-8 JSON body).
-    // These mirror FramedJsonTransport in SnoopWPF.Agent.Remote without introducing
-    // a project reference from Server to Remote.
+    // These are used ONLY for the handshake phase (SendFramedJsonAsync /
+    // ReceiveFramedJsonAsync). After the handshake succeeds, StreamServerTransport
+    // takes ownership of the stream and uses the standard MCP JSON-RPC
+    // line-delimited protocol — these helpers are not involved in that phase.
+    // The duplication from FramedJsonTransport (SnoopWPF.Agent.Remote) is intentional
+    // to avoid a cross-project reference from Server to Remote.
     // -------------------------------------------------------------------------
 
     private static async Task SendFramedJsonAsync<T>(Stream stream, T value, CancellationToken ct)
