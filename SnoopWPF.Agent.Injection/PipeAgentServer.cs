@@ -76,7 +76,7 @@ internal sealed class PipeAgentServer : IDisposable
 
     private async Task PerformHandshakeAsync(CancellationToken ct)
     {
-        // Host sends HandshakeChallenge first.
+        // Host sends HandshakeChallenge first (contains nonce, no token).
         var challengeBytes = await JsonFramedSerializer.ReadFrameAsync(this.pipeStream!, ct).ConfigureAwait(false);
         if (challengeBytes == null)
         {
@@ -93,24 +93,35 @@ internal sealed class PipeAgentServer : IDisposable
                 $"Protocol version mismatch: host sent {challenge.ProtocolVersion}, agent supports {ProtocolConstants.ProtocolVersion}.");
         }
 
-        // Constant-time token comparison to prevent timing attacks.
-        if (!ConstantTimeEquals(challenge.SessionToken, this.sessionTokenBytes))
+        if (challenge.Nonce == null || challenge.Nonce.Length != 16)
         {
-            throw new UnauthorizedAccessException("Session token mismatch during handshake.");
+            throw new SnoopException(
+                SnoopErrorCode.ProtocolMismatch,
+                "Handshake challenge contained an invalid nonce.");
         }
 
-        // Send HandshakeResponse.
+        // Compute HMAC proof: HMACSHA256(key=sessionTokenBytes, data=nonce).
+        byte[] proofHmac = ComputeHmacSha256(this.sessionTokenBytes, challenge.Nonce);
+
+        // Send HandshakeResponse with proof (token never transmitted).
         var response = new HandshakeResponse
         {
             ProtocolVersion = ProtocolConstants.ProtocolVersion,
             AgentVersion = GetAgentVersion(),
             TargetRuntime = GetTargetRuntime(),
-            SessionToken = challenge.SessionToken, // echo back
+            ProofHmac = proofHmac,
             Capabilities = new List<string> { "inspection", "mutation", "screenshot", "diagnostics" },
         };
 
         var responseBytes = JsonFramedSerializer.Serialize(response);
         await JsonFramedSerializer.WriteFrameAsync(this.pipeStream!, responseBytes, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Computes HMACSHA256(key, data). Compatible with all target frameworks.</summary>
+    private static byte[] ComputeHmacSha256(byte[] key, byte[] data)
+    {
+        using var hmac = new System.Security.Cryptography.HMACSHA256(key);
+        return hmac.ComputeHash(data);
     }
 
     // -----------------------------------------------------------------
@@ -506,29 +517,6 @@ internal sealed class PipeAgentServer : IDisposable
 #else
         return $".NET Framework {Environment.Version}";
 #endif
-    }
-
-    /// <summary>Constant-time comparison of a string against a byte[] token to mitigate timing attacks.</summary>
-    private static bool ConstantTimeEquals(string? candidate, byte[] tokenBytes)
-    {
-        if (candidate == null)
-        {
-            return false;
-        }
-
-        var candidateBytes = Encoding.UTF8.GetBytes(candidate);
-        if (candidateBytes.Length != tokenBytes.Length)
-        {
-            return false;
-        }
-
-        var diff = 0;
-        for (var i = 0; i < tokenBytes.Length; i++)
-        {
-            diff |= candidateBytes[i] ^ tokenBytes[i];
-        }
-
-        return diff == 0;
     }
 
     public void Dispose()

@@ -126,39 +126,40 @@ public sealed class StartBrokeredTests
     };
 
     /// <summary>
-    /// Client-side handshake: reads the challenge, echoes the token in the response.
+    /// Client-side handshake: reads the challenge, computes HMAC proof, sends response.
     /// Returns true on success; false on any error.
     /// </summary>
     private static async Task<bool> ClientPerformHandshakeAsync(
         Stream clientStream,
-        string expectedToken,
+        string sessionToken,
         CancellationToken ct)
     {
-        // Read challenge (server speaks first).
+        // Read challenge (server speaks first — contains nonce, no token).
         var challenge = await ReadFramedJsonAsync<HandshakeChallenge>(clientStream, ct)
             .ConfigureAwait(false);
-        if (challenge is null)
+        if (challenge is null || challenge.Nonce is null || challenge.Nonce.Length != 16)
         {
             return false;
         }
 
-        // Validate token and echo it back.
-        bool tokenOk = string.Equals(challenge.SessionToken, expectedToken, StringComparison.Ordinal);
+        // Compute HMAC proof: HMACSHA256(key=sessionTokenBytes, data=nonce).
+        byte[] sessionTokenBytes = Encoding.UTF8.GetBytes(sessionToken);
+        byte[] proofHmac = HMACSHA256.HashData(sessionTokenBytes, challenge.Nonce);
 
         var response = new HandshakeResponse
         {
             ProtocolVersion = challenge.ProtocolVersion,
             AgentVersion = "test-1.0",
             TargetRuntime = "net8.0",
-            SessionToken = tokenOk ? challenge.SessionToken : "wrong-token",
+            ProofHmac = proofHmac,
         };
 
         await WriteFramedJsonAsync(clientStream, response, ct).ConfigureAwait(false);
-        return tokenOk;
+        return true;
     }
 
     /// <summary>
-    /// Client-side bad-token handshake: deliberately sends wrong token to trigger rejection.
+    /// Client-side bad-token handshake: deliberately sends wrong HMAC proof to trigger rejection.
     /// </summary>
     private static async Task ClientSendBadTokenAsync(Stream clientStream, CancellationToken ct)
     {
@@ -169,12 +170,13 @@ public sealed class StartBrokeredTests
             return;
         }
 
+        // Send a zeroed-out HMAC proof (wrong token simulation).
         var response = new HandshakeResponse
         {
             ProtocolVersion = challenge.ProtocolVersion,
             AgentVersion = "attacker-1.0",
             TargetRuntime = "net8.0",
-            SessionToken = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // wrong
+            ProofHmac = new byte[32], // all zeros — definitely wrong
         };
 
         await WriteFramedJsonAsync(clientStream, response, ct).ConfigureAwait(false);
@@ -284,22 +286,24 @@ public sealed class StartBrokeredTests
     // -------------------------------------------------------------------------
 
     /// <summary>
-    /// Mock-broker round-trip: the server performs the handshake, the client echoes the
-    /// correct token, and both sides complete successfully.
+    /// Mock-broker round-trip: the server performs the handshake, the client computes
+    /// the correct HMAC proof, and both sides complete successfully.
     /// </summary>
     [Test]
     public async Task StartBrokered_Handshake_ValidToken_Succeeds()
     {
         await using var pipes = new InProcessPipePair();
         var sessionToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        byte[] sessionTokenBytes = Encoding.UTF8.GetBytes(sessionToken);
 
         // Server-side handshake task (mirrors McpServerSetup.PerformPipeHandshakeAsync).
         var serverTask = Task.Run(async () =>
         {
-            // Server sends challenge.
+            // Server sends challenge (nonce, no token).
+            byte[] nonce = RandomNumberGenerator.GetBytes(16);
             var challenge = new HandshakeChallenge
             {
-                SessionToken = sessionToken,
+                Nonce = nonce,
                 ProtocolVersion = ProtocolConstants.ProtocolVersion,
             };
             await WriteFramedJsonAsync(pipes.ServerStream, challenge, CancellationToken.None)
@@ -309,7 +313,7 @@ public sealed class StartBrokeredTests
             var response = await ReadFramedJsonAsync<HandshakeResponse>(
                 pipes.ServerStream, CancellationToken.None).ConfigureAwait(false);
 
-            if (response is null)
+            if (response is null || response.ProofHmac is null)
             {
                 return false;
             }
@@ -320,11 +324,10 @@ public sealed class StartBrokeredTests
                 return false;
             }
 
-            // Constant-time token comparison.
-            byte[] expected = Encoding.UTF8.GetBytes(sessionToken);
-            byte[] actual = Encoding.UTF8.GetBytes(response.SessionToken ?? string.Empty);
-            return expected.Length == actual.Length
-                && CryptographicOperations.FixedTimeEquals(expected, actual);
+            // Verify HMAC proof using constant-time comparison.
+            byte[] expectedHmac = HMACSHA256.HashData(sessionTokenBytes, nonce);
+            return response.ProofHmac.Length == expectedHmac.Length
+                && CryptographicOperations.FixedTimeEquals(response.ProofHmac, expectedHmac);
         });
 
         // Client-side handshake task.
@@ -332,25 +335,27 @@ public sealed class StartBrokeredTests
 
         var results = await Task.WhenAll(serverTask, clientTask).ConfigureAwait(false);
 
-        Assert.That(results[0], Is.True, "Server-side handshake must succeed with correct token.");
+        Assert.That(results[0], Is.True, "Server-side handshake must succeed with correct HMAC proof.");
         Assert.That(results[1], Is.True, "Client-side handshake must succeed with correct token.");
     }
 
     /// <summary>
-    /// Negative: client sends a wrong token — server handshake returns false.
-    /// Validates that constant-time comparison rejects mismatched tokens.
+    /// Negative: client sends a wrong HMAC proof — server handshake returns false.
+    /// Validates that constant-time comparison rejects mismatched HMAC proofs.
     /// </summary>
     [Test]
     public async Task StartBrokered_Handshake_InvalidToken_IsRejected()
     {
         await using var pipes = new InProcessPipePair();
         var sessionToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        byte[] sessionTokenBytes = Encoding.UTF8.GetBytes(sessionToken);
 
         var serverTask = Task.Run(async () =>
         {
+            byte[] nonce = RandomNumberGenerator.GetBytes(16);
             var challenge = new HandshakeChallenge
             {
-                SessionToken = sessionToken,
+                Nonce = nonce,
                 ProtocolVersion = ProtocolConstants.ProtocolVersion,
             };
             await WriteFramedJsonAsync(pipes.ServerStream, challenge, CancellationToken.None)
@@ -359,7 +364,7 @@ public sealed class StartBrokeredTests
             var response = await ReadFramedJsonAsync<HandshakeResponse>(
                 pipes.ServerStream, CancellationToken.None).ConfigureAwait(false);
 
-            if (response is null)
+            if (response is null || response.ProofHmac is null)
             {
                 return false;
             }
@@ -369,25 +374,24 @@ public sealed class StartBrokeredTests
                 return false;
             }
 
-            byte[] expected = Encoding.UTF8.GetBytes(sessionToken);
-            byte[] actual = Encoding.UTF8.GetBytes(response.SessionToken ?? string.Empty);
-            return expected.Length == actual.Length
-                && CryptographicOperations.FixedTimeEquals(expected, actual);
+            byte[] expectedHmac = HMACSHA256.HashData(sessionTokenBytes, nonce);
+            return response.ProofHmac.Length == expectedHmac.Length
+                && CryptographicOperations.FixedTimeEquals(response.ProofHmac, expectedHmac);
         });
 
-        // Client deliberately sends wrong token.
+        // Client deliberately sends wrong HMAC proof.
         var clientTask = ClientSendBadTokenAsync(pipes.ClientStream, CancellationToken.None);
 
         bool serverResult = await serverTask.ConfigureAwait(false);
         await clientTask.ConfigureAwait(false);
 
         Assert.That(serverResult, Is.False,
-            "Server must reject a client that presents an incorrect session token.");
+            "Server must reject a client that presents an incorrect HMAC proof.");
     }
 
     /// <summary>
-    /// Validates <see cref="FramedJsonTransport"/> round-trip with the handshake types used
-    /// in brokered mode (same wire format as in CoLocated pipe mode).
+    /// Validates <see cref="FramedJsonTransport"/> round-trip with the nonce+HMAC handshake types
+    /// used in brokered mode (same wire format as in CoLocated pipe mode).
     /// </summary>
     [Test]
     public async Task StartBrokered_FramedTransport_HandshakeTypesRoundTrip()
@@ -396,11 +400,13 @@ public sealed class StartBrokeredTests
         var serverTransport = new FramedJsonTransport(pipes.ServerStream);
         var clientTransport = new FramedJsonTransport(pipes.ClientStream);
 
-        var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        var sessionToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        byte[] sessionTokenBytes = Encoding.UTF8.GetBytes(sessionToken);
+        byte[] nonce = RandomNumberGenerator.GetBytes(16);
 
         var challenge = new HandshakeChallenge
         {
-            SessionToken = token,
+            Nonce = nonce,
             ProtocolVersion = ProtocolConstants.ProtocolVersion,
         };
         await serverTransport.SendAsync(challenge, CancellationToken.None).ConfigureAwait(false);
@@ -409,15 +415,17 @@ public sealed class StartBrokeredTests
             .ReceiveAsync<HandshakeChallenge>(CancellationToken.None).ConfigureAwait(false);
 
         Assert.That(receivedChallenge, Is.Not.Null);
-        Assert.That(receivedChallenge!.SessionToken, Is.EqualTo(token));
+        Assert.That(receivedChallenge!.Nonce, Is.Not.Null);
+        Assert.That(receivedChallenge.Nonce.Length, Is.EqualTo(16));
         Assert.That(receivedChallenge.ProtocolVersion, Is.EqualTo(ProtocolConstants.ProtocolVersion));
 
+        byte[] proofHmac = HMACSHA256.HashData(sessionTokenBytes, receivedChallenge.Nonce);
         var response = new HandshakeResponse
         {
             ProtocolVersion = ProtocolConstants.ProtocolVersion,
             AgentVersion = "1.0.0",
             TargetRuntime = "net8.0",
-            SessionToken = receivedChallenge.SessionToken,
+            ProofHmac = proofHmac,
         };
         await clientTransport.SendAsync(response, CancellationToken.None).ConfigureAwait(false);
 
@@ -425,8 +433,15 @@ public sealed class StartBrokeredTests
             .ReceiveAsync<HandshakeResponse>(CancellationToken.None).ConfigureAwait(false);
 
         Assert.That(receivedResponse, Is.Not.Null);
-        Assert.That(receivedResponse!.SessionToken, Is.EqualTo(token));
+        Assert.That(receivedResponse!.ProofHmac, Is.Not.Null);
+        Assert.That(receivedResponse.ProofHmac.Length, Is.EqualTo(32));
         Assert.That(receivedResponse.ProtocolVersion, Is.EqualTo(ProtocolConstants.ProtocolVersion));
+
+        byte[] expectedHmac = HMACSHA256.HashData(sessionTokenBytes, nonce);
+        Assert.That(
+            CryptographicOperations.FixedTimeEquals(receivedResponse.ProofHmac, expectedHmac),
+            Is.True,
+            "Round-tripped HMAC proof must match expected value.");
     }
 
     // -------------------------------------------------------------------------

@@ -112,13 +112,13 @@ internal static class McpServerSetup
         await pipeServer.WaitForConnectionAsync(ct).ConfigureAwait(false);
 
         // Perform session-token handshake before handing the stream to the MCP layer.
-        // Server-speaks-first: send HandshakeChallenge, then verify the echoed response.
+        // Server-speaks-first: send HandshakeChallenge (nonce), then verify HMAC proof.
         bool handshakeOk = await PerformPipeHandshakeAsync(pipeServer, sessionToken, ct)
             .ConfigureAwait(false);
 
         if (!handshakeOk)
         {
-            // Handshake failed (bad token or timeout). Close this connection and stop.
+            // Handshake failed (bad proof or timeout). Close this connection and stop.
             // The warning is logged without any secret material.
             Trace.TraceWarning("SnoopWPF.Agent pipe handshake failed. Connection rejected.");
             return;
@@ -130,25 +130,30 @@ internal static class McpServerSetup
     }
 
     /// <summary>
-    /// Performs the server-side named-pipe handshake.
+    /// Performs the server-side named-pipe handshake using a nonce+HMAC challenge/response.
     /// <list type="number">
-    ///   <item>Sends a <see cref="HandshakeChallenge"/> containing the session token and protocol version.</item>
+    ///   <item>Generates a fresh 16-byte random nonce.</item>
+    ///   <item>Sends a <see cref="HandshakeChallenge"/> containing the nonce and protocol version (no token).</item>
     ///   <item>Reads a <see cref="HandshakeResponse"/> with a 5-second timeout.</item>
-    ///   <item>Verifies the echoed session token via constant-time comparison and checks protocol version.</item>
+    ///   <item>Verifies the HMAC proof via <see cref="CryptographicOperations.FixedTimeEquals"/> and checks protocol version.</item>
     /// </list>
     /// Returns <see langword="true"/> on success, <see langword="false"/> on any mismatch or timeout.
+    /// The session token is never transmitted over the pipe in either direction.
     /// </summary>
-    private static async Task<bool> PerformPipeHandshakeAsync(
+    internal static async Task<bool> PerformPipeHandshakeAsync(
         Stream pipeStream,
         string sessionToken,
         CancellationToken ct)
     {
         try
         {
-            // Send challenge.
+            // Generate a fresh nonce for this connection; never reuse.
+            byte[] nonce = RandomNumberGenerator.GetBytes(16);
+
+            // Send challenge — nonce only, token stays server-side.
             var challenge = new HandshakeChallenge
             {
-                SessionToken = sessionToken,
+                Nonce = nonce,
                 ProtocolVersion = ProtocolConstants.ProtocolVersion,
             };
             await SendFramedJsonAsync(pipeStream, challenge, ct).ConfigureAwait(false);
@@ -184,10 +189,16 @@ internal static class McpServerSetup
                 return false;
             }
 
-            // Verify the echoed session token using constant-time comparison.
-            if (!ConstantTimeTokenEquals(response.SessionToken, sessionToken))
+            // Compute expected HMAC: HMACSHA256(key=sessionTokenBytes, data=nonce).
+            byte[] sessionTokenBytes = Encoding.UTF8.GetBytes(sessionToken);
+            byte[] expectedHmac = HMACSHA256.HashData(sessionTokenBytes, nonce);
+
+            // Constant-time comparison to prevent timing oracle attacks.
+            if (response.ProofHmac is null ||
+                response.ProofHmac.Length != expectedHmac.Length ||
+                !CryptographicOperations.FixedTimeEquals(response.ProofHmac, expectedHmac))
             {
-                Trace.TraceWarning("SnoopWPF.Agent pipe handshake: session token mismatch.");
+                Trace.TraceWarning("SnoopWPF.Agent pipe handshake: HMAC proof mismatch.");
                 return false;
             }
 
@@ -263,30 +274,6 @@ internal static class McpServerSetup
 
     // -------------------------------------------------------------------------
 
-    /// <summary>
-    /// Constant-time string comparison using <see cref="CryptographicOperations.FixedTimeEquals"/>
-    /// to prevent timing-oracle attacks on the session token.
-    /// Returns false if either argument is null or lengths differ.
-    /// </summary>
-    private static bool ConstantTimeTokenEquals(string? a, string? b)
-    {
-        if (a is null || b is null)
-        {
-            return false;
-        }
-
-        byte[] aBytes = Encoding.UTF8.GetBytes(a);
-        byte[] bBytes = Encoding.UTF8.GetBytes(b);
-
-        // Length is not secret — differing lengths are an immediate mismatch.
-        if (aBytes.Length != bBytes.Length)
-        {
-            return false;
-        }
-
-        return CryptographicOperations.FixedTimeEquals(aBytes, bBytes);
-    }
-
     // -------------------------------------------------------------------------
     // Brokered-mode entry point (reconnect loop)
     // -------------------------------------------------------------------------
@@ -297,6 +284,8 @@ internal static class McpServerSetup
     /// performs the <see cref="PerformPipeHandshakeAsync"/> handshake, runs the MCP server
     /// until the client disconnects, then disposes the stream and recreates it for the next
     /// connection. Loops until <paramref name="ct"/> is cancelled.
+    /// After a failed handshake a 250 ms backoff delay is applied before accepting a new
+    /// connection, mitigating kernel pipe-handle exhaustion from tight-loop bad-token attacks.
     /// </summary>
     internal static async Task RunBrokeredPipeAsync(
         ISnoopInspector inspector,
@@ -331,8 +320,7 @@ internal static class McpServerSetup
 
             try
             {
-                Trace.TraceInformation(
-                    "SnoopWPF.Agent (Brokered) waiting for connection on pipe '{0}'.", pipeName);
+                Trace.TraceInformation("SnoopWPF.Agent (Brokered) waiting for connection.");
 
                 try
                 {
@@ -351,6 +339,17 @@ internal static class McpServerSetup
                 {
                     Trace.TraceWarning(
                         "SnoopWPF.Agent (Brokered) handshake failed. Connection rejected; waiting for next client.");
+                    // Backoff before re-accepting to prevent kernel pipe-handle exhaustion
+                    // from hostile clients hammering the pipe with bad tokens.
+                    try
+                    {
+                        await Task.Delay(TimeSpan.FromMilliseconds(250), ct).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        return;
+                    }
+
                     // Dispose and loop to accept a new connection.
                     continue;
                 }

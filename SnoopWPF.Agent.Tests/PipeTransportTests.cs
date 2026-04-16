@@ -326,33 +326,46 @@ public sealed class PipeTransportTests
         var hostTransport = new FramedJsonTransport(pipes.ServerStream);
         var agentTransport = new FramedJsonTransport(pipes.ClientStream);
 
-        // Host sends challenge.
+        const string sessionToken = "tok-abc-123";
+        byte[] sessionTokenBytes = System.Text.Encoding.UTF8.GetBytes(sessionToken);
+
+        // Host sends challenge (nonce only — no token).
+        byte[] nonce = System.Security.Cryptography.RandomNumberGenerator.GetBytes(16);
         var challenge = new HandshakeChallenge
         {
-            SessionToken = "tok-abc-123",
+            Nonce = nonce,
             ProtocolVersion = ProtocolConstants.ProtocolVersion,
         };
         await hostTransport.SendAsync(challenge, CancellationToken.None);
 
-        // Agent reads challenge and sends response.
+        // Agent reads challenge, computes HMAC proof, sends response.
         var receivedChallenge = await agentTransport.ReceiveAsync<HandshakeChallenge>(CancellationToken.None);
-        Assert.That(receivedChallenge!.SessionToken, Is.EqualTo("tok-abc-123"));
+        Assert.That(receivedChallenge!.Nonce, Is.Not.Null);
+        Assert.That(receivedChallenge.Nonce.Length, Is.EqualTo(16));
         Assert.That(receivedChallenge.ProtocolVersion, Is.EqualTo(ProtocolConstants.ProtocolVersion));
 
+        byte[] proofHmac = System.Security.Cryptography.HMACSHA256.HashData(sessionTokenBytes, receivedChallenge.Nonce);
         var response = new HandshakeResponse
         {
             ProtocolVersion = ProtocolConstants.ProtocolVersion,
             AgentVersion = "1.0.0",
             TargetRuntime = "net8.0",
-            SessionToken = receivedChallenge.SessionToken, // echo back
+            ProofHmac = proofHmac,
         };
         await agentTransport.SendAsync(response, CancellationToken.None);
 
-        // Host reads response.
+        // Host reads response and verifies HMAC.
         var receivedResponse = await hostTransport.ReceiveAsync<HandshakeResponse>(CancellationToken.None);
         Assert.That(receivedResponse!.ProtocolVersion, Is.EqualTo(ProtocolConstants.ProtocolVersion));
-        Assert.That(receivedResponse.SessionToken, Is.EqualTo("tok-abc-123"));
+        Assert.That(receivedResponse.ProofHmac, Is.Not.Null);
+        Assert.That(receivedResponse.ProofHmac.Length, Is.EqualTo(32));
         Assert.That(receivedResponse.AgentVersion, Is.EqualTo("1.0.0"));
+
+        byte[] expectedHmac = System.Security.Cryptography.HMACSHA256.HashData(sessionTokenBytes, nonce);
+        Assert.That(
+            System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(receivedResponse.ProofHmac, expectedHmac),
+            Is.True,
+            "HMAC proof should match expected value.");
     }
 
     // -------------------------------------------------------------------------

@@ -113,7 +113,8 @@ public sealed class FramingTests
     [Test]
     public async Task RawInjectionSideFrame_FramedJsonTransportCanRead_HandshakeChallenge()
     {
-        string json = "{\"sessionToken\":\"tok-xyz\",\"protocolVersion\":1}";
+        // nonce is a base64-encoded 16-byte value in JSON
+        string json = "{\"nonce\":\"AAAAAAAAAAAAAAAAAAAAAA==\",\"protocolVersion\":2}";
         byte[] rawFrame = BuildRawFrame(json);
 
         using var ms = new MemoryStream(rawFrame);
@@ -122,16 +123,18 @@ public sealed class FramingTests
         var result = await transport.ReceiveAsync<HandshakeChallenge>(CancellationToken.None);
 
         Assert.That(result, Is.Not.Null);
-        Assert.That(result!.SessionToken, Is.EqualTo("tok-xyz"));
-        Assert.That(result.ProtocolVersion, Is.EqualTo(1));
+        Assert.That(result!.Nonce, Is.Not.Null);
+        Assert.That(result.Nonce.Length, Is.EqualTo(16));
+        Assert.That(result.ProtocolVersion, Is.EqualTo(2));
     }
 
     [Test]
     public async Task RawInjectionSideFrame_FramedJsonTransportCanRead_HandshakeResponse()
     {
+        // proofHmac is a base64-encoded 32-byte HMAC
         string json =
-            "{\"protocolVersion\":1,\"agentVersion\":\"0.1.0\",\"targetRuntime\":\".NET 8.0\"," +
-            "\"sessionToken\":\"tok-xyz\",\"dispatchers\":[],\"capabilities\":[\"inspection\"]}";
+            "{\"protocolVersion\":2,\"agentVersion\":\"0.1.0\",\"targetRuntime\":\".NET 8.0\"," +
+            "\"proofHmac\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\",\"dispatchers\":[],\"capabilities\":[\"inspection\"]}";
         byte[] rawFrame = BuildRawFrame(json);
 
         using var ms = new MemoryStream(rawFrame);
@@ -140,8 +143,9 @@ public sealed class FramingTests
         var result = await transport.ReceiveAsync<HandshakeResponse>(CancellationToken.None);
 
         Assert.That(result, Is.Not.Null);
-        Assert.That(result!.ProtocolVersion, Is.EqualTo(1));
-        Assert.That(result.SessionToken, Is.EqualTo("tok-xyz"));
+        Assert.That(result!.ProtocolVersion, Is.EqualTo(2));
+        Assert.That(result.ProofHmac, Is.Not.Null);
+        Assert.That(result.ProofHmac.Length, Is.EqualTo(32));
         Assert.That(result.Capabilities, Does.Contain("inspection"));
     }
 
@@ -247,10 +251,11 @@ public sealed class FramingTests
         using var ms = new MemoryStream();
         var transport = new FramedJsonTransport(ms);
 
+        byte[] nonce = new byte[16];
         var challenge = new HandshakeChallenge
         {
-            SessionToken = "abc",
-            ProtocolVersion = 1,
+            Nonce = nonce,
+            ProtocolVersion = 2,
         };
         await transport.SendAsync(challenge, CancellationToken.None);
 
@@ -258,24 +263,26 @@ public sealed class FramingTests
         var (_, json) = ReadRawFrame(written);
 
         // Properties must be camelCase on the wire.
-        Assert.That(json, Does.Contain("\"sessionToken\""), "SessionToken must be camelCase");
+        Assert.That(json, Does.Contain("\"nonce\""), "Nonce must be camelCase");
         Assert.That(json, Does.Contain("\"protocolVersion\""), "ProtocolVersion must be camelCase");
-        Assert.That(json, Does.Not.Contain("\"SessionToken\""), "PascalCase must not appear");
+        Assert.That(json, Does.Not.Contain("\"Nonce\""), "PascalCase must not appear");
     }
 
     [Test]
     public async Task CamelCaseNaming_RawFrame_CanBeReadByCamelCaseAwareTransport()
     {
         // camelCase property names (as injection DCJS writes on net462, STJ on net6+)
-        string json = "{\"sessionToken\":\"mytoken\",\"protocolVersion\":1}";
+        // nonce encoded as base64 in JSON
+        string json = "{\"nonce\":\"AAAAAAAAAAAAAAAAAAAAAA==\",\"protocolVersion\":2}";
         byte[] rawFrame = BuildRawFrame(json);
 
         using var ms = new MemoryStream(rawFrame);
         var transport = new FramedJsonTransport(ms);
         var result = await transport.ReceiveAsync<HandshakeChallenge>(CancellationToken.None);
 
-        Assert.That(result!.SessionToken, Is.EqualTo("mytoken"));
-        Assert.That(result.ProtocolVersion, Is.EqualTo(1));
+        Assert.That(result!.Nonce, Is.Not.Null);
+        Assert.That(result.Nonce.Length, Is.EqualTo(16));
+        Assert.That(result.ProtocolVersion, Is.EqualTo(2));
     }
 
     // -----------------------------------------------------------------------

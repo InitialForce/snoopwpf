@@ -1,7 +1,9 @@
 namespace SnoopWPF.Agent.InjectionTests;
 
 using System;
+using System.Collections.Generic;
 using System.IO.Pipes;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -15,7 +17,8 @@ using SnoopWPF.Agent.Remote;
 /// and a fake injection-side server implemented using <see cref="FramedJsonTransport"/>.
 ///
 /// The "fake injection side" mirrors what PipeAgentServer.PerformHandshakeAsync does:
-/// reads HandshakeChallenge, validates token/version, sends HandshakeResponse.
+/// reads HandshakeChallenge (nonce), computes HMAC proof, sends HandshakeResponse.
+/// The session token is never transmitted over the pipe.
 /// </summary>
 [TestFixture]
 public sealed class HandshakeTests
@@ -27,30 +30,12 @@ public sealed class HandshakeTests
     private static string UniquePipeName() => $"SnpHs_{Guid.NewGuid():N}";
 
     /// <summary>
-    /// Creates a named-pipe server+client pair already connected.
-    /// Returns (serverStream for host side, clientStream for injection side).
+    /// Computes HMACSHA256(key=sessionTokenBytes, data=nonce). Compatible helper.
     /// </summary>
-    private static async Task<(NamedPipeServerStream Server, NamedPipeClientStream Client)> CreateConnectedPairAsync(
-        string name)
+    private static byte[] ComputeHmacProof(string sessionToken, byte[] nonce)
     {
-        var server = new NamedPipeServerStream(
-            name,
-            PipeDirection.InOut,
-            maxNumberOfServerInstances: 1,
-            PipeTransmissionMode.Byte,
-            PipeOptions.Asynchronous);
-
-        var client = new NamedPipeClientStream(
-            ".",
-            name,
-            PipeDirection.InOut,
-            PipeOptions.Asynchronous);
-
-        var serverConnectTask = server.WaitForConnectionAsync();
-        await client.ConnectAsync(5000).ConfigureAwait(false);
-        await serverConnectTask.ConfigureAwait(false);
-
-        return (server, client);
+        byte[] keyBytes = Encoding.UTF8.GetBytes(sessionToken);
+        return HMACSHA256.HashData(keyBytes, nonce);
     }
 
     // -----------------------------------------------------------------------
@@ -73,20 +58,22 @@ public sealed class HandshakeTests
 
             var transport = new FramedJsonTransport(clientPipe);
 
-            // Read challenge from host.
+            // Read challenge from host (contains nonce, no token).
             var challenge = await transport.ReceiveAsync<HandshakeChallenge>(CancellationToken.None).ConfigureAwait(false);
             Assert.That(challenge, Is.Not.Null, "Fake agent: challenge must not be null");
-            Assert.That(challenge!.SessionToken, Is.EqualTo(sessionToken));
+            Assert.That(challenge!.Nonce, Is.Not.Null, "Challenge must contain a nonce");
+            Assert.That(challenge.Nonce.Length, Is.EqualTo(16), "Nonce must be 16 bytes");
             Assert.That(challenge.ProtocolVersion, Is.EqualTo(ProtocolConstants.ProtocolVersion));
 
-            // Echo token back in response.
+            // Compute HMAC proof and send response.
+            byte[] proofHmac = ComputeHmacProof(sessionToken, challenge.Nonce);
             var response = new HandshakeResponse
             {
                 ProtocolVersion = ProtocolConstants.ProtocolVersion,
                 AgentVersion = "0.0.1",
                 TargetRuntime = ".NET 8.0",
-                SessionToken = challenge.SessionToken,
-                Capabilities = new System.Collections.Generic.List<string> { "inspection" },
+                ProofHmac = proofHmac,
+                Capabilities = new List<string> { "inspection" },
             };
             await transport.SendAsync(response, CancellationToken.None).ConfigureAwait(false);
 
@@ -102,14 +89,13 @@ public sealed class HandshakeTests
         // Verify the host recorded the handshake response.
         Assert.That(pipeConn.RemoteHandshake, Is.Not.Null);
         Assert.That(pipeConn.RemoteHandshake!.ProtocolVersion, Is.EqualTo(ProtocolConstants.ProtocolVersion));
-        Assert.That(pipeConn.RemoteHandshake.SessionToken, Is.EqualTo(sessionToken));
         Assert.That(pipeConn.RemoteHandshake.Capabilities, Does.Contain("inspection"));
 
         await fakeAgentTask.ConfigureAwait(false);
     }
 
     // -----------------------------------------------------------------------
-    // Wrong token echoed back → host rejects
+    // Wrong HMAC proof from agent → host rejects
     // -----------------------------------------------------------------------
 
     [Test]
@@ -126,13 +112,13 @@ public sealed class HandshakeTests
 
             var challenge = await transport.ReceiveAsync<HandshakeChallenge>(CancellationToken.None).ConfigureAwait(false);
 
-            // Return a WRONG token — simulates a spoofed or wrong process connection.
+            // Return a wrong HMAC proof — simulates a spoofed or wrong process connection.
             var response = new HandshakeResponse
             {
                 ProtocolVersion = ProtocolConstants.ProtocolVersion,
                 AgentVersion = "0.0.1",
                 TargetRuntime = ".NET 8.0",
-                SessionToken = "wrong-token",
+                ProofHmac = new byte[32], // all zeros — definitely wrong
             };
             await transport.SendAsync(response, CancellationToken.None).ConfigureAwait(false);
 
@@ -148,7 +134,7 @@ public sealed class HandshakeTests
         });
 
         Assert.That(ex!.Code, Is.EqualTo(SnoopErrorCode.ProtocolMismatch));
-        Assert.That(ex.Message, Does.Contain("session token").IgnoreCase);
+        Assert.That(ex.Message, Does.Contain("HMAC").IgnoreCase);
 
         await fakeAgentTask.ConfigureAwait(false);
     }
@@ -172,12 +158,15 @@ public sealed class HandshakeTests
             var challenge = await transport.ReceiveAsync<HandshakeChallenge>(CancellationToken.None).ConfigureAwait(false);
 
             // Return a mismatched protocol version.
+            byte[] proofHmac = challenge is not null
+                ? ComputeHmacProof(sessionToken, challenge.Nonce)
+                : new byte[32];
             var response = new HandshakeResponse
             {
                 ProtocolVersion = 9999, // Wrong version
                 AgentVersion = "0.0.1",
                 TargetRuntime = ".NET 8.0",
-                SessionToken = challenge!.SessionToken, // Correct token
+                ProofHmac = proofHmac,
             };
             await transport.SendAsync(response, CancellationToken.None).ConfigureAwait(false);
 
@@ -300,12 +289,15 @@ public sealed class HandshakeTests
 
             receivedChallenge = await transport.ReceiveAsync<HandshakeChallenge>(CancellationToken.None).ConfigureAwait(false);
 
+            byte[] proofHmac = receivedChallenge is not null
+                ? ComputeHmacProof(sessionToken, receivedChallenge.Nonce)
+                : new byte[32];
             var response = new HandshakeResponse
             {
                 ProtocolVersion = ProtocolConstants.ProtocolVersion,
                 AgentVersion = "1.0.0",
                 TargetRuntime = ".NET 8.0",
-                SessionToken = receivedChallenge!.SessionToken,
+                ProofHmac = proofHmac,
             };
             await transport.SendAsync(response, CancellationToken.None).ConfigureAwait(false);
 
@@ -319,7 +311,8 @@ public sealed class HandshakeTests
         await fakeAgentTask.ConfigureAwait(false);
 
         Assert.That(receivedChallenge, Is.Not.Null);
-        Assert.That(receivedChallenge!.SessionToken, Is.EqualTo(sessionToken));
+        Assert.That(receivedChallenge!.Nonce, Is.Not.Null);
+        Assert.That(receivedChallenge.Nonce.Length, Is.EqualTo(16), "Challenge nonce must be 16 bytes");
         Assert.That(receivedChallenge.ProtocolVersion, Is.EqualTo(ProtocolConstants.ProtocolVersion));
     }
 }

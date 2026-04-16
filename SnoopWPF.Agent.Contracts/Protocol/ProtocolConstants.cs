@@ -9,7 +9,8 @@ public static class ProtocolConstants
     public const int MaxFrameSize = 10_485_760;
 
     /// <summary>Current protocol version. Both sides must agree.</summary>
-    public const int ProtocolVersion = 1;
+    /// <remarks>Bumped to 2 in FX-C3: handshake now uses nonce+HMAC instead of plaintext token echo.</remarks>
+    public const int ProtocolVersion = 2;
 
     /// <summary>Maximum time in milliseconds the host waits for the agent handshake response.</summary>
     public const int HandshakeTimeoutMs = 5_000;

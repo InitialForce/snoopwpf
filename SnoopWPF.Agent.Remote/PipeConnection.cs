@@ -15,9 +15,10 @@ using SnoopWPF.Agent.Contracts.Protocol;
 /// <summary>
 /// Wraps a <see cref="NamedPipeServerStream"/> on the host side.
 /// The host creates this stream; the injected agent connects as a client.
-/// Performs the initial handshake: host sends <see cref="HandshakeChallenge"/>,
-/// agent replies with <see cref="HandshakeResponse"/>.
+/// Performs the initial handshake: host sends <see cref="HandshakeChallenge"/> (nonce),
+/// agent replies with <see cref="HandshakeResponse"/> (HMAC proof).
 /// Validates protocol version and (on Windows) verifies the client PID.
+/// The session token is never transmitted over the pipe in either direction.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class PipeConnection : IDisposable
@@ -33,7 +34,7 @@ public sealed class PipeConnection : IDisposable
     public string PipeName { get; }
 
     /// <summary>
-    /// Gets the capabilities reported by the connected agent (populated after <see cref="HandshakeAsync"/>).
+    /// Gets the handshake response reported by the connected agent (populated after <see cref="HandshakeAsync"/>).
     /// </summary>
     public HandshakeResponse? RemoteHandshake { get; private set; }
 
@@ -70,8 +71,10 @@ public sealed class PipeConnection : IDisposable
     }
 
     /// <summary>
-    /// Performs the opening handshake.
-    /// Host sends <see cref="HandshakeChallenge"/>; agent responds with <see cref="HandshakeResponse"/>.
+    /// Performs the opening handshake using a nonce+HMAC challenge/response.
+    /// Host sends <see cref="HandshakeChallenge"/> (nonce); agent responds with
+    /// <see cref="HandshakeResponse"/> (HMAC proof). The session token is never
+    /// transmitted over the pipe.
     /// Validates protocol version and client PID.
     /// Throws <see cref="SnoopException"/> with <see cref="SnoopErrorCode.ProtocolMismatch"/> on failure.
     /// </summary>
@@ -79,16 +82,17 @@ public sealed class PipeConnection : IDisposable
     {
         this.ThrowIfDisposed();
 
-        // 1. Verify client PID before exchanging secrets.
+        // 1. Verify client PID before sending the challenge.
         if (this.expectedClientPid >= 0)
         {
             this.VerifyClientPid();
         }
 
-        // 2. Send challenge.
+        // 2. Generate a fresh nonce and send challenge (no token transmitted).
+        byte[] nonce = RandomNumberGenerator.GetBytes(16);
         var challenge = new HandshakeChallenge
         {
-            SessionToken = sessionToken,
+            Nonce = nonce,
             ProtocolVersion = ProtocolConstants.ProtocolVersion,
         };
 
@@ -135,13 +139,18 @@ public sealed class PipeConnection : IDisposable
                 $"agent={response.ProtocolVersion}. {SnoopSuggestions.ProtocolMismatch}");
         }
 
-        // 5. Verify the agent echoed back our session token using constant-time comparison
-        //    to prevent timing oracle attacks.
-        if (!ConstantTimeTokenEquals(response.SessionToken, sessionToken))
+        // 5. Verify the HMAC proof using constant-time comparison.
+        //    Expected: HMACSHA256(key=sessionTokenBytes, data=nonce)
+        byte[] sessionTokenBytes = Encoding.UTF8.GetBytes(sessionToken);
+        byte[] expectedHmac = HMACSHA256.HashData(sessionTokenBytes, nonce);
+
+        if (response.ProofHmac is null ||
+            response.ProofHmac.Length != expectedHmac.Length ||
+            !CryptographicOperations.FixedTimeEquals(response.ProofHmac, expectedHmac))
         {
             throw new SnoopException(
                 SnoopErrorCode.ProtocolMismatch,
-                "Agent returned an incorrect session token. Possible man-in-the-middle or wrong process.");
+                "Agent returned an incorrect HMAC proof. Possible man-in-the-middle or wrong process.");
         }
 
         this.RemoteHandshake = response;
@@ -231,32 +240,6 @@ public sealed class PipeConnection : IDisposable
         }
 
         return (int)pid;
-    }
-
-    // -------------------------------------------------------------------------
-
-    /// <summary>
-    /// Compares two session-token strings using constant-time byte comparison to prevent
-    /// timing oracle attacks. Returns false immediately if lengths differ (length is not secret).
-    /// </summary>
-    private static bool ConstantTimeTokenEquals(string? a, string? b)
-    {
-        if (a is null || b is null)
-        {
-            return false;
-        }
-
-        byte[] aBytes = Encoding.UTF8.GetBytes(a);
-        byte[] bBytes = Encoding.UTF8.GetBytes(b);
-
-        // Length check is not secret — differing lengths are an immediate mismatch.
-        // FixedTimeEquals requires equal-length spans; guard here to satisfy that contract.
-        if (aBytes.Length != bBytes.Length)
-        {
-            return false;
-        }
-
-        return CryptographicOperations.FixedTimeEquals(aBytes, bBytes);
     }
 
     // -------------------------------------------------------------------------

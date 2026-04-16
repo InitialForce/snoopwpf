@@ -21,6 +21,7 @@ using SnoopWPF.Agent.Engine.Infrastructure;
 /// </summary>
 [TestFixture]
 [Apartment(ApartmentState.STA)]
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001:Types that own disposable fields should be disposable", Justification = "NUnit [OneTimeTearDown] disposes registry after all tests.")]
 public sealed class LocatorResolutionTests
 {
     private Dispatcher dispatcher = null!;

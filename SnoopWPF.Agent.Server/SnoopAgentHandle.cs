@@ -11,7 +11,7 @@ public sealed class SnoopAgentHandle : IDisposable
 {
     private readonly CancellationTokenSource cts;
     private readonly SnoopWPF.Agent.Engine.SnoopInspector inspector;
-    private bool disposed;
+    private int disposedFlag;
 
     internal SnoopAgentHandle(
         CancellationTokenSource cts,
@@ -57,12 +57,11 @@ public sealed class SnoopAgentHandle : IDisposable
     /// </summary>
     public void Dispose()
     {
-        if (this.disposed)
+        if (Interlocked.Exchange(ref this.disposedFlag, 1) == 1)
         {
             return;
         }
 
-        this.disposed = true;
         this.cts.Cancel();
         this.cts.Dispose();
         this.inspector.Dispose();

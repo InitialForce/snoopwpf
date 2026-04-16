@@ -12,9 +12,13 @@
     </PropertyGroup>
 
     <!-- Expose internals (SelfTest, SelfTestTarget) to integration test project -->
+    <!-- Expose internals (SnoopAgentHandle ctor, SnoopAgent.ClearHandle) to unit test project -->
     <ItemGroup>
         <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
             <_Parameter1>SnoopWPF.Agent.IntegrationTests</_Parameter1>
+        </AssemblyAttribute>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>SnoopWPF.Agent.Tests</_Parameter1>
         </AssemblyAttribute>
     </ItemGroup>
 

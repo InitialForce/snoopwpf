@@ -62,16 +62,16 @@ public sealed class PipeProtocolTests
         {
             await this.clientPipe.ConnectAsync(10_000, ct).ConfigureAwait(false);
 
-            // Perform handshake: read challenge, validate, send response.
+            // Perform handshake: read challenge (nonce), compute HMAC proof, send response.
             var challenge = await this.transport.ReceiveAsync<HandshakeChallenge>(ct).ConfigureAwait(false);
             if (challenge == null)
             {
                 throw new InvalidOperationException("No handshake challenge received.");
             }
 
-            if (challenge.SessionToken != sessionToken)
+            if (challenge.Nonce == null || challenge.Nonce.Length != 16)
             {
-                throw new UnauthorizedAccessException("Token mismatch in fake server.");
+                throw new InvalidOperationException("Handshake challenge nonce is invalid.");
             }
 
             if (challenge.ProtocolVersion != ProtocolConstants.ProtocolVersion)
@@ -79,12 +79,15 @@ public sealed class PipeProtocolTests
                 throw new InvalidOperationException($"Protocol version mismatch: {challenge.ProtocolVersion}");
             }
 
+            byte[] sessionTokenBytes = System.Text.Encoding.UTF8.GetBytes(sessionToken);
+            byte[] proofHmac = System.Security.Cryptography.HMACSHA256.HashData(sessionTokenBytes, challenge.Nonce);
+
             var response = new HandshakeResponse
             {
                 ProtocolVersion = ProtocolConstants.ProtocolVersion,
                 AgentVersion = "0.0.1-test",
                 TargetRuntime = ".NET 8.0",
-                SessionToken = challenge.SessionToken,
+                ProofHmac = proofHmac,
                 Capabilities = new List<string> { "inspection" },
             };
             await this.transport.SendAsync(response, ct).ConfigureAwait(false);
