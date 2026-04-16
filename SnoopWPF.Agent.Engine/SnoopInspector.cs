@@ -48,17 +48,53 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
     /// or a specific injection root in injection mode.
     /// </param>
     /// <param name="options">Optional configuration; defaults are applied if null.</param>
+    /// <param name="sessionPolicy">
+    /// Optional session policy. When provided, MF-11 is enforced: if
+    /// <see cref="SessionPolicy.Mode"/> is <see cref="SessionMode.Injection"/> and
+    /// <see cref="SessionPolicy.EnableRedaction"/> is <see langword="false"/>, an
+    /// <see cref="InvalidOperationException"/> is thrown immediately.
+    /// </param>
     public SnoopInspector(
         Dispatcher dispatcher,
         object? rootTarget = null,
-        SnoopInspectorOptions? options = null)
+        SnoopInspectorOptions? options = null,
+        SessionPolicy? sessionPolicy = null)
     {
         this.dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
         this.rootTarget = rootTarget;
         this.options = options ?? new SnoopInspectorOptions();
 
+        if (sessionPolicy is not null)
+        {
+            EnforceInjectionRedaction(sessionPolicy);
+        }
+
         this.nodeRegistry = new NodeRegistry();
         this.cursorManager = new CursorManager();
+    }
+
+    /// <summary>
+    /// Belt-and-braces MF-11 assertion: Injection mode must always have redaction enabled.
+    /// Throws <see cref="InvalidOperationException"/> if a bypass <see cref="SessionPolicy"/>
+    /// is supplied (i.e., constructed without going through <see cref="SessionPolicy.Create"/>).
+    /// </summary>
+    /// <param name="policy">The session policy to validate.</param>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when <paramref name="policy"/> has <c>Mode == Injection</c> and
+    /// <c>EnableRedaction == false</c>.
+    /// </exception>
+    public static void EnforceInjectionRedaction(SessionPolicy policy)
+    {
+        if (policy is null)
+        {
+            throw new ArgumentNullException(nameof(policy));
+        }
+
+        if (policy.Mode == SessionMode.Injection && !policy.EnableRedaction)
+        {
+            throw new InvalidOperationException(
+                "Injection mode requires EnableRedaction=true (MF-11). Policy was constructed bypassing SessionPolicy.Create.");
+        }
     }
 
     // -------------------------------------------------------------------------
