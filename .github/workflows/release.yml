@@ -1,0 +1,88 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  pack-and-publish:
+    name: pack-and-publish
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET (global.json)
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+          source-url: https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
+        env:
+          NUGET_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract version from tag
+        id: version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $version = $tag.TrimStart('v')
+          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Build Release
+        run: dotnet build Snoop.sln --configuration Release --no-incremental -p:Version=${{ steps.version.outputs.VERSION }}
+
+      - name: Pack SnoopWPF.Agent.Contracts
+        run: >
+          dotnet pack SnoopWPF.Agent.Contracts/SnoopWPF.Agent.Contracts.csproj
+          --configuration Release --no-build
+          -p:Version=${{ steps.version.outputs.VERSION }}
+          --output artifacts/nupkg
+
+      - name: Pack SnoopWPF.Agent.Analyzers
+        run: >
+          dotnet pack SnoopWPF.Agent.Analyzers/SnoopWPF.Agent.Analyzers.csproj
+          --configuration Release --no-build
+          -p:Version=${{ steps.version.outputs.VERSION }}
+          --output artifacts/nupkg
+
+      - name: Pack SnoopWPF.Agent.Remote
+        run: >
+          dotnet pack SnoopWPF.Agent.Remote/SnoopWPF.Agent.Remote.csproj
+          --configuration Release --no-build
+          -p:Version=${{ steps.version.outputs.VERSION }}
+          --output artifacts/nupkg
+
+      - name: Pack SnoopWPF.Agent.BrokerHost
+        run: >
+          dotnet pack SnoopWPF.Agent.BrokerHost/SnoopWPF.Agent.BrokerHost.csproj
+          --configuration Release --no-build
+          -p:Version=${{ steps.version.outputs.VERSION }}
+          --output artifacts/nupkg
+
+      - name: Pack SnoopWPF.Agent (Server)
+        run: >
+          dotnet pack SnoopWPF.Agent.Server/SnoopWPF.Agent.Server.csproj
+          --configuration Release --no-build
+          -p:Version=${{ steps.version.outputs.VERSION }}
+          --output artifacts/nupkg
+
+      - name: Upload nupkg artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nupkg
+          path: artifacts/nupkg/*.nupkg
+
+      - name: Publish to GitHub Packages
+        run: >
+          dotnet nuget push artifacts/nupkg/*.nupkg
+          --source https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
+          --api-key ${{ secrets.GITHUB_TOKEN }}
+          --skip-duplicate

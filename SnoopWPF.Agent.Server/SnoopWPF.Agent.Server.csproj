@@ -23,12 +23,19 @@
         <PackageId>SnoopWPF.Agent</PackageId>
         <Description>MCP server for WPF runtime inspection via SnoopWPF. Exposes visual tree, properties, triggers, behaviors, and screenshots as MCP tools for AI-assisted debugging.</Description>
         <Authors>Cory Plotts, Bastian Schmidt, and contributors</Authors>
-        <PackageTags>wpf;mcp;inspector;snoop;claude;ai;debug;visualtree</PackageTags>
-        <PackageLicenseExpression>MS-PL</PackageLicenseExpression>
-        <PackageProjectUrl>https://github.com/snoopwpf/snoopwpf</PackageProjectUrl>
-        <RepositoryUrl>https://github.com/snoopwpf/snoopwpf</RepositoryUrl>
+        <PackageTags>wpf;mcp;snoop;agent;inspector;claude;ai;debug;visualtree</PackageTags>
+        <PackageLicenseFile>License.txt</PackageLicenseFile>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageProjectUrl>https://github.com/InitialForce/snoopwpf</PackageProjectUrl>
+        <RepositoryUrl>https://github.com/InitialForce/snoopwpf</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
     </PropertyGroup>
+
+    <!-- NuGet pack: include license and readme from repo root -->
+    <ItemGroup>
+        <None Include="../License.txt" Pack="true" PackagePath="/" />
+        <None Include="../README.md" Pack="true" PackagePath="/" Condition="Exists('../README.md')" />
+    </ItemGroup>
 
     <!-- Flatten Engine, Tools, and Contracts DLLs into lib/ instead of listing as deps -->
     <ItemGroup>

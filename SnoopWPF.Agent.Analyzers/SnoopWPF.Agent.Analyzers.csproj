@@ -6,6 +6,9 @@
     <Nullable>enable</Nullable>
     <!-- Analyzer projects must NOT copy to output; they are loaded as analyzers -->
     <IsPackable>true</IsPackable>
+    <DevelopmentDependency>true</DevelopmentDependency>
+    <!-- NuGet analyzer packaging: suppress default lib/ content, place DLL under analyzers/dotnet/cs/ -->
+    <IncludeBuildOutput>false</IncludeBuildOutput>
     <!-- RS1038: "Do not include workspaces layer in analyzer assembly" — suppressed because
          this project deliberately includes the code fix provider (Workspaces layer) in the
          same assembly as the diagnostic analyzer. This is the standard approach for small,
@@ -19,6 +22,29 @@
          and let this project add it with full compile assets instead. -->
     <IsRoslynAnalyzerProject>true</IsRoslynAnalyzerProject>
   </PropertyGroup>
+
+  <!-- NuGet package metadata -->
+  <PropertyGroup>
+    <PackageId>SnoopWPF.Agent.Analyzers</PackageId>
+    <Description>Roslyn analyzers (SWPF0001 + code fix) for SnoopWPF Agent. Warns when attaching an agent to a process that has not been annotated as SnoopWPF-compatible.</Description>
+    <Authors>Cory Plotts, Bastian Schmidt, and contributors</Authors>
+    <PackageTags>wpf;mcp;snoop;agent;analyzer;roslyn</PackageTags>
+    <PackageLicenseFile>License.txt</PackageLicenseFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageProjectUrl>https://github.com/InitialForce/snoopwpf</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/InitialForce/snoopwpf</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+  <!-- NuGet analyzer packaging convention: place DLL under analyzers/dotnet/cs/ -->
+  <ItemGroup>
+    <None Include="$(OutputPath)\$(AssemblyName).dll"
+          Pack="true"
+          PackagePath="analyzers/dotnet/cs"
+          Visible="false" />
+    <None Include="../License.txt" Pack="true" PackagePath="/" />
+    <None Include="../README.md" Pack="true" PackagePath="/" Condition="Exists('../README.md')" />
+  </ItemGroup>
 
   <ItemGroup>
     <!-- The global Directory.Build.targets adds Microsoft.CodeAnalysis.CSharp with

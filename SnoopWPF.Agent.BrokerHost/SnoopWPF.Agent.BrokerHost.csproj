@@ -9,6 +9,26 @@
     <NoWarn>$(NoWarn);CA1063;CA1816</NoWarn>
   </PropertyGroup>
 
+  <!-- NuGet package metadata -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>SnoopWPF.Agent.BrokerHost</PackageId>
+    <Description>Brokered-mode host library for SnoopWPF Agent. Provides the MCP broker infrastructure consumed by external host processes (e.g. UiMcpHost) to communicate with injected WPF agents.</Description>
+    <Authors>Cory Plotts, Bastian Schmidt, and contributors</Authors>
+    <PackageTags>wpf;mcp;snoop;agent;broker;host</PackageTags>
+    <PackageLicenseFile>License.txt</PackageLicenseFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageProjectUrl>https://github.com/InitialForce/snoopwpf</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/InitialForce/snoopwpf</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+  <!-- NuGet pack: include license and readme from repo root -->
+  <ItemGroup>
+    <None Include="../License.txt" Pack="true" PackagePath="/" />
+    <None Include="../README.md" Pack="true" PackagePath="/" Condition="Exists('../README.md')" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\SnoopWPF.Agent.Contracts\SnoopWPF.Agent.Contracts.csproj" />
     <ProjectReference Include="..\SnoopWPF.Agent.Remote\SnoopWPF.Agent.Remote.csproj" />
