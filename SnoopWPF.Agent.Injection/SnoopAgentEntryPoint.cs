@@ -25,7 +25,7 @@ public static class SnoopAgentEntryPoint
     private static readonly object StartLock = new object();
     private static volatile bool started;
 
-    // Stored so we can unregister in the shutdown path (FIX-3a).
+    // Stored so we can unregister on shutdown.
     private static ResolveEventHandler? assemblyResolveHandler;
 
     /// <summary>
@@ -73,7 +73,7 @@ public static class SnoopAgentEntryPoint
 
     private static void InstallAssemblyResolver()
     {
-        // Store reference so we can unregister on shutdown (FIX-3a).
+        // Store reference so we can unregister on shutdown.
         assemblyResolveHandler = OnAssemblyResolve;
         AppDomain.CurrentDomain.AssemblyResolve += assemblyResolveHandler;
     }
@@ -89,7 +89,7 @@ public static class SnoopAgentEntryPoint
 
     private static Assembly? OnAssemblyResolve(object? sender, ResolveEventArgs args)
     {
-        // FIX-3b: Only intercept Snoop-related assemblies.
+        // Only intercept Snoop-related assemblies.
         // Let the CLR's default resolution handle everything else to avoid shadowing
         // target-app assemblies or framework assemblies.
         var simpleName = new AssemblyName(args.Name).Name ?? string.Empty;
@@ -178,7 +178,7 @@ public static class SnoopAgentEntryPoint
             cts.Cancel();
             inspector.Dispose();
             server.Dispose();
-            // Unregister the AssemblyResolve handler so it doesn't outlive the agent (FIX-3a).
+            // Unregister the AssemblyResolve handler so it doesn't outlive the agent.
             UninstallAssemblyResolver();
         };
 

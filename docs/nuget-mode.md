@@ -55,11 +55,12 @@ Pass a `SnoopAgentOptions` instance to `SnoopAgent.Start()` to configure behavio
 ```csharp
 SnoopAgent.Start(new SnoopAgentOptions
 {
-    Transport     = TransportMode.Stdio,   // default
-    EnableMutation = false,                // default — set true to allow wpf_set_property
-    EnableRedaction = true,                // default — set false only for internal tools
-    TimeoutMs     = 5000,                 // default per-operation Dispatcher timeout
-    PipeName      = null,                 // auto-generated when Transport = Pipe
+    Transport      = TransportMode.Stdio,   // default
+    EnableMutation  = false,                // default — set true to allow wpf_set_property
+    EnableRedaction = true,                 // default — set false only for internal tools
+    TimeoutMs      = 5000,                 // default per-operation Dispatcher timeout
+    PipeName       = null,                 // auto-generated when Transport = Pipe
+    SessionToken   = null,                 // auto-generated when Transport = Pipe
 });
 ```
 
@@ -99,34 +100,42 @@ For a published binary:
 
 ### Pipe transport
 
-When `Transport = TransportMode.Pipe`, the server writes the pipe name to stderr:
+When `Transport = TransportMode.Pipe`, the server creates a named pipe secured with
+`PipeOptions.CurrentUserOnly` and requires a session-token handshake before accepting
+any MCP traffic. The pipe name and session token are exposed on the returned
+`SnoopAgentHandle` so the embedding application can deliver them to its client.
 
-```
-SnoopWPF.Agent MCP server waiting on pipe: snoop-agent-12345
+```csharp
+var handle = SnoopAgent.Start(new SnoopAgentOptions
+{
+    Transport = TransportMode.Pipe,
+    // PipeName: omit to auto-generate as "snoop-agent-{guid}"
+    // SessionToken: omit to auto-generate a 256-bit CSPRNG token
+});
+
+// Both are non-null when Transport = Pipe.
+string pipeName     = handle.PipeName!;     // e.g. "snoop-agent-a3f2..."
+string sessionToken = handle.SessionToken!;  // 64-character hex string
+
+// Deliver pipeName and sessionToken to your MCP client via a secure channel
+// (in-process reference, environment variable scoped to a child process, etc.).
+// Treat sessionToken like a password — do not log it or write it to stdout.
 ```
 
-The pipe name defaults to `snoop-agent-{pid}`. Override it with `PipeName`:
+You can also supply your own pipe name and/or session token:
 
 ```csharp
 SnoopAgent.Start(new SnoopAgentOptions
 {
-    Transport = TransportMode.Pipe,
-    PipeName  = "my-app-snoop",
+    Transport     = TransportMode.Pipe,
+    PipeName      = "my-app-snoop",
+    SessionToken  = mySecurelyGeneratedToken,
 });
 ```
 
-Then configure your client:
-
-```json
-{
-  "mcpServers": {
-    "snoop": {
-      "command": "npx",
-      "args": ["@modelcontextprotocol/inspector", "--pipe", "\\\\.\\pipe\\my-app-snoop"]
-    }
-  }
-}
-```
+The MCP client must connect to the pipe and complete the token handshake before any
+tools become available. How to configure a client depends on the client; the pipe path
+on Windows is `\\.\pipe\{pipeName}`.
 
 ---
 

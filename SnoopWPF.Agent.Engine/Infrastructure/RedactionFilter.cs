@@ -12,7 +12,6 @@ public static class RedactionFilter
 {
     /// <summary>
     /// Sensitive property name substrings. All matches are case-insensitive contains.
-    /// 21 keywords from BEADS.md specification.
     /// </summary>
     private static readonly string[] SensitiveKeywords =
     {
