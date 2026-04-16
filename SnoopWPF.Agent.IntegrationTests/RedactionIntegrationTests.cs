@@ -60,7 +60,7 @@ public sealed class RedactionIntegrationTests
         SnoopInspector inspector, string typeName)
     {
         var tree = await inspector
-            .GetVisualTreeAsync(null, 10, "visual", null, default)
+            .GetVisualTreeAsync((string?)null, 10, "visual", null, default)
             .ConfigureAwait(false);
         var nodes = Flatten(tree.Root);
         return nodes

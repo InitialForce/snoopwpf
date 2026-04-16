@@ -83,4 +83,81 @@ public interface ISnoopInspector
     Task<List<TriggerDto>> GetTriggersAsync(string nodeId, CancellationToken ct);
 
     Task<List<BehaviorDto>> GetBehaviorsAsync(string nodeId, CancellationToken ct);
+
+    // ── WpfLocator overloads (M1-06) ──────────────────────────────────────────
+    // Each method that accepts a nodeId gains a parallel WpfLocator overload.
+    // Existing nodeId overloads are retained for compatibility.
+    // Resolution is delegated to LocatorResolver which caps new NodeRegistry
+    // entries at 100 per call; exceeding the cap surfaces LOCATOR_AMBIGUOUS.
+
+    /// <summary>Locator overload for <see cref="GetVisualTreeAsync(string?,int,string,List{string}?,CancellationToken)"/>.</summary>
+    Task<VisualTreeResultDto> GetVisualTreeAsync(
+        WpfLocator locator,
+        int maxDepth,
+        string treeType,
+        List<string>? includeProperties,
+        CancellationToken ct);
+
+    /// <summary>Locator overload for <see cref="GetChildrenAsync(string?,string,string?,int,CancellationToken)"/>.</summary>
+    Task<CursorPage<NodeDto>> GetChildrenAsync(
+        WpfLocator locator,
+        string treeType,
+        string? cursor,
+        int take,
+        CancellationToken ct);
+
+    /// <summary>Locator overload for <see cref="GetAncestorsAsync(string,int?,CancellationToken)"/>.</summary>
+    Task<List<AncestorDto>> GetAncestorsAsync(
+        WpfLocator locator,
+        int? maxLevels,
+        CancellationToken ct);
+
+    /// <summary>Locator overload for <see cref="InspectElementAsync(string,CancellationToken)"/>.</summary>
+    Task<InspectElementDto> InspectElementAsync(WpfLocator locator, CancellationToken ct);
+
+    /// <summary>Locator overload for <see cref="GetPropertiesAsync(string,string?,string?,bool,string?,int,CancellationToken)"/>.</summary>
+    Task<CursorPage<PropertyDto>> GetPropertiesAsync(
+        WpfLocator locator,
+        string? filter,
+        string? category,
+        bool includeDefaults,
+        string? cursor,
+        int take,
+        CancellationToken ct);
+
+    /// <summary>Locator overload for <see cref="SetPropertyAsync(string,string,string,CancellationToken)"/>.</summary>
+    Task<SetPropertyResultDto> SetPropertyAsync(
+        WpfLocator locator,
+        string propertyName,
+        string value,
+        CancellationToken ct);
+
+    /// <summary>Locator overload for <see cref="GetBindingInfoAsync(string,string,CancellationToken)"/>.</summary>
+    Task<BindingInfoDto> GetBindingInfoAsync(WpfLocator locator, string propertyName, CancellationToken ct);
+
+    /// <summary>Locator overload for <see cref="RunDiagnosticsAsync(string?,List{string}?,string?,string?,int,CancellationToken)"/>.</summary>
+    Task<CursorPage<DiagnosticItemDto>> RunDiagnosticsAsync(
+        WpfLocator locator,
+        List<string>? providers,
+        string? minLevel,
+        string? cursor,
+        int take,
+        CancellationToken ct);
+
+    /// <summary>Locator overload for <see cref="GetResourcesAsync(string?,string?,string?,int,CancellationToken)"/>.</summary>
+    Task<CursorPage<ResourceDto>> GetResourcesAsync(
+        WpfLocator locator,
+        string? resourceKey,
+        string? cursor,
+        int take,
+        CancellationToken ct);
+
+    /// <summary>Locator overload for <see cref="CaptureScreenshotAsync(string?,CancellationToken)"/>.</summary>
+    Task<ScreenshotResultDto> CaptureScreenshotAsync(WpfLocator locator, CancellationToken ct);
+
+    /// <summary>Locator overload for <see cref="GetTriggersAsync(string,CancellationToken)"/>.</summary>
+    Task<List<TriggerDto>> GetTriggersAsync(WpfLocator locator, CancellationToken ct);
+
+    /// <summary>Locator overload for <see cref="GetBehaviorsAsync(string,CancellationToken)"/>.</summary>
+    Task<List<BehaviorDto>> GetBehaviorsAsync(WpfLocator locator, CancellationToken ct);
 }

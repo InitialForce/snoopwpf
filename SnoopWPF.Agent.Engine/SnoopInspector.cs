@@ -33,6 +33,7 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
 
     private readonly NodeRegistry nodeRegistry;
     private readonly CursorManager cursorManager;
+    private readonly LocatorResolver locatorResolver;
 
     // Max 3 concurrent Dispatcher operations.
     private readonly SemaphoreSlim concurrencySemaphore = new(3, 3);
@@ -71,6 +72,7 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
 
         this.nodeRegistry = new NodeRegistry();
         this.cursorManager = new CursorManager();
+        this.locatorResolver = new LocatorResolver(this.nodeRegistry);
     }
 
     /// <summary>
@@ -487,6 +489,31 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
             var hasBindingErrors = treeItem.HasBindingError;
             var bindingErrorCount = hasBindingErrors ? 1 : 0;
 
+            // Resolve parent node ID — no longer hard-coded empty (PRD §14 debt item).
+            var parentNodeId = string.Empty;
+            DependencyObject? parentDepObj = null;
+            if (target is Visual visualTarget)
+            {
+                parentDepObj = VisualTreeHelper.GetParent(visualTarget);
+            }
+
+            if (parentDepObj is null)
+            {
+                if (target is FrameworkElement feParentTarget)
+                {
+                    parentDepObj = feParentTarget.Parent as DependencyObject;
+                }
+                else if (target is FrameworkContentElement fceParentTarget)
+                {
+                    parentDepObj = fceParentTarget.Parent as DependencyObject;
+                }
+            }
+
+            if (parentDepObj is not null)
+            {
+                parentNodeId = this.nodeRegistry.GetOrCreateId(parentDepObj);
+            }
+
             return new InspectElementDto
             {
                 NodeId = nodeId,
@@ -494,7 +521,7 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
                 Name = name,
                 DisplayName = displayName,
                 Path = path,
-                ParentNodeId = string.Empty,
+                ParentNodeId = parentNodeId,
                 ChildCount = childCount,
                 Depth = 0,
                 DispatcherId = 0,
@@ -1390,6 +1417,149 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
             CollectBehaviorsFromInteraction(depObj, "Microsoft.Xaml.Behaviors.Interaction, Microsoft.Xaml.Behaviors", result, enableRedaction);
 
             return result;
+        }, ct);
+    }
+
+    // -------------------------------------------------------------------------
+    // ISnoopInspector — WpfLocator overloads (M1-06)
+    // -------------------------------------------------------------------------
+
+    /// <inheritdoc/>
+    public async Task<VisualTreeResultDto> GetVisualTreeAsync(
+        WpfLocator locator,
+        int maxDepth,
+        string treeType,
+        List<string>? includeProperties,
+        CancellationToken ct)
+    {
+        var nodeId = await this.ResolveLocatorAsync(locator, ct).ConfigureAwait(false);
+        return await this.GetVisualTreeAsync(nodeId, maxDepth, treeType, includeProperties, ct).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    public async Task<CursorPage<NodeDto>> GetChildrenAsync(
+        WpfLocator locator,
+        string treeType,
+        string? cursor,
+        int take,
+        CancellationToken ct)
+    {
+        var nodeId = await this.ResolveLocatorAsync(locator, ct).ConfigureAwait(false);
+        return await this.GetChildrenAsync(nodeId, treeType, cursor, take, ct).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    public async Task<List<AncestorDto>> GetAncestorsAsync(
+        WpfLocator locator,
+        int? maxLevels,
+        CancellationToken ct)
+    {
+        var nodeId = await this.ResolveLocatorAsync(locator, ct).ConfigureAwait(false);
+        return await this.GetAncestorsAsync(nodeId, maxLevels, ct).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    public async Task<InspectElementDto> InspectElementAsync(WpfLocator locator, CancellationToken ct)
+    {
+        var nodeId = await this.ResolveLocatorAsync(locator, ct).ConfigureAwait(false);
+        return await this.InspectElementAsync(nodeId, ct).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    public async Task<CursorPage<PropertyDto>> GetPropertiesAsync(
+        WpfLocator locator,
+        string? filter,
+        string? category,
+        bool includeDefaults,
+        string? cursor,
+        int take,
+        CancellationToken ct)
+    {
+        var nodeId = await this.ResolveLocatorAsync(locator, ct).ConfigureAwait(false);
+        return await this.GetPropertiesAsync(nodeId, filter, category, includeDefaults, cursor, take, ct).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    public async Task<SetPropertyResultDto> SetPropertyAsync(
+        WpfLocator locator,
+        string propertyName,
+        string value,
+        CancellationToken ct)
+    {
+        var nodeId = await this.ResolveLocatorAsync(locator, ct).ConfigureAwait(false);
+        return await this.SetPropertyAsync(nodeId, propertyName, value, ct).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    public async Task<BindingInfoDto> GetBindingInfoAsync(WpfLocator locator, string propertyName, CancellationToken ct)
+    {
+        var nodeId = await this.ResolveLocatorAsync(locator, ct).ConfigureAwait(false);
+        return await this.GetBindingInfoAsync(nodeId, propertyName, ct).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    public async Task<CursorPage<DiagnosticItemDto>> RunDiagnosticsAsync(
+        WpfLocator locator,
+        List<string>? providers,
+        string? minLevel,
+        string? cursor,
+        int take,
+        CancellationToken ct)
+    {
+        var nodeId = await this.ResolveLocatorAsync(locator, ct).ConfigureAwait(false);
+        return await this.RunDiagnosticsAsync(nodeId, providers, minLevel, cursor, take, ct).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    public async Task<CursorPage<ResourceDto>> GetResourcesAsync(
+        WpfLocator locator,
+        string? resourceKey,
+        string? cursor,
+        int take,
+        CancellationToken ct)
+    {
+        var nodeId = await this.ResolveLocatorAsync(locator, ct).ConfigureAwait(false);
+        return await this.GetResourcesAsync(nodeId, resourceKey, cursor, take, ct).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    public async Task<ScreenshotResultDto> CaptureScreenshotAsync(WpfLocator locator, CancellationToken ct)
+    {
+        var nodeId = await this.ResolveLocatorAsync(locator, ct).ConfigureAwait(false);
+        return await this.CaptureScreenshotAsync(nodeId, ct).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    public async Task<List<TriggerDto>> GetTriggersAsync(WpfLocator locator, CancellationToken ct)
+    {
+        var nodeId = await this.ResolveLocatorAsync(locator, ct).ConfigureAwait(false);
+        return await this.GetTriggersAsync(nodeId, ct).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    public async Task<List<BehaviorDto>> GetBehaviorsAsync(WpfLocator locator, CancellationToken ct)
+    {
+        var nodeId = await this.ResolveLocatorAsync(locator, ct).ConfigureAwait(false);
+        return await this.GetBehaviorsAsync(nodeId, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Resolves a <see cref="WpfLocator"/> to a stable node ID by delegating to
+    /// <see cref="LocatorResolver"/> on the WPF Dispatcher thread.
+    /// Throws <see cref="SnoopException"/> with <see cref="SnoopErrorCode.LocatorAmbiguous"/>
+    /// if the 100-entry NodeRegistry growth cap is exceeded.
+    /// </summary>
+    private Task<string> ResolveLocatorAsync(WpfLocator locator, CancellationToken ct)
+    {
+        if (locator is null)
+        {
+            throw new ArgumentNullException(nameof(locator));
+        }
+
+        return this.RunOnDispatcherAsync(() =>
+        {
+            var root = this.GetEffectiveRootTarget();
+            return this.locatorResolver.Resolve(locator, root);
         }, ct);
     }
 

@@ -467,6 +467,56 @@ public sealed class PipeSnoopInspectorProxy : ISnoopInspector, IAsyncDisposable,
         return new SnoopException(code, err.Message, suggestions: suggestions);
     }
 
+    // ── WpfLocator overloads (M1-06 stubs — full implementation in M1-06) ──
+
+    /// <inheritdoc/>
+    public Task<VisualTreeResultDto> GetVisualTreeAsync(WpfLocator locator, int maxDepth, string treeType, List<string>? includeProperties, CancellationToken ct)
+        => throw new NotImplementedException("M1-06");
+
+    /// <inheritdoc/>
+    public Task<CursorPage<NodeDto>> GetChildrenAsync(WpfLocator locator, string treeType, string? cursor, int take, CancellationToken ct)
+        => throw new NotImplementedException("M1-06");
+
+    /// <inheritdoc/>
+    public Task<List<AncestorDto>> GetAncestorsAsync(WpfLocator locator, int? maxLevels, CancellationToken ct)
+        => throw new NotImplementedException("M1-06");
+
+    /// <inheritdoc/>
+    public Task<InspectElementDto> InspectElementAsync(WpfLocator locator, CancellationToken ct)
+        => throw new NotImplementedException("M1-06");
+
+    /// <inheritdoc/>
+    public Task<CursorPage<PropertyDto>> GetPropertiesAsync(WpfLocator locator, string? filter, string? category, bool includeDefaults, string? cursor, int take, CancellationToken ct)
+        => throw new NotImplementedException("M1-06");
+
+    /// <inheritdoc/>
+    public Task<SetPropertyResultDto> SetPropertyAsync(WpfLocator locator, string propertyName, string value, CancellationToken ct)
+        => throw new NotImplementedException("M1-06");
+
+    /// <inheritdoc/>
+    public Task<BindingInfoDto> GetBindingInfoAsync(WpfLocator locator, string propertyName, CancellationToken ct)
+        => throw new NotImplementedException("M1-06");
+
+    /// <inheritdoc/>
+    public Task<CursorPage<DiagnosticItemDto>> RunDiagnosticsAsync(WpfLocator locator, List<string>? providers, string? minLevel, string? cursor, int take, CancellationToken ct)
+        => throw new NotImplementedException("M1-06");
+
+    /// <inheritdoc/>
+    public Task<CursorPage<ResourceDto>> GetResourcesAsync(WpfLocator locator, string? resourceKey, string? cursor, int take, CancellationToken ct)
+        => throw new NotImplementedException("M1-06");
+
+    /// <inheritdoc/>
+    public Task<ScreenshotResultDto> CaptureScreenshotAsync(WpfLocator locator, CancellationToken ct)
+        => throw new NotImplementedException("M1-06");
+
+    /// <inheritdoc/>
+    public Task<List<TriggerDto>> GetTriggersAsync(WpfLocator locator, CancellationToken ct)
+        => throw new NotImplementedException("M1-06");
+
+    /// <inheritdoc/>
+    public Task<List<BehaviorDto>> GetBehaviorsAsync(WpfLocator locator, CancellationToken ct)
+        => throw new NotImplementedException("M1-06");
+
     // --------------------------------------------------------------------------
     // Inner types
     // --------------------------------------------------------------------------

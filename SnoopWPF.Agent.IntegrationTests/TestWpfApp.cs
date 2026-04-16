@@ -1,6 +1,7 @@
 namespace SnoopWPF.Agent.IntegrationTests;
 
 using System;
+using System.Linq;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
@@ -193,6 +194,18 @@ public sealed class TestWpfApp : IDisposable
             Password = "s3cr3t!",
         };
         rootPanel.Children.Add(testPasswordBox);
+
+        // VirtualizingStackPanel-backed ListBox with 10 000 items (M1-06 / M2-04b).
+        var testBigList = new ListBox
+        {
+            Name = "testBigList",
+            Width = 200,
+            Height = 80,
+            ItemsSource = Enumerable.Range(0, 10_000).Select(i => $"Item {i}").ToList(),
+        };
+        VirtualizingStackPanel.SetIsVirtualizing(testBigList, true);
+        VirtualizingStackPanel.SetVirtualizationMode(testBigList, VirtualizationMode.Recycling);
+        rootPanel.Children.Add(testBigList);
 
         var window = new Window
         {

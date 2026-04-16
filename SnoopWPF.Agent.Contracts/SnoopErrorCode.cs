@@ -17,4 +17,6 @@ public enum SnoopErrorCode
     ProtocolMismatch,
     ElementNotRenderable,
     BlobNotFound,
+    LocatorAmbiguous,
+    LocatorInvalid,
 }

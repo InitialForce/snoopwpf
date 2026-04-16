@@ -117,4 +117,42 @@ public sealed class FakeSnoopInspector : ISnoopInspector
     public Task<List<BehaviorDto>> GetBehaviorsAsync(string nodeId, CancellationToken ct)
         => (this.OnGetBehaviors ?? throw new NotImplementedException("OnGetBehaviors not set"))
             .Invoke(nodeId, ct);
+
+    // ── WpfLocator overloads (M1-06 stubs) ──
+
+    public Task<VisualTreeResultDto> GetVisualTreeAsync(WpfLocator locator, int maxDepth, string treeType, List<string>? includeProperties, CancellationToken ct)
+        => throw new NotImplementedException("M1-06");
+
+    public Task<CursorPage<NodeDto>> GetChildrenAsync(WpfLocator locator, string treeType, string? cursor, int take, CancellationToken ct)
+        => throw new NotImplementedException("M1-06");
+
+    public Task<List<AncestorDto>> GetAncestorsAsync(WpfLocator locator, int? maxLevels, CancellationToken ct)
+        => throw new NotImplementedException("M1-06");
+
+    public Task<InspectElementDto> InspectElementAsync(WpfLocator locator, CancellationToken ct)
+        => throw new NotImplementedException("M1-06");
+
+    public Task<CursorPage<PropertyDto>> GetPropertiesAsync(WpfLocator locator, string? filter, string? category, bool includeDefaults, string? cursor, int take, CancellationToken ct)
+        => throw new NotImplementedException("M1-06");
+
+    public Task<SetPropertyResultDto> SetPropertyAsync(WpfLocator locator, string propertyName, string value, CancellationToken ct)
+        => throw new NotImplementedException("M1-06");
+
+    public Task<BindingInfoDto> GetBindingInfoAsync(WpfLocator locator, string propertyName, CancellationToken ct)
+        => throw new NotImplementedException("M1-06");
+
+    public Task<CursorPage<DiagnosticItemDto>> RunDiagnosticsAsync(WpfLocator locator, List<string>? providers, string? minLevel, string? cursor, int take, CancellationToken ct)
+        => throw new NotImplementedException("M1-06");
+
+    public Task<CursorPage<ResourceDto>> GetResourcesAsync(WpfLocator locator, string? resourceKey, string? cursor, int take, CancellationToken ct)
+        => throw new NotImplementedException("M1-06");
+
+    public Task<ScreenshotResultDto> CaptureScreenshotAsync(WpfLocator locator, CancellationToken ct)
+        => throw new NotImplementedException("M1-06");
+
+    public Task<List<TriggerDto>> GetTriggersAsync(WpfLocator locator, CancellationToken ct)
+        => throw new NotImplementedException("M1-06");
+
+    public Task<List<BehaviorDto>> GetBehaviorsAsync(WpfLocator locator, CancellationToken ct)
+        => throw new NotImplementedException("M1-06");
 }

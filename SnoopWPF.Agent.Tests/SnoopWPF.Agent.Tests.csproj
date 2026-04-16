@@ -21,6 +21,7 @@
     <ProjectReference Include="..\SnoopWPF.Agent.Contracts\SnoopWPF.Agent.Contracts.csproj" />
     <ProjectReference Include="..\SnoopWPF.Agent.Tools\SnoopWPF.Agent.Tools.csproj" />
     <ProjectReference Include="..\SnoopWPF.Agent.Remote\SnoopWPF.Agent.Remote.csproj" />
+    <ProjectReference Include="..\SnoopWPF.Agent.Input.Deterministic\SnoopWPF.Agent.Input.Deterministic.csproj" />
   </ItemGroup>
 
 </Project>

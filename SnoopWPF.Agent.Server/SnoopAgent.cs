@@ -117,6 +117,94 @@ public static class SnoopAgent
     public static SnoopAgentHandle Start(SnoopAgentOptions? options = null)
         => StartCoLocated(options);
 
+    /// <summary>
+    /// Starts the SnoopWPF MCP agent in brokered mode.
+    /// Unlike <see cref="StartCoLocated"/>, this overload does NOT redirect
+    /// <see cref="Console.Out"/> to <see cref="TextWriter.Null"/> — the host broker
+    /// owns its own stdio transport.
+    /// </summary>
+    /// <param name="app">The WPF application hosting the agent.</param>
+    /// <param name="pipeName">Named-pipe name for the agent endpoint.</param>
+    /// <param name="sessionToken">Session token for handshake authentication.</param>
+    /// <param name="options">Optional configuration.</param>
+    /// <returns>A <see cref="SnoopAgentHandle"/> that can be disposed to stop the server.</returns>
+    public static SnoopAgentHandle StartBrokered(
+        System.Windows.Application app,
+        string pipeName,
+        string sessionToken,
+        SnoopAgentOptions? options = null)
+    {
+        if (app is null)
+        {
+            throw new ArgumentNullException(nameof(app));
+        }
+
+        if (string.IsNullOrEmpty(pipeName))
+        {
+            throw new ArgumentException("pipeName must not be null or empty.", nameof(pipeName));
+        }
+
+        if (string.IsNullOrEmpty(sessionToken))
+        {
+            throw new ArgumentException("sessionToken must not be null or empty.", nameof(sessionToken));
+        }
+
+        options ??= new SnoopAgentOptions();
+
+        // In brokered mode, pipe name and session token are supplied by the caller.
+        options = new SnoopAgentOptions
+        {
+            Transport = TransportMode.Pipe,
+            PipeName = pipeName,
+            SessionToken = sessionToken,
+            TimeoutMs = options.TimeoutMs,
+            EnableMutation = options.EnableMutation,
+            EnableRedaction = options.EnableRedaction,
+        };
+
+        lock (Lock)
+        {
+            if (activeHandle != null)
+            {
+                throw new InvalidOperationException(
+                    "SnoopAgent is already running. Dispose the existing handle before calling StartBrokered() again.");
+            }
+
+            var dispatcher = app.Dispatcher
+                ?? throw new InvalidOperationException(
+                    "SnoopAgent.StartBrokered() requires a valid WPF Application with a Dispatcher.");
+
+            // Brokered mode uses a distinct session mode.
+            var policy = SessionPolicy.Create(SessionMode.CoLocated, options);
+
+            var inspectorOptions = new SnoopInspectorOptions
+            {
+                TimeoutMs = options.TimeoutMs,
+                EnableMutation = policy.EnableMutation,
+                EnableRedaction = policy.EnableRedaction,
+            };
+
+            var inspector = new SnoopInspector(
+                dispatcher,
+                rootTarget: app,
+                options: inspectorOptions);
+
+            var cts = new CancellationTokenSource();
+            var handle = new SnoopAgentHandle(cts, inspector, policy);
+            handle.PipeName = pipeName;
+            handle.SessionToken = sessionToken;
+            activeHandle = handle;
+
+            // Auto-stop when the application exits.
+            app.Exit += (_, _) => handle.Dispose();
+
+            // Start the server task.
+            _ = Task.Run(() => RunServerAsync(inspector, options, policy, handle, cts.Token));
+
+            return handle;
+        }
+    }
+
     /// <summary>Called by <see cref="SnoopAgentHandle.Dispose"/> to clear the active handle.</summary>
     internal static void ClearHandle()
     {
