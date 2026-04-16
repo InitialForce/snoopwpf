@@ -33,11 +33,19 @@ public sealed class TransientSettingsData
 
     public string? SnoopInstallPath { get; set; } = Environment.GetEnvironmentVariable(SettingsHelper.SNOOP_INSTALL_PATH_ENV_VAR);
 
+    /// <summary>Named-pipe name used in headless/injection mode. Nullable — XmlSerializer handles this cleanly.</summary>
+    public string? PipeName { get; set; }
+
+    /// <summary>Session bearer token used in headless/injection mode. Nullable — never log this value.</summary>
+    public string? SessionToken { get; set; }
+
     public string WriteToFile()
     {
         var settingsFile = Path.GetTempFileName();
 
-        LogHelper.WriteLine($"Writing transient settings file to \"{settingsFile}\"");
+        // Do NOT log settingsFile path — it may reside in a path that contains user info,
+        // and the file itself contains PipeName/SessionToken.
+        LogHelper.WriteLine("Writing transient settings file.");
 
         using var stream = new FileStream(settingsFile, FileMode.Create);
         serializer.Serialize(stream, this);
@@ -57,7 +65,8 @@ public sealed class TransientSettingsData
 
     public static TransientSettingsData LoadCurrent(string settingsFile)
     {
-        LogHelper.WriteLine($"Loading transient settings file from \"{settingsFile}\"");
+        // Do NOT log settingsFile path — it may contain sensitive location information.
+        LogHelper.WriteLine("Loading transient settings file.");
 
         using var stream = new FileStream(settingsFile, FileMode.Open);
         Current = (TransientSettingsData?)serializer.Deserialize(stream) ?? new TransientSettingsData();
@@ -88,5 +97,12 @@ public enum MultipleDispatcherMode
 public enum SnoopStartTarget
 {
     SnoopUI = 0,
-    Zoomer = 1
+    Zoomer = 1,
+
+    /// <summary>
+    /// Headless agent mode. No Snoop UI is shown. The agent is created via
+    /// <see cref="SnoopManager.HeadlessAgentFactory"/> (NuGet/in-process) or directly by
+    /// <c>SnoopAgentEntryPoint.Start()</c> (injection mode, bypasses SnoopManager).
+    /// </summary>
+    HeadlessAgent = 2
 }

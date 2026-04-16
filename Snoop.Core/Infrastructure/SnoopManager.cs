@@ -2,6 +2,7 @@ namespace Snoop.Infrastructure;
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
@@ -38,6 +39,21 @@ public class SnoopCrossAppDomainInjector : MarshalByRefObject
 
 public class SnoopManager
 {
+    /// <summary>
+    /// Factory used in NuGet/in-process (headless) mode.
+    /// Set this before starting Snoop:
+    /// <code>SnoopManager.HeadlessAgentFactory = () => new MyAgent();</code>
+    /// When <see cref="SnoopStartTarget.HeadlessAgent"/> is chosen the manager will call
+    /// the factory, pass the settings to <see cref="IInjectedAgent.Start"/>, and keep
+    /// the instance alive.  Cleanup calls <see cref="IInjectedAgent.Stop"/>.
+    /// In injection mode the agent entry point creates SnoopInspector directly and
+    /// bypasses SnoopManager entirely — this factory is not used there.
+    /// </summary>
+    public static Func<IInjectedAgent>? HeadlessAgentFactory { get; set; }
+
+    // Holds the running agent instance so we can stop it on cleanup.
+    private static IInjectedAgent? headlessAgent;
+
     /// <summary>
     /// This is the main entry point being called by the GenericInjector.
     /// </summary>
@@ -160,10 +176,17 @@ public class SnoopManager
 
         if (succeeded == false)
         {
-            MessageBox.Show("Can't find a current application or a PresentationSource root visual.",
-                "Can't Snoop",
-                MessageBoxButton.OK,
-                MessageBoxImage.Exclamation);
+            if (settingsData.StartTarget == SnoopStartTarget.HeadlessAgent)
+            {
+                Trace.TraceError("SnoopManager: Can't find a current application or a PresentationSource root visual.");
+            }
+            else
+            {
+                MessageBox.Show("Can't find a current application or a PresentationSource root visual.",
+                    "Can't Snoop",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Exclamation);
+            }
         }
 
         return succeeded;
@@ -177,6 +200,13 @@ public class SnoopManager
         {
             AttachAssemblyResolveHandler(AppDomain.CurrentDomain);
 
+            // --- Headless agent path (NuGet/in-process mode) ---
+            if (settingsData.StartTarget == SnoopStartTarget.HeadlessAgent)
+            {
+                return RunHeadlessAgent(settingsData);
+            }
+
+            // --- Normal Snoop UI path ---
             var instanceCreator = GetInstanceCreator(settingsData.StartTarget);
 
             var result = InjectSnoopIntoDispatchers(settingsData, (data, dispatcherRootObjectPair) => CreateSnoopWindow(data, dispatcherRootObjectPair, instanceCreator));
@@ -194,12 +224,79 @@ public class SnoopManager
                 LogHelper.WriteLine($"Could not snoop a specific app domain with friendly name of \"{AppDomain.CurrentDomain.FriendlyName}\" in multiple app domain mode.");
                 LogHelper.WriteError(exception);
             }
+            else if (settingsData.StartTarget == SnoopStartTarget.HeadlessAgent)
+            {
+                // Sanitize: do NOT include property values, pipe name, or session token in log.
+                Trace.TraceError($"SnoopManager: headless agent domain run failed: {exception.GetType().FullName}");
+                LogHelper.WriteError(exception);
+            }
             else
             {
                 ErrorDialog.ShowDialog(exception, "Error snooping", "There was an error snooping the application.", exceptionAlreadyHandled: true);
             }
 
             return false;
+        }
+    }
+
+    private static bool RunHeadlessAgent(TransientSettingsData settingsData)
+    {
+        var factory = HeadlessAgentFactory;
+        if (factory is null)
+        {
+            Trace.TraceError("SnoopManager: HeadlessAgent start target requested but HeadlessAgentFactory is null. Set SnoopManager.HeadlessAgentFactory before starting.");
+            return false;
+        }
+
+        // Stop any previously running agent before starting a new one.
+        StopHeadlessAgent();
+
+        try
+        {
+            var agent = factory();
+            headlessAgent = agent;
+            agent.Start(settingsData);
+            LogHelper.WriteLine("SnoopManager: headless agent started successfully.");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            // Sanitize: do NOT include property values, pipe name, or session token in log.
+            Trace.TraceError($"SnoopManager: headless agent failed to start: {ex.GetType().FullName}");
+            LogHelper.WriteError(ex);
+            headlessAgent = null;
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Stops and disposes the running headless agent (if any).
+    /// Safe to call even when no agent is running.
+    /// </summary>
+    public static void StopHeadlessAgent()
+    {
+        var agent = Interlocked.Exchange(ref headlessAgent, null);
+        if (agent is null)
+        {
+            return;
+        }
+
+        try
+        {
+            agent.Stop();
+        }
+        catch (Exception ex)
+        {
+            Trace.TraceError($"SnoopManager: error stopping headless agent: {ex.GetType().FullName}");
+        }
+
+        try
+        {
+            agent.Dispose();
+        }
+        catch (Exception ex)
+        {
+            Trace.TraceError($"SnoopManager: error disposing headless agent: {ex.GetType().FullName}");
         }
     }
 
