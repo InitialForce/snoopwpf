@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0-windows</TargetFrameworks>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>snoop-cli</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <UseWpf>false</UseWpf>
+    <!-- CA1812: CommandLineParser option classes are instantiated via reflection, not directly -->
+    <!-- SA1316: tuple element names — CommandLineParser-based patterns use camelCase -->
+    <NoWarn>$(NoWarn);CA1812;SA1316;PInvoke009</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SnoopWPF.Agent.Contracts\SnoopWPF.Agent.Contracts.csproj" />
+    <ProjectReference Include="..\SnoopWPF.Agent.Remote\SnoopWPF.Agent.Remote.csproj" />
+    <ProjectReference Include="..\Snoop.Injector\Snoop.Injector.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommandLineParser" />
+  </ItemGroup>
+
+</Project>
