@@ -366,6 +366,38 @@ public sealed class TestWpfApp : IDisposable
         testMenu.Items.Add(checkableMenuItem);
         rootPanel.Children.Add(testMenu);
 
+        // ── M2-07: wpf_expand_collapse elements ──────────────────────────────
+
+        // Expander: Name="testExpander" — used by ExpandCollapse integration tests (M2-07).
+        var testExpander = new Expander
+        {
+            Name = "testExpander",
+            Header = "Test Expander",
+            IsExpanded = false,
+            Content = new System.Windows.Controls.TextBlock { Text = "Expander Content" },
+            Width = 200,
+        };
+        rootPanel.Children.Add(testExpander);
+
+        // TreeView with a single TreeViewItem — used by ExpandCollapse integration tests (M2-07).
+        var testTreeViewItem = new TreeViewItem
+        {
+            Name = "testTreeViewItem",
+            Header = "Parent Node",
+            IsExpanded = false,
+        };
+        testTreeViewItem.Items.Add(new TreeViewItem { Header = "Child Node 1" });
+        testTreeViewItem.Items.Add(new TreeViewItem { Header = "Child Node 2" });
+
+        var testTreeView = new TreeView
+        {
+            Name = "testTreeView",
+            Width = 200,
+            Height = 80,
+        };
+        testTreeView.Items.Add(testTreeViewItem);
+        rootPanel.Children.Add(testTreeView);
+
         // VirtualizingStackPanel-backed ListBox with 10 000 items (M1-06 / M2-04b).
         var testBigList = new ListBox
         {
