@@ -47,6 +47,8 @@ public sealed class FakeSnoopInspector : ISnoopInspector
 
     public Func<string, CancellationToken, Task<List<BehaviorDto>>>? OnGetBehaviors { get; set; }
 
+    public Func<string, string, CancellationToken, Task<StateDeltaDto>>? OnSetCheckState { get; set; }
+
     public Func<string, string, CancellationToken, Task<StateDeltaDto>>? OnSetTextValue { get; set; }
 
     public Func<string, CancellationToken, Task<StateDeltaDto>>? OnExecuteCommand { get; set; }
@@ -166,6 +168,13 @@ public sealed class FakeSnoopInspector : ISnoopInspector
     public Task<BindingResolutionDto> ResolveBindingAsync(WpfLocator locator, string propertyName, CancellationToken ct)
         => throw new NotImplementedException("M2-08");
 
+    public Task<StateDeltaDto> SetCheckStateAsync(string nodeId, string state, CancellationToken ct)
+        => (this.OnSetCheckState ?? throw new NotImplementedException("OnSetCheckState not set"))
+            .Invoke(nodeId, state, ct);
+
+    public Task<StateDeltaDto> SetCheckStateAsync(WpfLocator locator, string state, CancellationToken ct)
+        => throw new NotImplementedException("M2-03");
+
     public Task<StateDeltaDto> SetTextValueAsync(string nodeId, string value, CancellationToken ct)
         => (this.OnSetTextValue ?? throw new NotImplementedException("OnSetTextValue not set"))
             .Invoke(nodeId, value, ct);
@@ -179,6 +188,12 @@ public sealed class FakeSnoopInspector : ISnoopInspector
 
     public Task<StateDeltaDto> ExecuteCommandAsync(WpfLocator locator, CancellationToken ct)
         => throw new NotImplementedException("M2-01");
+
+    public Task<StateDeltaDto> ClickAsync(string nodeId, CancellationToken ct)
+        => throw new NotImplementedException("M2-05");
+
+    public Task<StateDeltaDto> ClickAsync(WpfLocator locator, CancellationToken ct)
+        => throw new NotImplementedException("M2-05");
 
     public Task<WaitForPropertyResultDto> WaitForPropertyAsync(
         WpfLocator locator, string propertyName, string? expectedValue, int timeoutMs, string presenceExpected, CancellationToken ct)

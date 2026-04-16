@@ -1617,6 +1617,144 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
         return await this.GetBehaviorsAsync(nodeId, ct).ConfigureAwait(false);
     }
 
+    // ── M2-03: wpf_set_check_state ────────────────────────────────────────────
+
+    /// <inheritdoc/>
+    public Task<StateDeltaDto> SetCheckStateAsync(string nodeId, string state, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(nodeId))
+        {
+            throw new ArgumentException("nodeId must not be null or empty.", nameof(nodeId));
+        }
+
+        if (string.IsNullOrEmpty(state))
+        {
+            throw new ArgumentException("state must not be null or empty.", nameof(state));
+        }
+
+        return this.RunOnDispatcherAsync(() =>
+        {
+            // Guard: mutation must be explicitly enabled.
+            if (!this.options.EnableMutation)
+            {
+                throw new SnoopException(
+                    SnoopErrorCode.MutationDisabled,
+                    "Mutation is disabled. Set EnableMutation=true in SnoopInspectorOptions to allow wpf_set_check_state.",
+                    targetId: nodeId,
+                    suggestions: new[] { SnoopSuggestions.MutationDisabled });
+            }
+
+            var target = this.ResolveNodeOrThrow(nodeId);
+            this.VerifyElementConnectivity(target, nodeId);
+
+            if (target is not System.Windows.DependencyObject depObj)
+            {
+                return new StateDeltaDto
+                {
+                    Success = false,
+                    ElementVisible = false,
+                    StateChanged = false,
+                    FailureReason = FailureReason.PatternNotSupported,
+                    Suggestion = StateDelta.FailureReasonDescriptor.Suggest(FailureReason.PatternNotSupported, null),
+                };
+            }
+
+            // Reject bare ToggleButton (not CheckBox/RadioButton) — suggest wpf_toggle.
+            if (depObj is System.Windows.Controls.Primitives.ToggleButton
+                and not System.Windows.Controls.CheckBox
+                and not System.Windows.Controls.RadioButton)
+            {
+                return new StateDeltaDto
+                {
+                    Success = false,
+                    ElementVisible = true,
+                    StateChanged = false,
+                    FailureReason = FailureReason.PatternNotSupported,
+                    Suggestion = new Contracts.Dtos.SuggestionDto
+                    {
+                        Tool = "wpf_toggle",
+                        Args = new System.Collections.Generic.List<Contracts.Dtos.NameValuePairDto>
+                        {
+                            new() { Name = "nodeId", Value = nodeId },
+                            new() { Name = "hint", Value = "Use wpf_toggle for bare ToggleButton controls." },
+                        },
+                    },
+                };
+            }
+
+            // Only CheckBox and RadioButton are supported.
+            if (depObj is not System.Windows.Controls.Primitives.ToggleButton toggleButton)
+            {
+                return new StateDeltaDto
+                {
+                    Success = false,
+                    ElementVisible = true,
+                    StateChanged = false,
+                    FailureReason = FailureReason.PatternNotSupported,
+                    Suggestion = StateDelta.FailureReasonDescriptor.Suggest(FailureReason.PatternNotSupported, null),
+                };
+            }
+
+            // Parse the desired state.
+            bool? desiredState;
+            if (string.Equals(state, "checked", StringComparison.OrdinalIgnoreCase))
+            {
+                desiredState = true;
+            }
+            else if (string.Equals(state, "unchecked", StringComparison.OrdinalIgnoreCase))
+            {
+                desiredState = false;
+            }
+            else if (string.Equals(state, "indeterminate", StringComparison.OrdinalIgnoreCase))
+            {
+                desiredState = null;
+            }
+            else
+            {
+                throw new SnoopException(
+                    SnoopErrorCode.TypeConversionFailed,
+                    $"Invalid state value '{state}'. Expected \"checked\", \"unchecked\", or \"indeterminate\".",
+                    targetId: nodeId);
+            }
+
+            var previousRaw = toggleButton.IsChecked;
+            var previousValue = FormatChecked(previousRaw);
+
+            toggleButton.SetValue(System.Windows.Controls.Primitives.ToggleButton.IsCheckedProperty, desiredState);
+
+            var newRaw = toggleButton.IsChecked;
+            var newValue = FormatChecked(newRaw);
+            var stateChanged = previousRaw != newRaw;
+
+            System.Diagnostics.Trace.WriteLine(
+                $"[SnoopWPF.Agent] SetCheckState({depObj.GetType().Name}): nodeId={nodeId}, previous={previousValue}, new={newValue}");
+
+            return new StateDeltaDto
+            {
+                Success = true,
+                ElementVisible = true,
+                StateChanged = stateChanged,
+                PreviousValue = previousValue,
+                NewValue = newValue,
+                ChosenTier = InputTier.L0,
+            };
+        }, ct);
+    }
+
+    /// <inheritdoc/>
+    public async Task<StateDeltaDto> SetCheckStateAsync(WpfLocator locator, string state, CancellationToken ct)
+    {
+        var nodeId = await this.ResolveLocatorAsync(locator, ct).ConfigureAwait(false);
+        return await this.SetCheckStateAsync(nodeId, state, ct).ConfigureAwait(false);
+    }
+
+    private static string FormatChecked(bool? value) => value switch
+    {
+        true => "checked",
+        false => "unchecked",
+        null => "indeterminate",
+    };
+
     // ── M2-02: wpf_set_text_value ─────────────────────────────────────────────
 
     /// <inheritdoc/>
@@ -1917,7 +2055,7 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
 
             // Detect whether a Command is bound — if so, suggest wpf_execute_command (L0 preferred).
             var hasCommandBound =
-                target.GetValue(System.Windows.Controls.Primitives.ButtonBase.CommandProperty)
+                uiElement.GetValue(System.Windows.Controls.Primitives.ButtonBase.CommandProperty)
                 is System.Windows.Input.ICommand;
 
             // Invoke via IInvokeProvider.
@@ -2110,45 +2248,44 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
     {
         return this.RunOnDispatcherAsync(() =>
         {
-            // Snapshot the current tree version atomically.
-            var currentVersion = this.nodeRegistry.Version;
-
             // Walk the live visual tree from the effective root (or locator root).
             var rootTarget = rootLocator is not null
                 ? (object?)this.locatorResolver.TryResolve(rootLocator, this.GetEffectiveRootTarget())
                 : this.GetEffectiveRootTarget();
 
             // Collect all nodeIds currently visible in the live tree.
+            // CollectLiveNodeIds uses GetExistingId — does NOT register new nodes or
+            // increment the version counter. Only nodes already known to the registry
+            // (registered by prior operations such as GetVisualTree, FindElements, etc.)
+            // appear in liveNodeIds. This keeps the version stable across back-to-back
+            // polls when no external mutations have occurred.
             var liveNodeIds = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
             if (rootTarget is not null)
             {
                 this.CollectLiveNodeIds(rootTarget, liveNodeIds);
             }
 
-            // Determine which IDs in the registry were registered BEFORE sinceVersion
-            // (present in baseline) vs after (newly added).
+            // Snapshot version after the walk (GetExistingId does not increment, so
+            // this equals Version before the walk). Used as the returned baseline.
+            var currentVersion = this.nodeRegistry.Version;
+
+            // "added" = in live tree AND registered after sinceVersion.
             var changes = new List<Contracts.Dtos.NodeChangeEntryDto>();
 
             foreach (var nodeId in liveNodeIds)
             {
-                // Parse the sequence number from the nodeId format "0:<n>"
-                if (TryParseNodeVersion(nodeId, out var nodeVersion))
+                if (TryParseNodeVersion(nodeId, out var nodeVersion)
+                    && nodeVersion > sinceVersion)
                 {
-                    if (nodeVersion > sinceVersion)
+                    changes.Add(new Contracts.Dtos.NodeChangeEntryDto
                     {
-                        changes.Add(new Contracts.Dtos.NodeChangeEntryDto
-                        {
-                            NodeId = nodeId,
-                            ChangeKind = "added",
-                        });
-                    }
+                        NodeId = nodeId,
+                        ChangeKind = "added",
+                    });
                 }
             }
 
-            // Detect removed nodes: IDs that existed before sinceVersion whose objects
-            // are no longer reachable via the live tree.
-            // We check all IDs in the registry reverse map that were created <= sinceVersion
-            // but are NOT in the current live tree.
+            // "removed" = registered <= sinceVersion AND no longer in live tree.
             var removedIds = this.nodeRegistry.CollectRemovedSince(sinceVersion, liveNodeIds);
             foreach (var removedId in removedIds)
             {
@@ -2205,7 +2342,7 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
             ReferenceEqualityComparer.Instance);
 #else
         var visitedObjects = new System.Collections.Generic.HashSet<object>(
-            Infrastructure.ObjectReferenceEqualityComparer.Instance);
+            SnoopWPF.Agent.Engine.Infrastructure.ObjectReferenceEqualityComparer.Instance);
 #endif
         var queue = new Queue<object>();
         queue.Enqueue(root);

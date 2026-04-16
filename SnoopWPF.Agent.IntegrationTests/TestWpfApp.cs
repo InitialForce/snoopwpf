@@ -272,6 +272,67 @@ public sealed class TestWpfApp : IDisposable
         };
         rootPanel.Children.Add(nonExecutableCommandButton);
 
+        // ── M2-05: wpf_click elements ────────────────────────────────────────────
+
+        // Button with InvokePattern support and no Command — pure L1 click (M2-05).
+        var clickableButton = new Button
+        {
+            Name = "testClickableButton",
+            Content = "Click via Automation",
+            Width = 120,
+            Height = 32,
+        };
+        rootPanel.Children.Add(clickableButton);
+
+        // Button with both InvokePattern and a Command — L1 succeeds but hint suggests L0 (M2-05).
+        var commandAndClickButton = new Button
+        {
+            Name = "testClickableWithCommandButton",
+            Content = "Click + Command",
+            Width = 120,
+            Height = 32,
+            Command = new RelayCommand(execute: _ => { }, canExecute: _ => true),
+        };
+        rootPanel.Children.Add(commandAndClickButton);
+
+        // TextBlock — does NOT support IInvokeProvider → PatternNotSupported (M2-05).
+        var nonInvokableElement = new TextBlock
+        {
+            Name = "testNonInvokableElement",
+            Text = "Non-invokable",
+        };
+        rootPanel.Children.Add(nonInvokableElement);
+
+        // ── M2-03: wpf_set_check_state elements ─────────────────────────────────
+
+        // CheckBox: Name="testCheckBox" — used by SetCheckState integration tests (M2-03).
+        var testCheckBox = new CheckBox
+        {
+            Name = "testCheckBox",
+            Content = "Test CheckBox",
+            IsChecked = false,
+            IsThreeState = true,
+        };
+        rootPanel.Children.Add(testCheckBox);
+
+        // RadioButton: Name="testRadioButton" — used by SetCheckState integration tests (M2-03).
+        var testRadioButton = new RadioButton
+        {
+            Name = "testRadioButton",
+            Content = "Test RadioButton",
+            IsChecked = false,
+        };
+        rootPanel.Children.Add(testRadioButton);
+
+        // Bare ToggleButton: Name="testToggleButton" — used to verify wpf_toggle rejection (M2-03).
+        var testToggleButton = new System.Windows.Controls.Primitives.ToggleButton
+        {
+            Name = "testToggleButton",
+            Content = "Test ToggleButton",
+            IsChecked = false,
+        };
+        rootPanel.Children.Add(testToggleButton);
+
         // VirtualizingStackPanel-backed ListBox with 10 000 items (M1-06 / M2-04b).
         var testBigList = new ListBox
         {
