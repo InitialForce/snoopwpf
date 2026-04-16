@@ -1,0 +1,1097 @@
+namespace SnoopWPF.Agent.Engine;
+
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Threading;
+using Snoop.Data.Tree;
+using Snoop.Infrastructure;
+using Snoop.Infrastructure.Diagnostics;
+using SnoopWPF.Agent.Contracts;
+using SnoopWPF.Agent.Contracts.Dtos;
+using SnoopWPF.Agent.Engine.Infrastructure;
+
+/// <summary>
+/// Core inspection engine. Implements <see cref="ISnoopInspector"/> by marshaling all WPF operations
+/// to the provided Dispatcher. Concurrency is capped at 3 simultaneous Dispatcher invocations.
+/// </summary>
+public sealed class SnoopInspector : ISnoopInspector, IDisposable
+{
+    // Acceptance timeout: if the Dispatcher won't even accept work within this window, it's DispatcherBusy.
+    private const int DispatcherAcceptanceTimeoutMs = 500;
+
+    private readonly Dispatcher dispatcher;
+    private readonly object? rootTarget;
+    private readonly SnoopInspectorOptions options;
+
+    private readonly NodeRegistry nodeRegistry;
+    private readonly CursorManager cursorManager;
+
+    // Max 3 concurrent Dispatcher operations.
+    private readonly SemaphoreSlim concurrencySemaphore = new(3, 3);
+
+    private bool disposed;
+
+    /// <summary>
+    /// Initializes a new SnoopInspector.
+    /// </summary>
+    /// <param name="dispatcher">The WPF Dispatcher for the target application.</param>
+    /// <param name="rootTarget">
+    /// The root inspection target — typically <c>Application.Current</c> in NuGet mode,
+    /// or a specific injection root in injection mode.
+    /// </param>
+    /// <param name="options">Optional configuration; defaults are applied if null.</param>
+    public SnoopInspector(
+        Dispatcher dispatcher,
+        object? rootTarget = null,
+        SnoopInspectorOptions? options = null)
+    {
+        this.dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
+        this.rootTarget = rootTarget;
+        this.options = options ?? new SnoopInspectorOptions();
+
+        this.nodeRegistry = new NodeRegistry();
+        this.cursorManager = new CursorManager();
+    }
+
+    // -------------------------------------------------------------------------
+    // IDisposable
+    // -------------------------------------------------------------------------
+
+    /// <inheritdoc/>
+    public void Dispose()
+    {
+        if (this.disposed)
+        {
+            return;
+        }
+
+        this.disposed = true;
+        this.nodeRegistry.Dispose();
+        this.cursorManager.Dispose();
+        this.concurrencySemaphore.Dispose();
+    }
+
+    // -------------------------------------------------------------------------
+    // ISnoopInspector — 7 implemented methods
+    // -------------------------------------------------------------------------
+
+    /// <inheritdoc/>
+    public Task<SessionInfoDto> GetSessionInfoAsync(CancellationToken ct)
+    {
+        return this.RunOnDispatcherAsync(() =>
+        {
+            var proc = System.Diagnostics.Process.GetCurrentProcess();
+            var dispatcherInfo = new DispatcherInfoDto
+            {
+                Id = 0,
+                ThreadId = this.dispatcher.Thread.ManagedThreadId,
+                WindowNodeIds = new List<string>(),
+            };
+
+            // Enumerate windows and register them.
+            var app = Application.Current;
+            if (app is not null)
+            {
+                foreach (Window w in app.Windows)
+                {
+                    if (w is not null)
+                    {
+                        dispatcherInfo.WindowNodeIds.Add(this.nodeRegistry.GetOrCreateId(w));
+                    }
+                }
+            }
+
+            return new SessionInfoDto
+            {
+                ProcessName = proc.ProcessName,
+                Pid = proc.Id,
+                DotnetVersion = Environment.Version.ToString(),
+                MutationEnabled = this.options.EnableMutation,
+                Dispatchers = new List<DispatcherInfoDto> { dispatcherInfo },
+                Capabilities = new List<string>
+                {
+                    "tree",
+                    "properties",
+                    "bindings",
+                    "diagnostics",
+                },
+            };
+        }, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<List<WindowDto>> GetWindowsAsync(bool includeHidden, CancellationToken ct)
+    {
+        return this.RunOnDispatcherAsync(() =>
+        {
+            var result = new List<WindowDto>();
+
+            var app = Application.Current;
+            if (app is null)
+            {
+                return result;
+            }
+
+            // Main window first, then remaining windows ordered by title.
+            var windows = new List<Window>();
+            foreach (Window w in app.Windows)
+            {
+                if (w is not null)
+                {
+                    windows.Add(w);
+                }
+            }
+
+            // Sort: main window first, then by title.
+            windows.Sort((a, b) =>
+            {
+                var aIsMain = ReferenceEquals(a, app.MainWindow);
+                var bIsMain = ReferenceEquals(b, app.MainWindow);
+
+                if (aIsMain && !bIsMain)
+                {
+                    return -1;
+                }
+
+                if (!aIsMain && bIsMain)
+                {
+                    return 1;
+                }
+
+                return string.Compare(a.Title ?? string.Empty, b.Title ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+            });
+
+            foreach (var w in windows)
+            {
+                if (!includeHidden && !w.IsVisible)
+                {
+                    continue;
+                }
+
+                result.Add(new WindowDto
+                {
+                    NodeId = this.nodeRegistry.GetOrCreateId(w),
+                    Title = w.Title ?? string.Empty,
+                    TypeName = w.GetType().Name,
+                    Width = w.ActualWidth,
+                    Height = w.ActualHeight,
+                    DispatcherId = 0,
+                });
+            }
+
+            return result;
+        }, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<VisualTreeResultDto> GetVisualTreeAsync(
+        string? rootNodeId,
+        int maxDepth,
+        string treeType,
+        List<string>? includeProperties,
+        CancellationToken ct)
+    {
+        return this.RunOnDispatcherAsync(() =>
+        {
+            var target = this.ResolveRootTarget(rootNodeId);
+
+            // Clamp includeProperties to max 10.
+            var propNames = includeProperties?.Take(10).ToList();
+
+            var treeTypeEnum = ParseTreeType(treeType);
+            using var treeService = TreeService.From(treeTypeEnum);
+
+            var rootItem = treeService.Construct(target, parent: null);
+            if (rootItem is null)
+            {
+                throw new SnoopException(
+                    SnoopErrorCode.SessionNotFound,
+                    "TreeService.Construct returned null — application may not be initialized.",
+                    targetId: rootNodeId,
+                    suggestions: new[] { SnoopSuggestions.SessionNotFound });
+            }
+
+            var nodeCount = 0;
+            var truncated = false;
+            const int maxNodes = 500;
+
+            var rootDto = this.BuildNodeDtoRecursive(rootItem, 0, maxDepth, propNames, ref nodeCount, maxNodes, ref truncated);
+
+            return new VisualTreeResultDto
+            {
+                Root = rootDto,
+                Truncated = truncated,
+                ReturnedNodeCount = nodeCount,
+            };
+        }, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<CursorPage<NodeDto>> GetChildrenAsync(
+        string? nodeId,
+        string treeType,
+        string? cursor,
+        int take,
+        CancellationToken ct)
+    {
+        // If we have an existing cursor, serve from snapshot (resolve IDs on Dispatcher).
+        if (cursor is not null)
+        {
+            var existingPage = this.cursorManager.GetPage(cursor, take);
+
+            if (existingPage.Items.Count > 0 || (!existingPage.HasMore && !existingPage.Stale))
+            {
+                return this.RunOnDispatcherAsync(() =>
+                {
+                    var dtos = new List<NodeDto>(existingPage.Items.Count);
+                    foreach (var id in existingPage.Items)
+                    {
+                        var obj = this.nodeRegistry.TryResolve(id);
+                        if (obj is null)
+                        {
+                            continue;
+                        }
+
+                        dtos.Add(new NodeDto
+                        {
+                            NodeId = id,
+                            TypeName = obj.GetType().Name,
+                            DisplayName = obj.ToString() ?? obj.GetType().Name,
+                        });
+                    }
+
+                    return new CursorPage<NodeDto>
+                    {
+                        Items = dtos,
+                        NextCursor = existingPage.NextCursor,
+                        TotalCount = existingPage.TotalCount,
+                        HasMore = existingPage.HasMore,
+                        Stale = existingPage.Stale,
+                    };
+                }, ct);
+            }
+        }
+
+        return this.RunOnDispatcherAsync(() =>
+        {
+            if (nodeId is null)
+            {
+                // Root: use application windows. Main window first.
+                var app = Application.Current;
+                if (app is null)
+                {
+                    throw new SnoopException(
+                        SnoopErrorCode.SessionNotFound,
+                        "Application.Current is null.",
+                        suggestions: new[] { SnoopSuggestions.SessionNotFound });
+                }
+
+                var windows = new List<Window>();
+                foreach (Window w in app.Windows)
+                {
+                    if (w is not null)
+                    {
+                        windows.Add(w);
+                    }
+                }
+
+                // Main window first, then by title.
+                windows.Sort((a, b) =>
+                {
+                    var aIsMain = ReferenceEquals(a, app.MainWindow);
+                    var bIsMain = ReferenceEquals(b, app.MainWindow);
+
+                    if (aIsMain && !bIsMain)
+                    {
+                        return -1;
+                    }
+
+                    if (!aIsMain && bIsMain)
+                    {
+                        return 1;
+                    }
+
+                    return string.Compare(a.Title ?? string.Empty, b.Title ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+                });
+
+                var allIds = windows.Select(w => this.nodeRegistry.GetOrCreateId(w)).ToList();
+                var newCursor = this.cursorManager.CreateCursor(allIds);
+                var firstPage = this.cursorManager.GetPage(newCursor, take);
+
+                var windowDtos = new List<NodeDto>(firstPage.Items.Count);
+                foreach (var id in firstPage.Items)
+                {
+                    var obj = this.nodeRegistry.TryResolve(id);
+                    if (obj is null)
+                    {
+                        continue;
+                    }
+
+                    windowDtos.Add(new NodeDto
+                    {
+                        NodeId = id,
+                        TypeName = obj.GetType().Name,
+                        Name = obj is Window win ? win.Title ?? string.Empty : string.Empty,
+                        DisplayName = obj.ToString() ?? obj.GetType().Name,
+                    });
+                }
+
+                return new CursorPage<NodeDto>
+                {
+                    Items = windowDtos,
+                    NextCursor = firstPage.NextCursor,
+                    TotalCount = firstPage.TotalCount,
+                    HasMore = firstPage.HasMore,
+                    Stale = firstPage.Stale,
+                };
+            }
+
+            // Resolve specific node.
+            var target = this.ResolveNodeOrThrow(nodeId);
+            this.VerifyElementConnectivity(target, nodeId);
+
+            var treeTypeEnum = ParseTreeType(treeType);
+            using var treeService = TreeService.From(treeTypeEnum);
+
+            var parentItem = treeService.Construct(target, parent: null);
+
+            // Register all children and build snapshot.
+            var childIds = new List<string>(parentItem.Children.Count);
+            foreach (var child in parentItem.Children)
+            {
+                childIds.Add(this.nodeRegistry.GetOrCreateId(child.Target));
+            }
+
+            // Build the first page.
+            var snapshotCursor = this.cursorManager.CreateCursor(childIds);
+            var childPage = this.cursorManager.GetPage(snapshotCursor, take);
+
+            // Resolve child items to DTOs.
+            var childItemMap = new Dictionary<string, TreeItem>();
+            foreach (var child in parentItem.Children)
+            {
+                var childId = this.nodeRegistry.GetOrCreateId(child.Target);
+                childItemMap[childId] = child;
+            }
+
+            var childDtos = new List<NodeDto>(childPage.Items.Count);
+            foreach (var id in childPage.Items)
+            {
+                if (childItemMap.TryGetValue(id, out var childItem))
+                {
+                    childDtos.Add(DtoProjection.ToNodeDto(childItem, this.nodeRegistry));
+                }
+            }
+
+            return new CursorPage<NodeDto>
+            {
+                Items = childDtos,
+                NextCursor = childPage.NextCursor,
+                TotalCount = childPage.TotalCount,
+                HasMore = childPage.HasMore,
+                Stale = childPage.Stale,
+            };
+        }, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<InspectElementDto> InspectElementAsync(string nodeId, CancellationToken ct)
+    {
+        return this.RunOnDispatcherAsync(() =>
+        {
+            var target = this.ResolveNodeOrThrow(nodeId);
+            this.VerifyElementConnectivity(target, nodeId);
+
+            var typeName = target.GetType().FullName ?? target.GetType().Name;
+            var typeShortName = target.GetType().Name;
+            var name = string.Empty;
+
+            if (target is FrameworkElement fe)
+            {
+                name = fe.Name ?? string.Empty;
+            }
+            else if (target is FrameworkContentElement fce)
+            {
+                name = fce.Name ?? string.Empty;
+            }
+
+            var displayName = string.IsNullOrEmpty(name) ? typeShortName : $"{typeShortName} ({name})";
+            var path = new List<string> { typeShortName };
+
+            var isVisible = false;
+            var actualWidth = 0.0;
+            var actualHeight = 0.0;
+            var dataContextType = string.Empty;
+
+            if (target is FrameworkElement feTarget)
+            {
+                isVisible = feTarget.IsVisible;
+                actualWidth = feTarget.ActualWidth;
+                actualHeight = feTarget.ActualHeight;
+
+                if (feTarget.DataContext is { } dc)
+                {
+                    dataContextType = dc.GetType().FullName ?? dc.GetType().Name;
+                }
+            }
+
+            // Count children via visual tree.
+            using var treeService = TreeService.From(TreeType.Visual);
+            var treeItem = treeService.Construct(target, parent: null);
+            var childCount = treeItem.Children.Count;
+
+            var hasBindingErrors = treeItem.HasBindingError;
+            var bindingErrorCount = hasBindingErrors ? 1 : 0;
+
+            return new InspectElementDto
+            {
+                NodeId = nodeId,
+                TypeName = typeName,
+                Name = name,
+                DisplayName = displayName,
+                Path = path,
+                ParentNodeId = string.Empty,
+                ChildCount = childCount,
+                Depth = 0,
+                DispatcherId = 0,
+                IsVisible = isVisible,
+                ActualWidth = actualWidth,
+                ActualHeight = actualHeight,
+                DataContextType = dataContextType,
+                HasBindingErrors = hasBindingErrors,
+                BindingErrorCount = bindingErrorCount,
+                TriggerCount = null,
+                BehaviorCount = null,
+            };
+        }, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<CursorPage<PropertyDto>> GetPropertiesAsync(
+        string nodeId,
+        string? filter,
+        string? category,
+        bool includeDefaults,
+        string? cursor,
+        int take,
+        CancellationToken ct)
+    {
+        return this.RunOnDispatcherAsync(() =>
+        {
+            var target = this.ResolveNodeOrThrow(nodeId);
+            this.VerifyElementConnectivity(target, nodeId);
+
+            // ONE synchronous block: get properties, read values, project, teardown.
+            List<PropertyDto> allDtos;
+
+            var props = PropertyInformation.GetProperties(target);
+            try
+            {
+                allDtos = new List<PropertyDto>(props.Count);
+
+                foreach (var prop in props)
+                {
+                    var dto = DtoProjection.ToPropertyDto(prop, this.options.EnableRedaction);
+                    allDtos.Add(dto);
+                }
+            }
+            finally
+            {
+                // Teardown all PropertyInformation objects; stop any orphaned DispatcherTimers.
+                foreach (var prop in props)
+                {
+                    prop.Teardown();
+                    StopChangeTimer(prop);
+                }
+            }
+
+            // Apply optional text filter.
+            if (!string.IsNullOrEmpty(filter))
+            {
+                allDtos = allDtos
+                    .Where(p => p.Name.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0)
+                    .ToList();
+            }
+
+            // Properties are sorted by name by PropertyInformation.GetProperties (calls Sort()).
+            // Paginate using index-based cursor snapshot.
+            var nodeIds = allDtos.Select((_, i) => i.ToString()).ToList();
+            var cursorToken = this.cursorManager.CreateCursor(nodeIds);
+            var page = this.cursorManager.GetPage(cursorToken, take);
+
+            var pageItems = new List<PropertyDto>(page.Items.Count);
+            foreach (var idxStr in page.Items)
+            {
+                if (int.TryParse(idxStr, out var idx) && idx < allDtos.Count)
+                {
+                    pageItems.Add(allDtos[idx]);
+                }
+            }
+
+            return new CursorPage<PropertyDto>
+            {
+                Items = pageItems,
+                NextCursor = page.NextCursor,
+                TotalCount = page.TotalCount,
+                HasMore = page.HasMore,
+                Stale = page.Stale,
+            };
+        }, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<BindingInfoDto> GetBindingInfoAsync(string nodeId, string propertyName, CancellationToken ct)
+    {
+        return this.RunOnDispatcherAsync(() =>
+        {
+            var target = this.ResolveNodeOrThrow(nodeId);
+            this.VerifyElementConnectivity(target, nodeId);
+
+            var isRedacted = this.options.EnableRedaction && RedactionFilter.IsRedacted(propertyName, null);
+
+            // ONE synchronous block: get properties, find named one, read binding, teardown.
+            BindingInfoDto result;
+
+            var props = PropertyInformation.GetProperties(target);
+            try
+            {
+                var match = props.FirstOrDefault(p =>
+                    string.Equals(p.Name, propertyName, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(p.DisplayName, propertyName, StringComparison.OrdinalIgnoreCase));
+
+                if (match is null)
+                {
+                    result = new BindingInfoDto { HasBinding = false };
+                }
+                else
+                {
+                    var dto = DtoProjection.ToBindingInfoDto(match);
+                    if (dto is null)
+                    {
+                        result = new BindingInfoDto { HasBinding = false };
+                    }
+                    else
+                    {
+                        if (isRedacted)
+                        {
+                            dto.Path = "[REDACTED]";
+                            dto.ResolvedValue = "[REDACTED]";
+                        }
+
+                        result = dto;
+                    }
+                }
+            }
+            finally
+            {
+                foreach (var prop in props)
+                {
+                    prop.Teardown();
+                    StopChangeTimer(prop);
+                }
+            }
+
+            return result;
+        }, ct);
+    }
+
+    /// <inheritdoc/>
+    public Task<CursorPage<DiagnosticItemDto>> RunDiagnosticsAsync(
+        string? nodeId,
+        List<string>? providers,
+        string? minLevel,
+        string? cursor,
+        int take,
+        CancellationToken ct)
+    {
+        return this.RunOnDispatcherAsync(() =>
+        {
+            object target;
+
+            if (nodeId is not null)
+            {
+                target = this.ResolveNodeOrThrow(nodeId);
+                this.VerifyElementConnectivity(target, nodeId);
+            }
+            else
+            {
+                target = this.GetEffectiveRootTarget();
+            }
+
+            using var treeService = TreeService.From(TreeType.Visual);
+            treeService.Construct(target, parent: null);
+
+            // Run all diagnostics.
+            treeService.DiagnosticContext.AnalyzeTree();
+
+            var diagItems = treeService.DiagnosticContext.DiagnosticItems.ToList();
+
+            // Filter by minLevel if specified.
+            if (!string.IsNullOrEmpty(minLevel) && Enum.TryParse<DiagnosticLevel>(minLevel, ignoreCase: true, out var minLevelEnum))
+            {
+                diagItems = diagItems.Where(d => d.Level >= minLevelEnum).ToList();
+            }
+
+            // Filter by providers if specified.
+            if (providers is { Count: > 0 })
+            {
+                diagItems = diagItems.Where(d =>
+                    providers.Any(p => string.Equals(p, d.DiagnosticProvider.Name, StringComparison.OrdinalIgnoreCase)))
+                    .ToList();
+            }
+
+            var dtos = diagItems.Select(d =>
+            {
+                var nodeIdForItem = d.TreeItem is not null
+                    ? this.nodeRegistry.GetOrCreateId(d.TreeItem.Target)
+                    : string.Empty;
+
+                return new DiagnosticItemDto
+                {
+                    Name = d.Name ?? string.Empty,
+                    Description = d.Description ?? string.Empty,
+                    Area = d.Area.ToString(),
+                    Level = d.Level.ToString(),
+                    NodeId = nodeIdForItem,
+                    NodePath = new List<string>(),
+                };
+            }).ToList();
+
+            // Paginate.
+            var snapIds = dtos.Select((_, i) => i.ToString()).ToList();
+            var cursorToken = this.cursorManager.CreateCursor(snapIds);
+            var page = this.cursorManager.GetPage(cursorToken, take);
+
+            var pageItems = new List<DiagnosticItemDto>(page.Items.Count);
+            foreach (var idxStr in page.Items)
+            {
+                if (int.TryParse(idxStr, out var idx) && idx < dtos.Count)
+                {
+                    pageItems.Add(dtos[idx]);
+                }
+            }
+
+            return new CursorPage<DiagnosticItemDto>
+            {
+                Items = pageItems,
+                NextCursor = page.NextCursor,
+                TotalCount = page.TotalCount,
+                HasMore = page.HasMore,
+                Stale = page.Stale,
+            };
+        }, ct);
+    }
+
+    // -------------------------------------------------------------------------
+    // ISnoopInspector — 8 stubbed methods (filled in later beads)
+    // -------------------------------------------------------------------------
+
+    /// <inheritdoc/>
+    public Task<List<AncestorDto>> GetAncestorsAsync(string nodeId, int? maxLevels, CancellationToken ct)
+    {
+        throw new NotImplementedException("BEAD-015");
+    }
+
+    /// <inheritdoc/>
+    public Task<FindElementResultDto> FindElementsAsync(
+        string? typeName,
+        string? name,
+        string? rootNodeId,
+        List<PropertyConditionDto>? conditions,
+        string treeType,
+        int maxResults,
+        CancellationToken ct)
+    {
+        throw new NotImplementedException("BEAD-016");
+    }
+
+    /// <inheritdoc/>
+    public Task<SetPropertyResultDto> SetPropertyAsync(string nodeId, string propertyName, string value, CancellationToken ct)
+    {
+        throw new NotImplementedException("BEAD-017");
+    }
+
+    /// <inheritdoc/>
+    public Task<CursorPage<ResourceDto>> GetResourcesAsync(
+        string? nodeId,
+        string? resourceKey,
+        string? cursor,
+        int take,
+        CancellationToken ct)
+    {
+        throw new NotImplementedException("BEAD-003b");
+    }
+
+    /// <inheritdoc/>
+    public Task<ScreenshotResultDto> CaptureScreenshotAsync(string? nodeId, CancellationToken ct)
+    {
+        throw new NotImplementedException("BEAD-003b");
+    }
+
+    /// <inheritdoc/>
+    public Task<List<TriggerDto>> GetTriggersAsync(string nodeId, CancellationToken ct)
+    {
+        throw new NotImplementedException("BEAD-003c");
+    }
+
+    /// <inheritdoc/>
+    public Task<List<BehaviorDto>> GetBehaviorsAsync(string nodeId, CancellationToken ct)
+    {
+        throw new NotImplementedException("BEAD-003c");
+    }
+
+    // -------------------------------------------------------------------------
+    // Threading helpers
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Runs a synchronous action on the WPF Dispatcher with concurrency limiting and timeout.
+    /// Two-phase timeout:
+    ///   Phase 1 (500ms): Dispatcher acceptance — DispatcherBusy if exceeded.
+    ///   Phase 2 (TimeoutMs): Execution — OperationTimedOut if exceeded.
+    /// </summary>
+    private async Task<T> RunOnDispatcherAsync<T>(Func<T> action, CancellationToken ct)
+    {
+        this.ThrowIfDisposed();
+
+        // Guard: must not be called from the Dispatcher thread (would deadlock).
+        Debug.Assert(
+            !this.dispatcher.CheckAccess(),
+            "SnoopInspector methods must not be called from the Dispatcher thread.");
+
+        // Guard: Dispatcher must not be shutting down.
+        if (this.dispatcher.HasShutdownStarted)
+        {
+            throw new SnoopException(
+                SnoopErrorCode.SessionNotFound,
+                "The WPF Dispatcher has shut down.",
+                suggestions: new[] { SnoopSuggestions.SessionNotFound });
+        }
+
+        await this.concurrencySemaphore.WaitAsync(ct).ConfigureAwait(false);
+
+        try
+        {
+            // Queue work on the Dispatcher at Send priority.
+            var dispatcherOp = this.dispatcher.InvokeAsync(action, DispatcherPriority.Send, ct);
+
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(this.options.TimeoutMs);
+
+            var dispatcherTask = dispatcherOp.Task;
+
+            // Phase 1: Did the Dispatcher accept (start) the work within the acceptance window?
+            var acceptanceDeadline = Task.Delay(DispatcherAcceptanceTimeoutMs, timeoutCts.Token);
+            var firstToFinish = await Task.WhenAny(dispatcherTask, acceptanceDeadline).ConfigureAwait(false);
+
+            if (firstToFinish == acceptanceDeadline && !dispatcherTask.IsCompleted)
+            {
+                dispatcherOp.Abort();
+                ct.ThrowIfCancellationRequested();
+
+                throw new SnoopException(
+                    SnoopErrorCode.DispatcherBusy,
+                    "The WPF Dispatcher did not accept work within the acceptance timeout.",
+                    suggestions: new[] { SnoopSuggestions.DispatcherBusy });
+            }
+
+            // Phase 2: Work was accepted. Wait for completion within total timeout.
+            var completionDeadline = Task.Delay(this.options.TimeoutMs, timeoutCts.Token);
+            var finalResult = await Task.WhenAny(dispatcherTask, completionDeadline).ConfigureAwait(false);
+
+            if (finalResult == completionDeadline && !dispatcherTask.IsCompleted)
+            {
+                dispatcherOp.Abort();
+                ct.ThrowIfCancellationRequested();
+
+                throw new SnoopException(
+                    SnoopErrorCode.OperationTimedOut,
+                    $"The Dispatcher operation did not complete within {this.options.TimeoutMs}ms.",
+                    suggestions: new[] { SnoopSuggestions.OperationTimedOut });
+            }
+
+            // Propagate exceptions from the Dispatcher lambda.
+            return await dispatcherTask.ConfigureAwait(false);
+        }
+        finally
+        {
+            this.concurrencySemaphore.Release();
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Private helpers
+    // -------------------------------------------------------------------------
+
+    private void ThrowIfDisposed()
+    {
+        if (this.disposed)
+        {
+            throw new ObjectDisposedException(nameof(SnoopInspector));
+        }
+    }
+
+    private object GetEffectiveRootTarget()
+    {
+        if (this.rootTarget is not null)
+        {
+            return this.rootTarget;
+        }
+
+        var app = Application.Current;
+        if (app is null)
+        {
+            throw new SnoopException(
+                SnoopErrorCode.SessionNotFound,
+                "Application.Current is null — application may not be initialized.",
+                suggestions: new[] { SnoopSuggestions.SessionNotFound });
+        }
+
+        return app;
+    }
+
+    private object ResolveRootTarget(string? rootNodeId)
+    {
+        if (rootNodeId is null)
+        {
+            return this.GetEffectiveRootTarget();
+        }
+
+        return this.ResolveNodeOrThrow(rootNodeId);
+    }
+
+    private object ResolveNodeOrThrow(string nodeId)
+    {
+        // Support path alias: "Window\Grid\Button"
+        if (nodeId.IndexOf("\\", StringComparison.Ordinal) >= 0)
+        {
+            return this.ResolvePathAlias(nodeId);
+        }
+
+        var obj = this.nodeRegistry.TryResolve(nodeId);
+        if (obj is null)
+        {
+            throw new SnoopException(
+                SnoopErrorCode.NodeNotFound,
+                $"Node '{nodeId}' was not found in the registry — it may have been garbage collected.",
+                targetId: nodeId,
+                suggestions: new[] { SnoopSuggestions.NodeNotFound });
+        }
+
+        return obj;
+    }
+
+    private object ResolvePathAlias(string path)
+    {
+        // Walk the tree from root, matching type names for each segment.
+        var segments = path.Split(new[] { '\\' }, StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length == 0)
+        {
+            throw new SnoopException(
+                SnoopErrorCode.NodeNotFound,
+                $"Empty path alias: '{path}'.",
+                targetId: path,
+                suggestions: new[] { SnoopSuggestions.NodeNotFound });
+        }
+
+        using var treeService = TreeService.From(TreeType.Visual);
+        var root = treeService.Construct(this.GetEffectiveRootTarget(), parent: null);
+
+        return FindByPathSegments(root, segments, 0)
+            ?? throw new SnoopException(
+                SnoopErrorCode.NodeNotFound,
+                $"Path alias '{path}' did not match any element in the tree.",
+                targetId: path,
+                suggestions: new[] { SnoopSuggestions.NodeNotFound });
+    }
+
+    private static object? FindByPathSegments(TreeItem item, string[] segments, int segmentIndex)
+    {
+        if (segmentIndex >= segments.Length)
+        {
+            return item.Target;
+        }
+
+        var segment = segments[segmentIndex];
+
+        if (!string.Equals(item.TargetType?.Name, segment, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        if (segmentIndex == segments.Length - 1)
+        {
+            return item.Target;
+        }
+
+        foreach (var child in item.Children)
+        {
+            var found = FindByPathSegments(child, segments, segmentIndex + 1);
+            if (found is not null)
+            {
+                return found;
+            }
+        }
+
+        return null;
+    }
+
+    private void VerifyElementConnectivity(object target, string nodeId)
+    {
+        if (target is Window window)
+        {
+            // For Windows, use IsInitialized — PresentationSource can return null for hidden windows.
+            if (!window.IsInitialized)
+            {
+                throw new SnoopException(
+                    SnoopErrorCode.NodeNotFound,
+                    $"Window node '{nodeId}' is no longer initialized.",
+                    targetId: nodeId,
+                    suggestions: new[] { SnoopSuggestions.NodeNotFound });
+            }
+        }
+
+        // Non-Visual and Visual nodes without a presentation source are allowed through
+        // (popups, logical-only nodes, etc.). Connectivity failures surface as exceptions
+        // during property reads rather than as an explicit gate here.
+    }
+
+    private static TreeType ParseTreeType(string treeType)
+    {
+        if (string.Equals(treeType, "Visual", StringComparison.OrdinalIgnoreCase))
+        {
+            return TreeType.Visual;
+        }
+
+        if (string.Equals(treeType, "Logical", StringComparison.OrdinalIgnoreCase))
+        {
+            return TreeType.Logical;
+        }
+
+        if (string.Equals(treeType, "Automation", StringComparison.OrdinalIgnoreCase))
+        {
+            return TreeType.Automation;
+        }
+
+        // Default to Visual if unrecognised.
+        return TreeType.Visual;
+    }
+
+    private NodeDto BuildNodeDtoRecursive(
+        TreeItem item,
+        int currentDepth,
+        int maxDepth,
+        List<string>? includeProperties,
+        ref int nodeCount,
+        int maxNodes,
+        ref bool truncated)
+    {
+        nodeCount++;
+
+        List<NameValuePairDto>? props = null;
+
+        if (includeProperties is { Count: > 0 } && item.Target is DependencyObject depObj)
+        {
+            props = this.ReadNamedProperties(depObj, includeProperties);
+        }
+
+        var dto = DtoProjection.ToNodeDto(item, this.nodeRegistry, currentDepth);
+        dto.Properties = props;
+
+        if (currentDepth >= maxDepth || nodeCount >= maxNodes)
+        {
+            if (item.Children.Count > 0)
+            {
+                dto.ChildrenTruncated = true;
+                truncated = true;
+            }
+
+            return dto;
+        }
+
+        if (item.Children.Count > 0)
+        {
+            dto.Children = new List<NodeDto>(item.Children.Count);
+
+            foreach (var child in item.Children)
+            {
+                if (nodeCount >= maxNodes)
+                {
+                    dto.ChildrenTruncated = true;
+                    truncated = true;
+                    break;
+                }
+
+                dto.Children.Add(this.BuildNodeDtoRecursive(
+                    child, currentDepth + 1, maxDepth, includeProperties,
+                    ref nodeCount, maxNodes, ref truncated));
+            }
+        }
+
+        return dto;
+    }
+
+    private List<NameValuePairDto> ReadNamedProperties(DependencyObject target, List<string> propertyNames)
+    {
+        var result = new List<NameValuePairDto>(propertyNames.Count);
+
+        var props = PropertyInformation.GetProperties(target);
+        try
+        {
+            foreach (var propName in propertyNames)
+            {
+                var match = props.FirstOrDefault(p =>
+                    string.Equals(p.Name, propName, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(p.DisplayName, propName, StringComparison.OrdinalIgnoreCase));
+
+                if (match is not null)
+                {
+                    var propType = (Type?)match.PropertyType;
+                    var isRedacted = this.options.EnableRedaction && RedactionFilter.IsRedacted(propName, propType);
+                    var value = isRedacted ? "[REDACTED]" : (match.StringValue ?? string.Empty);
+
+                    result.Add(new NameValuePairDto { Name = propName, Value = value });
+                }
+            }
+        }
+        finally
+        {
+            foreach (var prop in props)
+            {
+                prop.Teardown();
+                StopChangeTimer(prop);
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Stops the orphaned DispatcherTimer that PropertyInformation.Teardown() does not stop.
+    /// Uses reflection to access the private changeTimer field.
+    /// </summary>
+    private static void StopChangeTimer(PropertyInformation prop)
+    {
+        try
+        {
+            var field = typeof(PropertyInformation).GetField(
+                "changeTimer",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+
+            if (field?.GetValue(prop) is DispatcherTimer timer)
+            {
+                timer.Stop();
+            }
+        }
+        catch
+        {
+            // Best-effort. If reflection fails, the timer will expire naturally.
+        }
+    }
+}
