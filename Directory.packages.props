@@ -25,6 +25,8 @@
     </ItemGroup>
 
     <ItemGroup Label="Build">
+        <PackageVersion Include="System.IO.Pipes.AccessControl" Version="5.0.0" />
+        <PackageVersion Include="System.IO.FileSystem.AccessControl" Version="5.0.0" />
         <PackageVersion Include="Microsoft.NETFramework.ReferenceAssemblies.net462" Version="1.0.3" />
         <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" />
 
