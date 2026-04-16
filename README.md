@@ -16,6 +16,8 @@ You can change property values, view triggers, set breakpoints on property chang
 [![Build status for develop branch](https://img.shields.io/appveyor/ci/batzen/snoopwpf/develop?style=flat-square&&label=upstream-develop)](https://ci.appveyor.com/project/batzen/snoopwpf/branch/develop)
 [![Chocolatey version](http://img.shields.io/chocolatey/v/snoop.svg?style=flat-square)](https://chocolatey.org/packages/snoop)
 
+[![Agent CI](https://github.com/InitialForce/snoopwpf/actions/workflows/agent-ci.yml/badge.svg?branch=develop)](https://github.com/InitialForce/snoopwpf/actions/workflows/agent-ci.yml)
+
 Badges above reflect the upstream build. Fork CI runs via GitHub Actions on the `develop` branch of this repository.
 
 ## Why this fork exists

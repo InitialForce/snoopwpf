@@ -1,0 +1,51 @@
+name: agent-ci
+
+on:
+  push:
+    branches:
+      - develop
+  pull_request:
+    branches:
+      - develop
+
+concurrency:
+  group: agent-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  agent-build-test:
+    name: agent-build-test (${{ matrix.target }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [net8.0-windows, net6.0-windows]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET (global.json)
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Build Snoop.sln
+        run: dotnet build Snoop.sln --configuration Release --framework ${{ matrix.target }} --no-incremental
+
+      - name: Test Snoop.Core.Tests
+        run: dotnet test Snoop.Core.Tests/Snoop.Core.Tests.csproj --configuration Release --framework ${{ matrix.target }} --no-build --logger "trx;LogFileName=Snoop.Core.Tests-${{ matrix.target }}.trx" --results-directory output/test-results
+
+      - name: Test SnoopWPF.Agent.Tests
+        run: dotnet test SnoopWPF.Agent.Tests/SnoopWPF.Agent.Tests.csproj --configuration Release --framework ${{ matrix.target }} --no-build --logger "trx;LogFileName=SnoopWPF.Agent.Tests-${{ matrix.target }}.trx" --results-directory output/test-results
+
+      - name: Test SnoopWPF.Agent.IntegrationTests
+        if: matrix.target == 'net8.0-windows'
+        run: dotnet test SnoopWPF.Agent.IntegrationTests/SnoopWPF.Agent.IntegrationTests.csproj --configuration Release --framework net8.0-windows --no-build --logger "trx;LogFileName=SnoopWPF.Agent.IntegrationTests-${{ matrix.target }}.trx" --results-directory output/test-results
+
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.target }}
+          path: output/test-results
