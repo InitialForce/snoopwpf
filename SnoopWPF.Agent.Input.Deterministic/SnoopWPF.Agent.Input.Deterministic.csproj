@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <UseWpf>true</UseWpf>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SnoopWPF.Agent.Contracts\SnoopWPF.Agent.Contracts.csproj" />
+    <ProjectReference Include="..\SnoopWPF.Agent.Engine\SnoopWPF.Agent.Engine.csproj" />
+  </ItemGroup>
+
+</Project>
