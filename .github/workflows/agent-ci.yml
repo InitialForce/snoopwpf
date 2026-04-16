@@ -80,3 +80,36 @@ jobs:
         with:
           name: brokered-suite-logs-${{ matrix.target }}-${{ matrix.arch }}
           path: output/test-results
+
+  verigui-harness:
+    name: verigui-harness (net8.0-windows)
+    runs-on: windows-latest
+    needs: snoop-suite
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET (global.json)
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Build VeriGuiHarness
+        run: dotnet build SnoopWPF.Agent.VeriGuiHarness/SnoopWPF.Agent.VeriGuiHarness.csproj --configuration Release --framework net8.0-windows --no-incremental
+
+      - name: Run VeriGUI harness (assert thresholds)
+        run: >
+          dotnet run --project SnoopWPF.Agent.VeriGuiHarness/SnoopWPF.Agent.VeriGuiHarness.csproj
+          --configuration Release --framework net8.0-windows --no-build --
+          --run
+          --scenarios "${{ github.workspace }}/SnoopWPF.Agent.VeriGuiHarness/Scenarios"
+          --out output/verigui-report.json
+          --assert-pass-thresholds
+
+      - name: Upload VeriGUI report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verigui-report
+          path: output/verigui-report.json

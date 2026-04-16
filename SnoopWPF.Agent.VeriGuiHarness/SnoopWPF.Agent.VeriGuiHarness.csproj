@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net8.0-windows</TargetFramework>
+        <LangVersion>latest</LangVersion>
+        <Nullable>enable</Nullable>
+        <UseWpf>true</UseWpf>
+        <ImplicitUsings>disable</ImplicitUsings>
+        <!-- SA1316: tuple names use camelCase per CommandLineParser pattern (matches Agent.Cli) -->
+        <!-- SA1309: _rng field uses underscore prefix matching existing Engine/Tools convention -->
+        <NoWarn>$(NoWarn);SA1316;SA1309;CA1812</NoWarn>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../SnoopWPF.Agent.Contracts/SnoopWPF.Agent.Contracts.csproj" />
+        <ProjectReference Include="../SnoopWPF.Agent.Tools/SnoopWPF.Agent.Tools.csproj" />
+        <ProjectReference Include="../SnoopWPF.Agent.Engine/SnoopWPF.Agent.Engine.csproj" />
+        <ProjectReference Include="../SnoopWPF.Agent.Server/SnoopWPF.Agent.Server.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="CommandLineParser" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Update="Scenarios\*.md">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+    </ItemGroup>
+
+</Project>
