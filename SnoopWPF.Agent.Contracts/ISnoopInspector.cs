@@ -12,10 +12,13 @@ using SnoopWPF.Agent.Contracts.Dtos;
 /// </summary>
 public interface ISnoopInspector
 {
+    /// <summary>Returns session-level information about the attached WPF process.</summary>
     Task<SessionInfoDto> GetSessionInfoAsync(CancellationToken ct);
 
+    /// <summary>Returns all top-level WPF windows; optionally includes hidden windows.</summary>
     Task<List<WindowDto>> GetWindowsAsync(bool includeHidden, CancellationToken ct);
 
+    /// <summary>Returns the visual (or logical) tree rooted at <paramref name="rootNodeId"/>, up to <paramref name="maxDepth"/> levels deep.</summary>
     Task<VisualTreeResultDto> GetVisualTreeAsync(
         string? rootNodeId,
         int maxDepth,
@@ -23,6 +26,7 @@ public interface ISnoopInspector
         List<string>? includeProperties,
         CancellationToken ct);
 
+    /// <summary>Returns a cursor-paginated page of direct children of the node identified by <paramref name="nodeId"/>.</summary>
     Task<CursorPage<NodeDto>> GetChildrenAsync(
         string? nodeId,
         string treeType,
@@ -30,11 +34,13 @@ public interface ISnoopInspector
         int take,
         CancellationToken ct);
 
+    /// <summary>Returns the ancestor chain of the node identified by <paramref name="nodeId"/>, up to <paramref name="maxLevels"/> levels.</summary>
     Task<List<AncestorDto>> GetAncestorsAsync(
         string nodeId,
         int? maxLevels,
         CancellationToken ct);
 
+    /// <summary>Searches the visual/logical tree for elements matching the given type, name, and property conditions.</summary>
     Task<FindElementResultDto> FindElementsAsync(
         string? typeName,
         string? name,
@@ -44,8 +50,10 @@ public interface ISnoopInspector
         int maxResults,
         CancellationToken ct);
 
+    /// <summary>Returns a rich element summary for the node identified by <paramref name="nodeId"/>.</summary>
     Task<InspectElementDto> InspectElementAsync(string nodeId, CancellationToken ct);
 
+    /// <summary>Returns a cursor-paginated page of dependency properties for the node identified by <paramref name="nodeId"/>.</summary>
     Task<CursorPage<PropertyDto>> GetPropertiesAsync(
         string nodeId,
         string? filter,
@@ -55,14 +63,17 @@ public interface ISnoopInspector
         int take,
         CancellationToken ct);
 
+    /// <summary>Sets a named dependency property on the node identified by <paramref name="nodeId"/> and returns the resulting state delta.</summary>
     Task<StateDeltaDto> SetPropertyAsync(
         string nodeId,
         string propertyName,
         string value,
         CancellationToken ct);
 
+    /// <summary>Returns binding metadata for a named property on the node identified by <paramref name="nodeId"/>.</summary>
     Task<BindingInfoDto> GetBindingInfoAsync(string nodeId, string propertyName, CancellationToken ct);
 
+    /// <summary>Runs diagnostic providers against the node identified by <paramref name="nodeId"/> and returns cursor-paginated results.</summary>
     Task<CursorPage<DiagnosticItemDto>> RunDiagnosticsAsync(
         string? nodeId,
         List<string>? providers,
@@ -71,6 +82,7 @@ public interface ISnoopInspector
         int take,
         CancellationToken ct);
 
+    /// <summary>Returns cursor-paginated resource dictionary entries visible from the node identified by <paramref name="nodeId"/>.</summary>
     Task<CursorPage<ResourceDto>> GetResourcesAsync(
         string? nodeId,
         string? resourceKey,
@@ -78,10 +90,13 @@ public interface ISnoopInspector
         int take,
         CancellationToken ct);
 
+    /// <summary>Captures a PNG screenshot of the element identified by <paramref name="nodeId"/>, or the entire window when null.</summary>
     Task<ScreenshotResultDto> CaptureScreenshotAsync(string? nodeId, CancellationToken ct);
 
+    /// <summary>Returns all triggers (Style, ControlTemplate, DataTemplate, and Element) defined on the node identified by <paramref name="nodeId"/>.</summary>
     Task<List<TriggerDto>> GetTriggersAsync(string nodeId, CancellationToken ct);
 
+    /// <summary>Returns all attached behaviors on the node identified by <paramref name="nodeId"/>.</summary>
     Task<List<BehaviorDto>> GetBehaviorsAsync(string nodeId, CancellationToken ct);
 
     // ── WpfLocator overloads (M1-06) ──────────────────────────────────────────

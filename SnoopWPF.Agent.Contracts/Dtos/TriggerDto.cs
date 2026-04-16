@@ -9,9 +9,11 @@ using System.Runtime.Serialization;
 [DataContract]
 public sealed class TriggerConditionDto
 {
+    /// <summary>Name of the dependency property evaluated by this condition.</summary>
     [DataMember(Name = "property")]
     public string Property { get; set; } = string.Empty;
 
+    /// <summary>Value the property must equal for the condition to be satisfied.</summary>
     [DataMember(Name = "value")]
     public string Value { get; set; } = string.Empty;
 }
@@ -22,9 +24,11 @@ public sealed class TriggerConditionDto
 [DataContract]
 public sealed class TriggerSetterDto
 {
+    /// <summary>Name of the dependency property this setter targets.</summary>
     [DataMember(Name = "property")]
     public string Property { get; set; } = string.Empty;
 
+    /// <summary>Value applied to the property when the trigger fires.</summary>
     [DataMember(Name = "value")]
     public string Value { get; set; } = string.Empty;
 }
@@ -41,6 +45,7 @@ public sealed class TriggerDto
     [DataMember(Name = "triggerType")]
     public string TriggerType { get; set; } = string.Empty;
 
+    /// <summary><see langword="true"/> when all trigger conditions are currently satisfied.</summary>
     [DataMember(Name = "isActive")]
     public bool IsActive { get; set; }
 
@@ -51,9 +56,11 @@ public sealed class TriggerDto
     [DataMember(Name = "source")]
     public string Source { get; set; } = string.Empty;
 
+    /// <summary>Conditions that must all be satisfied for this trigger to fire.</summary>
     [DataMember(Name = "conditions")]
     public List<TriggerConditionDto> Conditions { get; set; } = new List<TriggerConditionDto>();
 
+    /// <summary>Property setters applied while the trigger is active.</summary>
     [DataMember(Name = "setters")]
     public List<TriggerSetterDto> Setters { get; set; } = new List<TriggerSetterDto>();
 }

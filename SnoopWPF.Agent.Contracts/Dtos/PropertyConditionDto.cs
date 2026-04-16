@@ -8,6 +8,7 @@ using System.Runtime.Serialization;
 [DataContract]
 public sealed class PropertyConditionDto
 {
+    /// <summary>Name of the dependency or CLR property to match against (e.g. <c>Background</c>).</summary>
     [DataMember(Name = "property")]
     public string Property { get; set; } = string.Empty;
 
@@ -17,6 +18,7 @@ public sealed class PropertyConditionDto
     [DataMember(Name = "operator")]
     public string Operator { get; set; } = string.Empty;
 
+    /// <summary>Expected property value to compare against (string representation).</summary>
     [DataMember(Name = "value")]
     public string Value { get; set; } = string.Empty;
 }
