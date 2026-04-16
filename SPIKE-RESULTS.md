@@ -145,3 +145,39 @@ walk + `Thread.Sleep`, completely independent of the property-polling infrastruc
 The circular-dependency hazard W3-H2 is resolved for M2-10 design purposes.
 
 ---
+
+## S-2 — UnsafeAccessor compilation on net8.0-windows
+
+**Date:** 2026-04-16
+**Bead:** M0-02 (bd-26q)
+**Machine:** `AMD Ryzen 9 5950X 16-Core Processor`, `64 GB RAM`, .NET SDK `10.0.104`.
+**Spike project:** `spike/UnsafeAccessorSpike/` (not added to Snoop.sln)
+
+**Goal.** Verify `[UnsafeAccessor]` compiles on net8.0-windows and resolves private members
+on a WPF type (`HwndSource`).
+
+**Results.**
+
+| Probe | Member | Kind | Result |
+|-------|--------|------|--------|
+| Field | `HwndSource._hwnd` (`HandleRef`) | `UnsafeAccessorKind.Field` | PASS — compiles and links |
+| Method | `HwndSource.get_IsDisposed()` | `UnsafeAccessorKind.Method` | PASS — compiles and links |
+
+Build output: `Build succeeded. 1 Warning(s), 0 Error(s)` (warning is NETSDK1137 — benign SDK name advisory).
+
+**TFM coverage:**
+
+| TFM | Supported | Notes |
+|-----|-----------|-------|
+| `net8.0-windows` | YES | `UnsafeAccessorAttribute` available in `System.Runtime.CompilerServices` |
+| `net9.0-windows` | YES | Same attribute, same semantics — compiles at net8 TFM; net9 is a strict superset |
+| `net6.0-windows` | NO | Attribute does not exist — reflection fallback required for net6 targets |
+
+**Decision for L3 input strategies:**
+`[UnsafeAccessor]` is viable on net8+. L3 strategies targeting net6 must use a reflection
+fallback (`MethodInfo.Invoke` / `FieldInfo.GetValue`). A `#if NET8_0_OR_GREATER` guard is
+sufficient to handle both code paths at compile time.
+
+**Verdict:** GREEN for net8+. net6 requires reflection fallback (YELLOW — expected, pre-agreed in PRD §10).
+
+---
