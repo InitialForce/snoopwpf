@@ -42,6 +42,14 @@ public class SessionPolicyTests
     }
 
     [Test]
+    public void Create_Injection_ForcesAllowSensitiveRetentionFalse()
+    {
+        var opts = new SnoopAgentOptions { AllowSensitiveRetention = true };
+        var policy = SessionPolicy.Create(SessionMode.Injection, opts);
+        Assert.That(policy.AllowSensitiveRetention, Is.False, "FX-C5: injection must clamp sensitive retention");
+    }
+
+    [Test]
     public void Create_Brokered_PreservesCallerOptions()
     {
         var opts = new SnoopAgentOptions

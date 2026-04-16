@@ -83,7 +83,7 @@ public sealed record SessionPolicy
             EnableMutation = opts.EnableMutation,
             EnableRedaction = enableRedaction,
             RedactionPolicy = RedactionPolicy.Default,
-            AllowSensitiveRetention = opts.AllowSensitiveRetention,
+            AllowSensitiveRetention = mode == SessionMode.Injection ? false : opts.AllowSensitiveRetention,
         };
     }
 }
