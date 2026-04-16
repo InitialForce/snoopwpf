@@ -21,7 +21,7 @@ public sealed class NodeRegistry : IDisposable
 
     private readonly Timer sweepTimer;
 
-    private bool disposed;
+    private volatile bool disposed;
 
     /// <summary>
     /// Creates a NodeRegistry with a configurable sweep interval (default 60s).

@@ -23,7 +23,7 @@ public sealed class CursorManager : IDisposable
 
     private int tokenCounter;
 
-    private bool disposed;
+    private volatile bool disposed;
 
     /// <summary>
     /// Creates a CursorManager.
