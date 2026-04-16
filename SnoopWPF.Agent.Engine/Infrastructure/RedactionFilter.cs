@@ -83,7 +83,11 @@ public static class RedactionFilter
         // (avoids loading the attribute type into the checked assembly's context).
         foreach (var cad in CustomAttributeData.GetCustomAttributes(type))
         {
-            if (cad.AttributeType == typeof(SensitiveAttribute))
+            // FX-M9: Use FullName + assembly name comparison instead of reference equality so
+            // that [Sensitive] is recognised even when the Contracts assembly was loaded in a
+            // different load context (e.g. Assembly.LoadFrom in injection mode).
+            if (cad.AttributeType.FullName == typeof(SensitiveAttribute).FullName
+                && cad.AttributeType.Assembly.GetName().Name == "SnoopWPF.Agent.Contracts")
             {
                 return true;
             }
