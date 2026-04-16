@@ -372,7 +372,7 @@ Task<List<BehaviorDto>> GetBehaviorsAsync(string nodeId, CancellationToken ct);
 1. Create `SnoopInspectorOptions`: `TimeoutMs (default 5000)`, `EnableMutation (default false)`, `EnableRedaction (default true)`
 2. Create `SnoopInspector` implementing `ISnoopInspector`:
    - Constructor: `SnoopInspector(Dispatcher dispatcher, object? rootTarget = null, SnoopInspectorOptions? options = null)`. `rootTarget` is `Application.Current` in NuGet mode or injection root in injection mode.
-   - **Threading pattern (CRITICAL — be precise):** 
+   - **Threading pattern (CRITICAL — be precise):**
      - **Dispatcher shutdown guard:** At entry of every method, check `if (dispatcher.HasShutdownStarted) throw new SnoopException(SessionNotFound, ...)`. Also add `Debug.Assert(!dispatcher.CheckAccess(), "SnoopInspector methods must not be called from the Dispatcher thread")` to prevent deadlocks.
      - Each method queues work via `await Dispatcher.InvokeAsync(() => { /* synchronous work block */ }, DispatcherPriority.Send)`. Inside the lambda, all WPF access is a single synchronous block. Do NOT use multiple awaited `InvokeAsync` calls for work that must be atomic.
      - Timeout: wrap with `Task.WhenAny(dispatcherTask, Task.Delay(TimeoutMs))` — if timeout wins, throw `SnoopException(DispatcherBusy)` if work hasn't started, or `SnoopException(OperationTimedOut)` if work started but didn't finish.

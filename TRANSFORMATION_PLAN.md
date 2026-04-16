@@ -136,7 +136,7 @@ Key rule: **Snoop.MCP and Snoop.CLI never reference Snoop.Core** — they only k
 1. Host creates `NamedPipeServerStream("SnoopAgent_{pid}")`
 2. Host injects `Snoop.InjectedAgent.dll` via existing GenericInjector, passing pipe name in TransientSettingsData
 3. Injected agent connects `NamedPipeClientStream` to `SnoopAgent_{pid}`
-4. Both sides attach `StreamJsonRpc.JsonRpc` 
+4. Both sides attach `StreamJsonRpc.JsonRpc`
 5. Host calls methods on `ISnoopAgentRpc` proxy
 6. Agent marshals all calls to WPF Dispatcher, builds DTOs, returns them
 
@@ -338,12 +338,12 @@ Both ID and path formats are accepted in all tool/CLI arguments.
 MCP/CLI Host Process:
   Thread 1: MCP stdin/stdout handler (or CLI main thread)
   Thread 2: Named pipe listener (per session)
-  
+
   All tool calls → SessionManager.GetSession(pid) → JsonRpc.InvokeAsync(...)
 
 Injected Agent (inside target WPF process):
   Thread N: Named pipe JSON-RPC server (background)
-  
+
   All RPC handlers → Dispatcher.InvokeAsync(() => {
       // Call TreeService, PropertyInformation, etc.
       // Project to DTOs

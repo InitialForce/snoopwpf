@@ -411,7 +411,7 @@ Reading a WPF property invokes its getter in the target process. Getters can tri
 
 #### wpf_get_session_info
 ```
-Input: {} 
+Input: {}
 Output: { processName, pid, dotnetVersion, mutationEnabled,
           dispatchers: [{ id, threadId, windowNodeIds: string[] }],
           capabilities: string[] }
@@ -482,7 +482,7 @@ Output: { success, previousValue, newValue, error? }
 Errors: MutationDisabled, PropertyReadOnly, UnsupportedPropertyType,
         TypeConversionFailed (includes expectedFormat hint), PropertyRedacted
 Conversion: InvariantCulture. Hardcoded converter table.
-Value format hints: Color="#RRGGBB" or "Red"; Thickness="L,T,R,B" or single; 
+Value format hints: Color="#RRGGBB" or "Red"; Thickness="L,T,R,B" or single;
   GridLength="Auto"|"*"|"2*"|"100"; Visibility="Visible"|"Hidden"|"Collapsed"
 ```
 
