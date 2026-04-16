@@ -36,6 +36,7 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
     private readonly NodeRegistry nodeRegistry;
     private readonly CursorManager cursorManager;
     private readonly LocatorResolver locatorResolver;
+    private readonly Binding.BindingResolver bindingResolver = new();
 
     // Max 3 concurrent Dispatcher operations.
     private readonly SemaphoreSlim concurrencySemaphore = new(3, 3);
@@ -1102,7 +1103,7 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
     }
 
     /// <inheritdoc/>
-    public Task<SetPropertyResultDto> SetPropertyAsync(string nodeId, string propertyName, string value, CancellationToken ct)
+    public Task<StateDeltaDto> SetPropertyAsync(string nodeId, string propertyName, string value, CancellationToken ct)
     {
         return this.RunOnDispatcherAsync(() =>
         {
@@ -1229,12 +1230,37 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
 
             var newValue = convertedValue.ToString() ?? string.Empty;
 
-            return new SetPropertyResultDto
+            // Simple pre/post comparison for stateChanged (M1-11 will refine to serialization-time).
+            var stateChanged = !string.Equals(previousValue, newValue, StringComparison.Ordinal);
+
+            if (!stateChanged)
+            {
+                return new StateDeltaDto
+                {
+                    Success = false,
+                    ElementVisible = true,
+                    StateChanged = false,
+                    FailureReason = FailureReason.StateUnchanged,
+                    Suggestion = new SuggestionDto
+                    {
+                        Tool = "wpf_inspect_element",
+                        Args = new List<NameValuePairDto>
+                        {
+                            new() { Name = "nodeId", Value = nodeId },
+                        },
+                    },
+                    PreviousValue = previousValue,
+                    NewValue = newValue,
+                };
+            }
+
+            return new StateDeltaDto
             {
                 Success = true,
+                ElementVisible = true,
+                StateChanged = true,
                 PreviousValue = previousValue,
                 NewValue = newValue,
-                Error = null,
             };
         }, ct);
     }
@@ -1523,7 +1549,7 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
     }
 
     /// <inheritdoc/>
-    public async Task<SetPropertyResultDto> SetPropertyAsync(
+    public async Task<StateDeltaDto> SetPropertyAsync(
         WpfLocator locator,
         string propertyName,
         string value,
@@ -1584,6 +1610,36 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
     {
         var nodeId = await this.ResolveLocatorAsync(locator, ct).ConfigureAwait(false);
         return await this.GetBehaviorsAsync(nodeId, ct).ConfigureAwait(false);
+    }
+
+    // ── M2-08: wpf_resolve_binding ────────────────────────────────────────────
+
+    /// <inheritdoc/>
+    public Task<BindingResolutionDto> ResolveBindingAsync(string nodeId, string propertyName, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(nodeId))
+        {
+            throw new ArgumentException("nodeId must not be null or empty.", nameof(nodeId));
+        }
+
+        if (string.IsNullOrEmpty(propertyName))
+        {
+            throw new ArgumentException("propertyName must not be null or empty.", nameof(propertyName));
+        }
+
+        return this.RunOnDispatcherAsync(() =>
+        {
+            var target = this.ResolveNodeOrThrow(nodeId);
+            this.VerifyElementConnectivity(target, nodeId);
+            return this.bindingResolver.Resolve(target, propertyName);
+        }, ct);
+    }
+
+    /// <inheritdoc/>
+    public async Task<BindingResolutionDto> ResolveBindingAsync(WpfLocator locator, string propertyName, CancellationToken ct)
+    {
+        var nodeId = await this.ResolveLocatorAsync(locator, ct).ConfigureAwait(false);
+        return await this.ResolveBindingAsync(nodeId, propertyName, ct).ConfigureAwait(false);
     }
 
     /// <summary>

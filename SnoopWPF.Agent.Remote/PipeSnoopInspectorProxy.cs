@@ -147,12 +147,12 @@ public sealed class PipeSnoopInspectorProxy : ISnoopInspector, IAsyncDisposable,
             ct);
 
     /// <inheritdoc/>
-    public Task<SetPropertyResultDto> SetPropertyAsync(
+    public Task<StateDeltaDto> SetPropertyAsync(
         string nodeId,
         string propertyName,
         string value,
         CancellationToken ct)
-        => this.InvokeAsync<SetPropertyResultDto>(
+        => this.InvokeAsync<StateDeltaDto>(
             "SetProperty",
             new { nodeId, propertyName, value },
             ct);
@@ -490,7 +490,7 @@ public sealed class PipeSnoopInspectorProxy : ISnoopInspector, IAsyncDisposable,
         => throw new NotImplementedException("M1-06");
 
     /// <inheritdoc/>
-    public Task<SetPropertyResultDto> SetPropertyAsync(WpfLocator locator, string propertyName, string value, CancellationToken ct)
+    public Task<StateDeltaDto> SetPropertyAsync(WpfLocator locator, string propertyName, string value, CancellationToken ct)
         => throw new NotImplementedException("M1-06");
 
     /// <inheritdoc/>
@@ -516,6 +516,14 @@ public sealed class PipeSnoopInspectorProxy : ISnoopInspector, IAsyncDisposable,
     /// <inheritdoc/>
     public Task<List<BehaviorDto>> GetBehaviorsAsync(WpfLocator locator, CancellationToken ct)
         => throw new NotImplementedException("M1-06");
+
+    /// <inheritdoc/>
+    public Task<BindingResolutionDto> ResolveBindingAsync(string nodeId, string propertyName, CancellationToken ct)
+        => this.InvokeAsync<BindingResolutionDto>("ResolveBinding", new { nodeId, propertyName }, ct);
+
+    /// <inheritdoc/>
+    public Task<BindingResolutionDto> ResolveBindingAsync(WpfLocator locator, string propertyName, CancellationToken ct)
+        => throw new NotImplementedException("M2-08");
 
     // --------------------------------------------------------------------------
     // Inner types

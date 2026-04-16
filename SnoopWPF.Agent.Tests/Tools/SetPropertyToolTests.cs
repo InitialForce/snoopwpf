@@ -29,43 +29,56 @@ public class SetPropertyToolTests
     // ── Happy path ──────────────────────────────────────────────────────────────
 
     [Test]
-    public async Task HappyPath_ReturnsSetPropertyResult()
+    public async Task HappyPath_ReturnsStateDelta()
     {
         this.fake.OnSetProperty = (nodeId, propertyName, value, ct) =>
-            System.Threading.Tasks.Task.FromResult(new SetPropertyResultDto
+            System.Threading.Tasks.Task.FromResult(new StateDeltaDto
             {
                 Success = true,
+                ElementVisible = true,
+                StateChanged = true,
                 PreviousValue = "White",
                 NewValue = "Red",
-                Error = null,
             });
 
         var json = await this.tool.SetPropertyAsync("0:1", "Background", "Red");
 
         var doc = JsonNode.Parse(json)!;
         Assert.That(doc["success"]!.GetValue<bool>(), Is.True);
+        Assert.That(doc["stateChanged"]!.GetValue<bool>(), Is.True);
         Assert.That(doc["previousValue"]!.GetValue<string>(), Is.EqualTo("White"));
         Assert.That(doc["newValue"]!.GetValue<string>(), Is.EqualTo("Red"));
-        Assert.That(doc["error"], Is.Null.Or.EqualTo(null));
     }
 
     [Test]
-    public async Task HappyPath_SuccessFalse_IncludesError()
+    public async Task StateUnchanged_ReturnsSuccessFalse_WithFailureReason()
     {
         this.fake.OnSetProperty = (_, _, _, _) =>
-            System.Threading.Tasks.Task.FromResult(new SetPropertyResultDto
+            System.Threading.Tasks.Task.FromResult(new StateDeltaDto
             {
                 Success = false,
+                ElementVisible = true,
+                StateChanged = false,
+                FailureReason = FailureReason.StateUnchanged,
+                Suggestion = new SuggestionDto
+                {
+                    Tool = "wpf_inspect_element",
+                    Args = new System.Collections.Generic.List<NameValuePairDto>
+                    {
+                        new() { Name = "nodeId", Value = "0:2" },
+                    },
+                },
                 PreviousValue = "100",
-                NewValue = "abc",
-                Error = "Cannot convert 'abc' to Double",
+                NewValue = "100",
             });
 
-        var json = await this.tool.SetPropertyAsync("0:2", "Width", "abc");
+        var json = await this.tool.SetPropertyAsync("0:2", "Width", "100");
 
         var doc = JsonNode.Parse(json)!;
         Assert.That(doc["success"]!.GetValue<bool>(), Is.False);
-        Assert.That(doc["error"]!.GetValue<string>(), Does.Contain("Cannot convert"));
+        Assert.That(doc["stateChanged"]!.GetValue<bool>(), Is.False);
+        Assert.That(doc["failureReason"]!.GetValue<int>(), Is.EqualTo((int)FailureReason.StateUnchanged));
+        Assert.That(doc["suggestion"]!["tool"]!.GetValue<string>(), Is.EqualTo("wpf_inspect_element"));
     }
 
     // ── Parameter forwarding ────────────────────────────────────────────────────
@@ -82,7 +95,7 @@ public class SetPropertyToolTests
             capturedNodeId = nodeId;
             capturedPropertyName = propertyName;
             capturedValue = value;
-            return System.Threading.Tasks.Task.FromResult(new SetPropertyResultDto { Success = true });
+            return System.Threading.Tasks.Task.FromResult(new StateDeltaDto { Success = true, StateChanged = true });
         };
 
         await this.tool.SetPropertyAsync("0:5", "Visibility", "Collapsed");
@@ -98,9 +111,11 @@ public class SetPropertyToolTests
     public async Task JsonOutput_UsesCamelCaseKeys()
     {
         this.fake.OnSetProperty = (_, _, _, _) =>
-            System.Threading.Tasks.Task.FromResult(new SetPropertyResultDto
+            System.Threading.Tasks.Task.FromResult(new StateDeltaDto
             {
                 Success = true,
+                ElementVisible = true,
+                StateChanged = true,
                 PreviousValue = "old",
                 NewValue = "new",
             });
@@ -108,10 +123,10 @@ public class SetPropertyToolTests
         var json = await this.tool.SetPropertyAsync("0:1", "Tag", "new");
 
         Assert.That(json, Does.Contain("\"success\""));
-        Assert.That(json, Does.Contain("\"previousValue\""));
-        Assert.That(json, Does.Contain("\"newValue\""));
+        Assert.That(json, Does.Contain("\"stateChanged\""));
+        Assert.That(json, Does.Contain("\"elementVisible\""));
         Assert.That(json, Does.Not.Contain("\"Success\""));
-        Assert.That(json, Does.Not.Contain("\"PreviousValue\""));
+        Assert.That(json, Does.Not.Contain("\"StateChanged\""));
     }
 
     // ── Error mapping ────────────────────────────────────────────────────────────

@@ -55,7 +55,7 @@ public interface ISnoopInspector
         int take,
         CancellationToken ct);
 
-    Task<SetPropertyResultDto> SetPropertyAsync(
+    Task<StateDeltaDto> SetPropertyAsync(
         string nodeId,
         string propertyName,
         string value,
@@ -126,7 +126,7 @@ public interface ISnoopInspector
         CancellationToken ct);
 
     /// <summary>Locator overload for <see cref="SetPropertyAsync(string,string,string,CancellationToken)"/>.</summary>
-    Task<SetPropertyResultDto> SetPropertyAsync(
+    Task<StateDeltaDto> SetPropertyAsync(
         WpfLocator locator,
         string propertyName,
         string value,
@@ -160,4 +160,16 @@ public interface ISnoopInspector
 
     /// <summary>Locator overload for <see cref="GetBehaviorsAsync(string,CancellationToken)"/>.</summary>
     Task<List<BehaviorDto>> GetBehaviorsAsync(WpfLocator locator, CancellationToken ct);
+
+    // ── M2-08: wpf_resolve_binding ────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns the full binding chain for <paramref name="propertyName"/> on the element
+    /// identified by <paramref name="nodeId"/>: path, source, intermediate values, converter,
+    /// mode, validation errors, and overall status (M2-08).
+    /// </summary>
+    Task<BindingResolutionDto> ResolveBindingAsync(string nodeId, string propertyName, CancellationToken ct);
+
+    /// <summary>Locator overload for <see cref="ResolveBindingAsync(string,string,CancellationToken)"/>.</summary>
+    Task<BindingResolutionDto> ResolveBindingAsync(WpfLocator locator, string propertyName, CancellationToken ct);
 }

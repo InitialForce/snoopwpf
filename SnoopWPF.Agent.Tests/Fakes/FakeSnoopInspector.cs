@@ -33,7 +33,7 @@ public sealed class FakeSnoopInspector : ISnoopInspector
 
     public Func<string, string?, string?, bool, string?, int, CancellationToken, Task<CursorPage<PropertyDto>>>? OnGetProperties { get; set; }
 
-    public Func<string, string, string, CancellationToken, Task<SetPropertyResultDto>>? OnSetProperty { get; set; }
+    public Func<string, string, string, CancellationToken, Task<StateDeltaDto>>? OnSetProperty { get; set; }
 
     public Func<string, string, CancellationToken, Task<BindingInfoDto>>? OnGetBindingInfo { get; set; }
 
@@ -87,7 +87,7 @@ public sealed class FakeSnoopInspector : ISnoopInspector
         => (this.OnGetProperties ?? throw new NotImplementedException("OnGetProperties not set"))
             .Invoke(nodeId, filter, category, includeDefaults, cursor, take, ct);
 
-    public Task<SetPropertyResultDto> SetPropertyAsync(
+    public Task<StateDeltaDto> SetPropertyAsync(
         string nodeId, string propertyName, string value, CancellationToken ct)
         => (this.OnSetProperty ?? throw new NotImplementedException("OnSetProperty not set"))
             .Invoke(nodeId, propertyName, value, ct);
@@ -135,7 +135,7 @@ public sealed class FakeSnoopInspector : ISnoopInspector
     public Task<CursorPage<PropertyDto>> GetPropertiesAsync(WpfLocator locator, string? filter, string? category, bool includeDefaults, string? cursor, int take, CancellationToken ct)
         => throw new NotImplementedException("M1-06");
 
-    public Task<SetPropertyResultDto> SetPropertyAsync(WpfLocator locator, string propertyName, string value, CancellationToken ct)
+    public Task<StateDeltaDto> SetPropertyAsync(WpfLocator locator, string propertyName, string value, CancellationToken ct)
         => throw new NotImplementedException("M1-06");
 
     public Task<BindingInfoDto> GetBindingInfoAsync(WpfLocator locator, string propertyName, CancellationToken ct)
@@ -155,4 +155,10 @@ public sealed class FakeSnoopInspector : ISnoopInspector
 
     public Task<List<BehaviorDto>> GetBehaviorsAsync(WpfLocator locator, CancellationToken ct)
         => throw new NotImplementedException("M1-06");
+
+    public Task<BindingResolutionDto> ResolveBindingAsync(string nodeId, string propertyName, CancellationToken ct)
+        => throw new NotImplementedException("M2-08");
+
+    public Task<BindingResolutionDto> ResolveBindingAsync(WpfLocator locator, string propertyName, CancellationToken ct)
+        => throw new NotImplementedException("M2-08");
 }

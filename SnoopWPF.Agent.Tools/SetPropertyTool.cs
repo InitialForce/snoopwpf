@@ -21,7 +21,7 @@ public sealed class SetPropertyTool(ISnoopInspector inspector)
 
     [McpServerTool(Name = "wpf_set_property")]
     [Description("Set a WPF element property value at runtime (mutation must be enabled in SnoopAgentOptions). " +
-                 "Returns SetPropertyResultDto with success flag, previousValue, newValue, and error message if failed. " +
+                 "Returns StateDeltaDto with success flag, stateChanged, previousValue, newValue, and failureReason/suggestion if failed. " +
                  "Supported value formats: bool (true/false), numbers, Color (#RRGGBB or named color), " +
                  "Thickness (L,T,R,B or single value), Enum members by name, and strings. " +
                  "Use wpf_get_properties to find writable properties (isReadOnly: false) before calling this tool.")]

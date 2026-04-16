@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using NUnit.Framework;
+using SnoopWPF.Agent.Contracts;
 using SnoopWPF.Agent.Contracts.Dtos;
 using SnoopWPF.Agent.Engine;
 
@@ -86,8 +87,6 @@ public sealed class SetPropertyIntegrationTests : WpfIntegrationTestBase
         Assert.That(result.Success, Is.True, "Setting Width=150 on Button must succeed.");
         Assert.That(result.NewValue, Is.Not.Null,
             "NewValue must be populated after a successful set.");
-        Assert.That(result.Error, Is.Null,
-            "Error must be null when the operation succeeds.");
     }
 
     /// <summary>
@@ -253,5 +252,92 @@ public sealed class SetPropertyIntegrationTests : WpfIntegrationTestBase
                 SnoopWPF.Agent.Contracts.SnoopErrorCode.PropertyReadOnly,
                 SnoopWPF.Agent.Contracts.SnoopErrorCode.UnsupportedPropertyType),
             "Setting a non-existent property must throw PropertyReadOnly or UnsupportedPropertyType.");
+    }
+
+    // -------------------------------------------------------------------------
+    // StateDelta schema tests (M1-09)
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Success path: SetPropertyAsync returns a <see cref="StateDeltaDto"/> with
+    /// success=true, stateChanged=true, and populated previousValue/newValue.
+    /// </summary>
+    [Test]
+    public async Task SetPropertyStateDelta_SuccessPath_ReturnsStateDeltaDto()
+    {
+        var nodeId = await this.FindNodeIdByTypeAsync("Button").ConfigureAwait(false);
+
+        if (nodeId == null)
+        {
+            Assert.Fail("Button not found in visual tree; TestWpfApp must contain a Button.");
+            return;
+        }
+
+        // Use a value that is definitely different from whatever it currently is.
+        var result = await this.Client.Inspector
+            .SetPropertyAsync(nodeId, "Width", "210", ct: default)
+            .ConfigureAwait(false);
+
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.Success, Is.True, "success must be true on a valid mutation.");
+        Assert.That(result.StateChanged, Is.True, "stateChanged must be true when the value actually changed.");
+        Assert.That(result.PreviousValue, Is.Not.Null, "previousValue must be populated.");
+        Assert.That(result.NewValue, Is.Not.Null, "newValue must be populated.");
+        Assert.That(result.FailureReason, Is.Null, "failureReason must be null on success.");
+        Assert.That(result.Suggestion, Is.Null, "suggestion must be null on success.");
+    }
+
+    /// <summary>
+    /// Failure path: SetPropertyAsync on an unknown node surfaces as a <see cref="SnoopException"/>
+    /// (not a StateDeltaDto failure, because element lookup fails before any delta is computed).
+    /// </summary>
+    [Test]
+    public void SetPropertyStateDelta_FailurePath_UnknownNode_ThrowsSnoopException()
+    {
+        var ex = Assert.ThrowsAsync<SnoopWPF.Agent.Contracts.SnoopException>(async () =>
+        {
+            await this.Client.Inspector
+                .SetPropertyAsync("0:99999988", "Width", "100", ct: default)
+                .ConfigureAwait(false);
+        });
+
+        Assert.That(ex, Is.Not.Null);
+        Assert.That(ex!.Code, Is.EqualTo(SnoopErrorCode.NodeNotFound));
+    }
+
+    /// <summary>
+    /// StateUnchanged path: setting a property to its current value returns
+    /// success=false, stateChanged=false, failureReason=StateUnchanged, and a
+    /// suggestion pointing at wpf_inspect_element.
+    /// </summary>
+    [Test]
+    public async Task SetPropertyStateDelta_StateUnchanged_ReturnsStateUnchangedWithSuggestion()
+    {
+        var nodeId = await this.FindNodeIdByTypeAsync("Button").ConfigureAwait(false);
+
+        if (nodeId == null)
+        {
+            Assert.Fail("Button not found in visual tree; TestWpfApp must contain a Button.");
+            return;
+        }
+
+        // First set a known value so we can send it again unchanged.
+        await this.Client.Inspector
+            .SetPropertyAsync(nodeId, "Width", "220", ct: default)
+            .ConfigureAwait(false);
+
+        // Now set the same value — should yield StateUnchanged.
+        var result = await this.Client.Inspector
+            .SetPropertyAsync(nodeId, "Width", "220", ct: default)
+            .ConfigureAwait(false);
+
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.Success, Is.False, "success must be false when state is unchanged.");
+        Assert.That(result.StateChanged, Is.False, "stateChanged must be false when value did not change.");
+        Assert.That(result.FailureReason, Is.EqualTo(FailureReason.StateUnchanged),
+            "failureReason must be StateUnchanged (7).");
+        Assert.That(result.Suggestion, Is.Not.Null, "A suggestion must be provided for StateUnchanged.");
+        Assert.That(result.Suggestion!.Tool, Is.EqualTo("wpf_inspect_element"),
+            "The suggestion tool must be wpf_inspect_element.");
     }
 }
