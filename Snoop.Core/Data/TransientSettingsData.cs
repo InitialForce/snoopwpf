@@ -3,6 +3,8 @@ namespace Snoop.Data;
 
 using System;
 using System.IO;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Xml.Serialization;
 using JetBrains.Annotations;
 using Snoop.Core;
@@ -43,6 +45,11 @@ public sealed class TransientSettingsData
     {
         var settingsFile = Path.GetTempFileName();
 
+        // Apply owner-only DACL before writing sensitive content (PipeName/SessionToken).
+        // GetTempFileName() creates the file with default ACLs which may allow Everyone:Read
+        // on Terminal Server / multi-user systems.
+        ApplyOwnerOnlyDacl(settingsFile);
+
         // Do NOT log settingsFile path — it may reside in a path that contains user info,
         // and the file itself contains PipeName/SessionToken.
         LogHelper.WriteLine("Writing transient settings file.");
@@ -51,6 +58,28 @@ public sealed class TransientSettingsData
         serializer.Serialize(stream, this);
 
         return settingsFile;
+    }
+
+    private static void ApplyOwnerOnlyDacl(string filePath)
+    {
+        var sid = WindowsIdentity.GetCurrent().User;
+        if (sid is null)
+        {
+            // Cannot determine current user SID — skip DACL hardening rather than crash.
+            return;
+        }
+
+        var security = new FileSecurity();
+        security.SetOwner(sid);
+        // Remove all inherited rules and add only the owner's full-control rule.
+        security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+        security.AddAccessRule(new FileSystemAccessRule(sid, FileSystemRights.FullControl, AccessControlType.Allow));
+
+#if NET6_0_OR_GREATER
+        new FileInfo(filePath).SetAccessControl(security);
+#else
+        File.SetAccessControl(filePath, security);
+#endif
     }
 
     public static TransientSettingsData LoadCurrentIfRequired(string settingsFile)

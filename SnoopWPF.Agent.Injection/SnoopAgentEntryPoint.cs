@@ -25,6 +25,9 @@ public static class SnoopAgentEntryPoint
     private static readonly object StartLock = new object();
     private static volatile bool started;
 
+    // Stored so we can unregister in the shutdown path (FIX-3a).
+    private static ResolveEventHandler? assemblyResolveHandler;
+
     /// <summary>
     /// Entry point called by the injector.
     /// </summary>
@@ -70,22 +73,44 @@ public static class SnoopAgentEntryPoint
 
     private static void InstallAssemblyResolver()
     {
-        AppDomain.CurrentDomain.AssemblyResolve += OnAssemblyResolve;
+        // Store reference so we can unregister on shutdown (FIX-3a).
+        assemblyResolveHandler = OnAssemblyResolve;
+        AppDomain.CurrentDomain.AssemblyResolve += assemblyResolveHandler;
+    }
+
+    private static void UninstallAssemblyResolver()
+    {
+        if (assemblyResolveHandler != null)
+        {
+            AppDomain.CurrentDomain.AssemblyResolve -= assemblyResolveHandler;
+            assemblyResolveHandler = null;
+        }
     }
 
     private static Assembly? OnAssemblyResolve(object? sender, ResolveEventArgs args)
     {
+        // FIX-3b: Only intercept Snoop-related assemblies.
+        // Let the CLR's default resolution handle everything else to avoid shadowing
+        // target-app assemblies or framework assemblies.
+        var simpleName = new AssemblyName(args.Name).Name ?? string.Empty;
+        if (!simpleName.StartsWith("SnoopWPF.", StringComparison.Ordinal)
+            && !simpleName.StartsWith("Snoop.", StringComparison.Ordinal)
+            && simpleName != "SnoopWPF"
+            && simpleName != "Snoop")
+        {
+            return null;
+        }
+
         // Resolve from the same directory as this DLL.
         try
         {
-            var assemblyName = new AssemblyName(args.Name);
             var thisDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
             if (thisDir == null)
             {
                 return null;
             }
 
-            var candidatePath = Path.Combine(thisDir, assemblyName.Name + ".dll");
+            var candidatePath = Path.Combine(thisDir, simpleName + ".dll");
             if (File.Exists(candidatePath))
             {
                 return Assembly.LoadFrom(candidatePath);
@@ -93,7 +118,7 @@ public static class SnoopAgentEntryPoint
 
             // Also try subdirectory named after the TFM (e.g. net462/).
             var tfmDir = Path.Combine(thisDir, "net462");
-            var tfmPath = Path.Combine(tfmDir, assemblyName.Name + ".dll");
+            var tfmPath = Path.Combine(tfmDir, simpleName + ".dll");
             if (File.Exists(tfmPath))
             {
                 return Assembly.LoadFrom(tfmPath);
@@ -153,6 +178,8 @@ public static class SnoopAgentEntryPoint
             cts.Cancel();
             inspector.Dispose();
             server.Dispose();
+            // Unregister the AssemblyResolve handler so it doesn't outlive the agent (FIX-3a).
+            UninstallAssemblyResolver();
         };
 
         // Run the server loop on a dedicated background thread.
@@ -226,7 +253,7 @@ public static class SnoopAgentEntryPoint
 
     private static Dispatcher GetTargetDispatcher()
     {
-        // Try to get the Application.Current dispatcher first (most common case).
+        // Primary: Application.Current.Dispatcher — most robust, works on all .NET versions.
         try
         {
             var app = System.Windows.Application.Current;
@@ -240,7 +267,10 @@ public static class SnoopAgentEntryPoint
             // Application.Current may throw in some AppDomain configurations.
         }
 
-        // Fallback: find any live Dispatcher.
+#if !NET6_0_OR_GREATER
+        // net462 fallback: enumerate live dispatchers via private reflection.
+        // This field was renamed/removed on .NET 6+ WPF, so guard with TFM condition.
+        // On net6+ we rely on Application.Current (above) or throw below.
         var dispatcherType = typeof(Dispatcher);
         var fromThreadField = dispatcherType.GetField(
             "_dispatchers",
@@ -256,9 +286,14 @@ public static class SnoopAgentEntryPoint
                 }
             }
         }
+#endif
 
-        // Last resort: create a new Dispatcher on the current thread.
-        // This is unusual but keeps the agent from crashing if no UI dispatcher exists.
-        return Dispatcher.CurrentDispatcher;
+        // No viable Dispatcher found. Do NOT fall back to Dispatcher.CurrentDispatcher —
+        // that creates a pump-less Dispatcher on the injected CLR thread, causing all
+        // InvokeAsync calls to queue work that is never executed.
+        throw new InvalidOperationException(
+            "[SnoopAgent] Could not locate a live WPF Dispatcher in the target process. " +
+            "The target application may not have a WPF message loop running yet. " +
+            "Retry injection after the application's main window is visible.");
     }
 }

@@ -21,6 +21,11 @@
     <_WpfCommonNetFxReference Remove="System.Windows.Controls.Ribbon" />
   </ItemGroup>
 
+  <ItemGroup Label="Security">
+    <!-- FileSecurity / SetAccessControl extension on net6+ lives in this package; net462 has it built-in. -->
+    <PackageReference Include="System.IO.FileSystem.AccessControl" Condition="'$(TargetFramework)' != '$(MinTargetFramework)'" />
+  </ItemGroup>
+
   <ItemGroup Label="PowerShell">
     <Reference Include="System.Configuration" Condition="'$(TargetFramework)' == '$(MinTargetFramework)'" />
     <PackageReference Include="microsoft.powershell.3.referenceassemblies" PrivateAssets="All" Condition="'$(TargetFramework)' == '$(MinTargetFramework)'" />
