@@ -112,13 +112,13 @@ public class FailureReasonDescriptorTests
     // ── CannotExecuteCommand ─────────────────────────────────────────────────────
 
     [Test]
-    public void CannotExecuteCommand_ReturnsInspectElement()
+    public void CannotExecuteCommand_ReturnsResolveBinding()
     {
         var result = FailureReasonDescriptor.Suggest(FailureReason.CannotExecuteCommand, SampleLocator);
 
         Assert.That(result, Is.Not.Null);
-        Assert.That(result!.Tool, Is.EqualTo("wpf_inspect_element"));
-        AssertArg(result, "propertyName", "Command.CanExecute");
+        Assert.That(result!.Tool, Is.EqualTo("wpf_resolve_binding"));
+        AssertArg(result, "propertyName", "Command");
     }
 
     // ── PatternNotSupported ──────────────────────────────────────────────────────

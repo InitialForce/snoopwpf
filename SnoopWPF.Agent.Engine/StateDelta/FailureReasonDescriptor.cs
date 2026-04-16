@@ -60,6 +60,7 @@ internal static class FailureReasonDescriptor
                 },
             },
 
+            // Deliberate divergence from PRD §7.4: wait-for-property is more actionable than inspect-element.
             FailureReason.ElementNotEnabled => new SuggestionDto
             {
                 Tool = "wpf_wait_for_property",
@@ -85,11 +86,11 @@ internal static class FailureReasonDescriptor
             // ── Command / pattern failures ──────────────────────────────────────────
             FailureReason.CannotExecuteCommand => new SuggestionDto
             {
-                Tool = "wpf_inspect_element",
+                Tool = "wpf_resolve_binding",
                 Args = new List<NameValuePairDto>
                 {
                     new() { Name = "locator",      Value = locator },
-                    new() { Name = "propertyName", Value = "Command.CanExecute" },
+                    new() { Name = "propertyName", Value = "Command" },
                 },
             },
 
@@ -114,6 +115,7 @@ internal static class FailureReasonDescriptor
             },
 
             // ── Transient / state-change failures ──────────────────────────────────
+            // Deliberate divergence from PRD §7.4: wait-for-property is more actionable than inspect-element.
             FailureReason.StateUnchanged => new SuggestionDto
             {
                 Tool = "wpf_wait_for_property",
