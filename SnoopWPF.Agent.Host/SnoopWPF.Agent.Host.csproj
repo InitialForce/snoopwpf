@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>snoop-mcp</AssemblyName>
+    <UseWpf>false</UseWpf>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <!-- CA1063/CA1816: IDisposable pattern used intentionally -->
+    <NoWarn>$(NoWarn);CA1063;CA1816</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SnoopWPF.Agent.Contracts\SnoopWPF.Agent.Contracts.csproj" />
+    <ProjectReference Include="..\SnoopWPF.Agent.Tools\SnoopWPF.Agent.Tools.csproj" />
+    <ProjectReference Include="..\SnoopWPF.Agent.Remote\SnoopWPF.Agent.Remote.csproj" />
+    <ProjectReference Include="..\Snoop.Injector\Snoop.Injector.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="CommandLineParser" />
+    <PackageReference Include="ModelContextProtocol" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+  </ItemGroup>
+
+  <!-- Bundle InjectorLauncher binaries so InjectorLauncherManager can find them -->
+  <ItemGroup>
+    <Content Include="..\Snoop.InjectorLauncher.x64\bin\$(Configuration)\net8.0-windows\Snoop.InjectorLauncher.x64.exe"
+             Condition="Exists('..\Snoop.InjectorLauncher.x64\bin\$(Configuration)\net8.0-windows\Snoop.InjectorLauncher.x64.exe')"
+             CopyToOutputDirectory="PreserveNewest"
+             Link="Snoop.InjectorLauncher.x64.exe" />
+    <Content Include="..\Snoop.InjectorLauncher.x86\bin\$(Configuration)\net8.0-windows\Snoop.InjectorLauncher.x86.exe"
+             Condition="Exists('..\Snoop.InjectorLauncher.x86\bin\$(Configuration)\net8.0-windows\Snoop.InjectorLauncher.x86.exe')"
+             CopyToOutputDirectory="PreserveNewest"
+             Link="Snoop.InjectorLauncher.x86.exe" />
+    <Content Include="..\Snoop.InjectorLauncher.arm64\bin\$(Configuration)\net8.0-windows\Snoop.InjectorLauncher.arm64.exe"
+             Condition="Exists('..\Snoop.InjectorLauncher.arm64\bin\$(Configuration)\net8.0-windows\Snoop.InjectorLauncher.arm64.exe')"
+             CopyToOutputDirectory="PreserveNewest"
+             Link="Snoop.InjectorLauncher.arm64.exe" />
+  </ItemGroup>
+
+</Project>

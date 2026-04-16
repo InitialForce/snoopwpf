@@ -80,4 +80,30 @@ public class ProcessInfo
 
         return new AttachResult();
     }
+
+    /// <summary>
+    /// Injects <c>SnoopWPF.Agent.Injection.dll</c> into the target process.
+    /// The injected DLL reads pipe name and session token from <paramref name="settingsFile"/>.
+    /// </summary>
+    /// <param name="targetHwnd">
+    /// Optional HWND hint. Pass <see cref="IntPtr.Zero"/> for headless injection.
+    /// </param>
+    /// <param name="settingsFile">
+    /// Path to the transient settings file created by the host. Contains pipe name and session token.
+    /// The injected DLL deletes this file immediately after reading it.
+    /// </param>
+    public void InjectAgent(IntPtr targetHwnd, string settingsFile)
+    {
+        InjectorLauncherManager.Launch(
+            this,
+            targetHwnd,
+            assembly: AgentInjectionAssemblyName,
+            className: AgentInjectionClassName,
+            methodName: AgentInjectionMethodName,
+            transientSettingsFile: settingsFile);
+    }
+
+    private const string AgentInjectionAssemblyName = "SnoopWPF.Agent.Injection";
+    private const string AgentInjectionClassName = "SnoopWPF.Agent.Injection.SnoopAgentEntryPoint";
+    private const string AgentInjectionMethodName = "Start";
 }
