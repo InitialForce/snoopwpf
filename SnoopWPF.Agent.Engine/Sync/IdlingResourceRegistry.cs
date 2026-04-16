@@ -53,12 +53,15 @@ public sealed class IdlingResourceRegistry : IDisposable
             throw new ObjectDisposedException(nameof(IdlingResourceRegistry));
         }
 
+        // Subscribe before inserting so no IdleChanged transition can be missed between
+        // unlock and subscribe (FX-M4 TOCTOU fix).
+        resource.IdleChanged += this.OnResourceIdleChanged;
+
         lock (this.gate)
         {
             this.resources.Add(resource);
         }
 
-        resource.IdleChanged += this.OnResourceIdleChanged;
         this.Revaluate();
     }
 
