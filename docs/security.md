@@ -100,10 +100,13 @@ accesstoken  bearertoken  refreshtoken  sessiontoken  sastoken  jwttoken
 Note: bare `auth` and `token` are **not** on the list — they would redact legitimate
 properties like `IsAuthorized` and `CancellationToken`.
 
-Additionally redacted regardless of name:
+Additionally redacted regardless of name (structural type check via `IsStructurallySensitive`):
 
 - All `SecureString`-typed properties.
-- `PasswordBox.Password` (always, by property identity).
+- All `NetworkCredential`-typed properties.
+- All `DbConnectionStringBuilder`-typed properties.
+- `PasswordBox.Password` is covered by the `"password"` keyword match above, not by a
+  property-identity check.
 
 **The getter is not invoked for redacted properties.** The value `"[REDACTED]"` is
 returned without calling the getter, preventing any side effects.

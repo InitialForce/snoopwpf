@@ -6,17 +6,18 @@ This release introduces the MCP agent surface and a wave of review-driven fixes.
 
 ### New features
 
-- **MCP agent surface (v3, 15 tools, two modes).** `SnoopWPF.Agent` exposes
+- **MCP agent surface (v3, 16 tools, two modes).** `SnoopWPF.Agent` exposes
   WPF inspection and mutation via the Model Context Protocol in two modes:
   - **Injection mode** (`snoop-mcp`): out-of-process, injected DLL, named-pipe
     transport, current-user ACL, 256-bit session token handshake.
   - **NuGet mode** (`SnoopWPF.Agent` package): in-process, stdio transport,
     zero-infrastructure embedding for automated test pipelines.
-  Tools include: `wpf_get_visual_tree`, `wpf_get_properties`, `wpf_set_property`,
-  `wpf_find_elements`, `wpf_invoke_command`, `wpf_get_bindings`,
-  `wpf_get_triggers`, `wpf_get_styles`, `wpf_get_resources`,
-  `wpf_get_behaviors`, `wpf_get_diagnostics`, `wpf_screenshot`,
-  `wpf_get_layout`, `wpf_get_data_context`, `wpf_get_storyboards`.
+  Tools: `wpf_get_session_info`, `wpf_get_windows`, `wpf_get_visual_tree`,
+  `wpf_get_children`, `wpf_get_ancestors`, `wpf_find_elements`,
+  `wpf_inspect_element`, `wpf_get_properties`, `wpf_set_property`,
+  `wpf_get_binding_info`, `wpf_run_diagnostics`, `wpf_get_resources`,
+  `wpf_capture_screenshot`, `wpf_get_triggers`, `wpf_get_behaviors`,
+  `wpf_fetch_blob`.
 
 ### Review-fix wave
 

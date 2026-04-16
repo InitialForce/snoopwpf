@@ -1,6 +1,6 @@
 # MCP Tools Reference
 
-All 15 tools exposed by SnoopWPF.Agent. Tool names are prefixed with `wpf_`.
+All 16 tools exposed by SnoopWPF.Agent. Tool names are prefixed with `wpf_`.
 
 Error responses follow a common schema — see [Error Codes](#error-codes) at the bottom.
 
@@ -613,6 +613,35 @@ Get all Blend behaviors and actions attached to an element.
 
 Works with both `System.Windows.Interactivity` (legacy Blend SDK) and
 `Microsoft.Xaml.Behaviors.Wpf` (modern package).
+
+---
+
+## wpf_fetch_blob
+
+Retrieve a large binary payload (e.g. screenshot PNG) from the in-process blob store by reference key.
+
+Some tools store large payloads out-of-band and return a `blobRef` key instead of
+inlining the bytes. Use this tool to retrieve the actual content.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `key` | string | *(required)* | The `blobRef` key returned by a previous tool call. |
+
+**Returns:** A multi-content MCP response:
+
+- Content block 0: JSON text with metadata:
+
+  ```json
+  { "key": "blob-a1b2c3", "mimeType": "image/png", "sizeBytes": 45678 }
+  ```
+
+- Content block 1: The raw payload — PNG `ImageContent` for images, UTF-8 `TextContent`
+  for everything else.
+
+**Blob lifetime:** 5 minutes. After expiry the `key` is invalid and `BLOB_NOT_FOUND` is
+returned. Re-run the originating tool to get a fresh ref.
 
 ---
 
