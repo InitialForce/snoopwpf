@@ -13,8 +13,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  agent-build-test:
-    name: agent-build-test (${{ matrix.target }})
+  snoop-suite:
+    name: snoop-suite (${{ matrix.target }})
     runs-on: windows-latest
     strategy:
       fail-fast: false
@@ -48,4 +48,35 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: test-results-${{ matrix.target }}
+          path: output/test-results
+
+  brokered-suite:
+    name: brokered-suite (net8.0-windows / x64)
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [net8.0-windows]
+        arch: [x64]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET (global.json)
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Build Snoop.sln
+        run: dotnet build Snoop.sln --configuration Release --framework ${{ matrix.target }} --no-incremental -p:Platform=${{ matrix.arch }}
+
+      - name: Test SnoopWPF.Agent.IntegrationTests (Brokered filter)
+        run: dotnet test SnoopWPF.Agent.IntegrationTests/SnoopWPF.Agent.IntegrationTests.csproj --configuration Release --framework ${{ matrix.target }} --no-build --filter "FullyQualifiedName~Brokered" --logger "trx;LogFileName=brokered-suite-${{ matrix.target }}-${{ matrix.arch }}.trx" --results-directory output/test-results
+
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: brokered-suite-logs-${{ matrix.target }}-${{ matrix.arch }}
           path: output/test-results
