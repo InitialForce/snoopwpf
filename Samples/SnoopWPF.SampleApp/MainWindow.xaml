@@ -1,0 +1,184 @@
+<Window x:Class="SnoopWPF.SampleApp.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:i="http://schemas.microsoft.com/xaml/behaviors"
+        xmlns:local="clr-namespace:SnoopWPF.SampleApp"
+        Title="SnoopWPF Sample App"
+        Width="700"
+        Height="500"
+        MinWidth="400"
+        MinHeight="300">
+
+    <Window.Resources>
+        <!-- Window-level resource shadows App-level AccentBrush — for resource-shadowing test -->
+        <SolidColorBrush x:Key="AccentBrush" Color="DodgerBlue" />
+
+        <!-- DataTrigger style: Button turns red when IsEnabled=false -->
+        <Style x:Key="AlertButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="LightGray" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsAlertActive}" Value="True">
+                    <Setter Property="Background" Value="Tomato" />
+                    <Setter Property="Foreground" Value="White" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Top toolbar -->
+        <ToolBar Grid.Row="0">
+            <Button x:Name="BtnRefresh" Content="Refresh" Click="OnRefreshClicked" />
+            <Button x:Name="BtnToggleAlert"
+                    Content="Toggle Alert"
+                    Style="{StaticResource AlertButtonStyle}"
+                    Click="OnToggleAlertClicked" />
+            <Separator />
+            <TextBox x:Name="TxtSearch"
+                     Width="140"
+                     ToolTip="Search items"
+                     Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" />
+            <Button Content="Search" Click="OnSearchClicked" />
+        </ToolBar>
+
+        <!-- Main content area -->
+        <Grid Grid.Row="1" Margin="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="4" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Left panel -->
+            <StackPanel Grid.Column="0" Orientation="Vertical">
+                <TextBlock Text="Sample Controls"
+                           FontWeight="Bold"
+                           Margin="0,0,0,4"
+                           Foreground="{StaticResource AccentBrush}" />
+
+                <!-- Intentional binding error: NonExistentProperty does not exist on SampleViewModel -->
+                <TextBlock x:Name="TxtBindingError"
+                           Text="{Binding NonExistentProperty}"
+                           Foreground="DarkRed"
+                           Margin="0,0,0,4" />
+
+                <!-- Unresolved DynamicResource — key does not exist in any dictionary -->
+                <TextBlock x:Name="TxtDynamicResourceError"
+                           Foreground="{DynamicResource NonExistentDynamicBrush}"
+                           Text="Dynamic resource test"
+                           Margin="0,0,0,4" />
+
+                <TextBox x:Name="TxtName"
+                         Margin="0,0,0,4"
+                         Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                         ToolTip="Bound to Name property" />
+
+                <!-- PasswordBox — password property must be redacted by agent -->
+                <PasswordBox x:Name="PwdBox"
+                             Margin="0,0,0,4"
+                             ToolTip="Password (should be redacted by SnoopAgent)" />
+
+                <!-- Button with attached behaviors for behavior inspection test -->
+                <Button x:Name="BtnBehaviorTarget"
+                        Content="Button with Behaviors"
+                        Margin="0,0,0,4">
+                    <i:Interaction.Triggers>
+                        <i:EventTrigger EventName="Click">
+                            <i:InvokeCommandAction Command="{Binding RefreshCommand}" />
+                        </i:EventTrigger>
+                    </i:Interaction.Triggers>
+                </Button>
+
+                <!-- CheckBox for testing bool properties -->
+                <CheckBox x:Name="ChkEnabled"
+                          Content="Enable feature"
+                          IsChecked="{Binding IsAlertActive}"
+                          Margin="0,0,0,4" />
+
+                <!-- Slider for testing numeric properties -->
+                <Slider x:Name="SldValue"
+                        Minimum="0"
+                        Maximum="100"
+                        Value="{Binding SliderValue}"
+                        Margin="0,0,0,4"
+                        ToolTip="Slider bound to SliderValue" />
+
+                <TextBlock Text="{Binding SliderValue, StringFormat='Slider: {0:F1}'}"
+                           Margin="0,0,0,8" />
+
+                <!-- TreeView with sample hierarchical data -->
+                <TextBlock Text="TreeView" FontWeight="Bold" Margin="0,0,0,2" />
+                <TreeView x:Name="TvSample" Height="120" ItemsSource="{Binding TreeItems}">
+                    <TreeView.ItemTemplate>
+                        <HierarchicalDataTemplate DataType="{x:Type local:TreeNode}"
+                                                  ItemsSource="{Binding Children}">
+                            <TextBlock Text="{Binding Label}" />
+                        </HierarchicalDataTemplate>
+                    </TreeView.ItemTemplate>
+                </TreeView>
+            </StackPanel>
+
+            <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch" />
+
+            <!-- Right panel -->
+            <StackPanel Grid.Column="2" Orientation="Vertical">
+                <TextBlock Text="Item List (Non-Virtualized)"
+                           FontWeight="Bold"
+                           Margin="0,0,0,4" />
+
+                <!--
+                    Non-virtualized ListBox — intentionally uses VirtualizingStackPanel.IsVirtualizing=False
+                    to trigger the NonVirtualizedLists diagnostic in SnoopAgent.
+                -->
+                <ListBox x:Name="LstItems"
+                         Height="180"
+                         ItemsSource="{Binding Items}"
+                         VirtualizingStackPanel.IsVirtualizing="False"
+                         ScrollViewer.CanContentScroll="False">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding Index}" Width="30" />
+                                <TextBlock Text="{Binding Label}" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <TextBlock Text="Selected:" FontWeight="Bold" Margin="0,8,0,2" />
+                <TextBlock Text="{Binding SelectedItemLabel}" Margin="0,0,0,8" />
+
+                <!-- ComboBox for property type variety -->
+                <ComboBox x:Name="CmbStatus"
+                          ItemsSource="{Binding StatusOptions}"
+                          SelectedItem="{Binding SelectedStatus}"
+                          Margin="0,0,0,4" />
+
+                <!-- Progress bar bound to slider -->
+                <ProgressBar x:Name="PrgValue"
+                             Minimum="0"
+                             Maximum="100"
+                             Value="{Binding SliderValue}"
+                             Height="16"
+                             Margin="0,0,0,4" />
+            </StackPanel>
+        </Grid>
+
+        <!-- Status bar -->
+        <StatusBar Grid.Row="2">
+            <StatusBarItem>
+                <TextBlock x:Name="TxtStatus" Text="SnoopWPF Agent active" />
+            </StatusBarItem>
+            <Separator />
+            <StatusBarItem>
+                <TextBlock Text="{Binding Name, StringFormat='Name: {0}'}" />
+            </StatusBarItem>
+        </StatusBar>
+    </Grid>
+</Window>

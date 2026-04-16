@@ -1,0 +1,14 @@
+<Window x:Class="SnoopWPF.SampleApp.HiddenWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Hidden Window (SnoopWPF Test)"
+        Width="300"
+        Height="200"
+        Visibility="Hidden"
+        ShowInTaskbar="False">
+    <StackPanel Margin="16">
+        <TextBlock Text="This window is hidden (Visibility.Hidden)." />
+        <TextBlock Text="Used to test includeHidden and screenshot edge cases." />
+        <TextBox Text="Some text in the hidden window" Margin="0,8,0,0" />
+    </StackPanel>
+</Window>

@@ -1,0 +1,10 @@
+<Application x:Class="SnoopWPF.SampleApp.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             StartupUri="MainWindow.xaml">
+    <Application.Resources>
+        <!-- App-level resource — overridden at window level for resource-shadowing test -->
+        <SolidColorBrush x:Key="AccentBrush" Color="SteelBlue" />
+        <sys:String x:Key="AppTitle" xmlns:sys="clr-namespace:System;assembly=mscorlib">SnoopWPF Sample App</sys:String>
+    </Application.Resources>
+</Application>

@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net8.0-windows</TargetFramework>
+        <LangVersion>latest</LangVersion>
+        <Nullable>enable</Nullable>
+        <UseWpf>true</UseWpf>
+        <OutputType>WinExe</OutputType>
+        <ImplicitUsings>disable</ImplicitUsings>
+        <RootNamespace>SnoopWPF.SampleApp</RootNamespace>
+        <AssemblyName>SnoopWPF.SampleApp</AssemblyName>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../../SnoopWPF.Agent/SnoopWPF.Agent.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.Xaml.Behaviors.Wpf" />
+    </ItemGroup>
+
+</Project>
