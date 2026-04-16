@@ -19,6 +19,7 @@ using Snoop.Infrastructure.Diagnostics;
 using SnoopWPF.Agent.Contracts;
 using SnoopWPF.Agent.Contracts.Dtos;
 using SnoopWPF.Agent.Engine.Infrastructure;
+using SnoopWPF.Agent.Engine.StateDelta;
 
 /// <summary>
 /// Core inspection engine. Implements <see cref="ISnoopInspector"/> by marshaling all WPF operations
@@ -1228,10 +1229,14 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
             System.Diagnostics.Trace.WriteLine(
                 $"[SnoopWPF.Agent] SetProperty: nodeId={nodeId}, property={propertyName}");
 
-            var newValue = convertedValue.ToString() ?? string.Empty;
+            // M1-11: compute stateChanged at serialization time by reading the observable DP
+            // value NOW, after any re-entrant PropertyChangedCallback has settled.  This closes
+            // the false-positive where a reverting callback resets the value but the old code
+            // compared previousValue to the *requested* convertedValue string (PRD §7.3 W3-C1).
+            var stateChanged = StateDeltaSerializationHook.ComputeStateChanged(depObj, depProp, previousValue);
 
-            // Simple pre/post comparison for stateChanged (M1-11 will refine to serialization-time).
-            var stateChanged = !string.Equals(previousValue, newValue, StringComparison.Ordinal);
+            // newValue reflects the actual settled observable state (not the requested string).
+            var newValue = depObj.GetValue(depProp)?.ToString() ?? string.Empty;
 
             if (!stateChanged)
             {

@@ -8,8 +8,10 @@ using System.Runtime.Serialization;
 /// Returned by <c>wpf_set_property</c> and all M2 act-tools.
 /// </summary>
 /// <remarks>
-/// <c>stateChanged</c> is populated by a simple pre/post value comparison in M1-09.
-/// M1-11 will refine this to a serialization-time computation per PRD §7.3.
+/// <c>stateChanged</c> is computed at serialization time by
+/// <see cref="SnoopWPF.Agent.Engine.StateDelta.StateDeltaSerializationHook"/> (M1-11),
+/// which reads the observable DP value after any re-entrant PropertyChangedCallback has
+/// settled, per PRD §7.3 W3-C1.
 /// </remarks>
 [DataContract]
 public sealed record StateDeltaDto
@@ -24,8 +26,8 @@ public sealed record StateDeltaDto
 
     /// <summary>
     /// Whether the element's state actually changed as a result of the operation.
-    /// Per PRD §7.3 W3-C1 this is ultimately computed at serialization time (M1-11);
-    /// for now it is a simple pre/post string comparison.
+    /// Computed at serialization time by comparing the observable DP value after any
+    /// re-entrant PropertyChangedCallback has settled (PRD §7.3 W3-C1, M1-11).
     /// </summary>
     [DataMember(Name = "stateChanged")]
     public bool StateChanged { get; init; }
