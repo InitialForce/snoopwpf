@@ -697,7 +697,85 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
     /// <inheritdoc/>
     public Task<List<AncestorDto>> GetAncestorsAsync(string nodeId, int? maxLevels, CancellationToken ct)
     {
-        throw new NotImplementedException("BEAD-015");
+        return this.RunOnDispatcherAsync(() =>
+        {
+            var target = this.ResolveNodeOrThrow(nodeId);
+            this.VerifyElementConnectivity(target, nodeId);
+
+            var limit = maxLevels ?? 50;
+            if (limit <= 0)
+            {
+                limit = 50;
+            }
+
+            var ancestors = new List<AncestorDto>();
+
+            // Walk up the visual tree using VisualTreeHelper.GetParent().
+            // For non-Visual objects, try logical tree via FrameworkElement.Parent.
+            DependencyObject? current = target as DependencyObject;
+
+            while (current is not null && ancestors.Count < limit)
+            {
+                DependencyObject? parent = null;
+
+                // Visual tree first (most reliable for layout elements).
+                if (current is Visual)
+                {
+                    parent = VisualTreeHelper.GetParent(current);
+                }
+
+                // Fall back to logical tree (covers ContentElement, FrameworkContentElement).
+                if (parent is null)
+                {
+                    if (current is FrameworkElement fe)
+                    {
+                        parent = fe.Parent as DependencyObject;
+                    }
+                    else if (current is FrameworkContentElement fce)
+                    {
+                        parent = fce.Parent as DependencyObject;
+                    }
+                }
+
+                if (parent is null)
+                {
+                    break;
+                }
+
+                // Register ancestor in registry for stable IDs.
+                var ancestorId = this.nodeRegistry.GetOrCreateId(parent);
+
+                var typeName = parent.GetType().FullName ?? parent.GetType().Name;
+                var shortName = parent.GetType().Name;
+                var name = string.Empty;
+                var dataContextType = string.Empty;
+
+                if (parent is FrameworkElement ancestorFe)
+                {
+                    name = ancestorFe.Name ?? string.Empty;
+                    if (ancestorFe.DataContext is { } dc)
+                    {
+                        dataContextType = dc.GetType().FullName ?? dc.GetType().Name;
+                    }
+                }
+                else if (parent is FrameworkContentElement ancestorFce)
+                {
+                    name = ancestorFce.Name ?? string.Empty;
+                }
+
+                ancestors.Add(new AncestorDto
+                {
+                    NodeId = ancestorId,
+                    TypeName = typeName,
+                    Name = name,
+                    DataContextType = dataContextType,
+                });
+
+                current = parent;
+            }
+
+            return ancestors;
+        }, ct);
     }
 
     /// <inheritdoc/>
