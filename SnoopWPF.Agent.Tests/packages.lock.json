@@ -384,6 +384,13 @@
           "SnoopWPF.Agent.Contracts": "[1.0.0, )"
         }
       },
+      "snoopwpf.agent.input.deterministic": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.NETFramework.ReferenceAssemblies.net462": "[1.0.3, )",
+          "SnoopWPF.Agent.Contracts": "[1.0.0, )"
+        }
+      },
       "snoopwpf.agent.remote": {
         "type": "Project",
         "dependencies": {
