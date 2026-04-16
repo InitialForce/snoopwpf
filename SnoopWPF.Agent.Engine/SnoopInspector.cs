@@ -136,15 +136,30 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
                 WindowNodeIds = new List<string>(),
             };
 
-            // Enumerate windows and register them.
+            // Enumerate windows, register them, and build inline window summaries.
             var app = Application.Current;
+            var windowSummaries = new List<WindowSummaryDto>();
             if (app is not null)
             {
                 foreach (Window w in app.Windows)
                 {
                     if (w is not null)
                     {
-                        dispatcherInfo.WindowNodeIds.Add(this.nodeRegistry.GetOrCreateId(w));
+                        var nodeId = this.nodeRegistry.GetOrCreateId(w);
+                        dispatcherInfo.WindowNodeIds.Add(nodeId);
+
+                        if (w.IsVisible)
+                        {
+                            var typeName = w.GetType().Name;
+                            windowSummaries.Add(new WindowSummaryDto
+                            {
+                                NodeId = nodeId,
+                                Title = w.Title ?? string.Empty,
+                                Width = w.ActualWidth,
+                                Height = w.ActualHeight,
+                                Locator = $"$type:{typeName}",
+                            });
+                        }
                     }
                 }
             }
@@ -163,6 +178,7 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
                     "bindings",
                     "diagnostics",
                 },
+                Windows = windowSummaries,
             };
         }, ct);
     }
