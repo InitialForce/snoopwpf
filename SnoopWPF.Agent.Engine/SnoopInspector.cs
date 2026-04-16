@@ -130,6 +130,8 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
         }
 
         this.disposed = true;
+        this.disposeCts.Cancel();
+        this.disposeCts.Dispose();
         this.nodeRegistry.Dispose();
         this.cursorManager.Dispose();
         this.concurrencySemaphore.Dispose();
@@ -2944,6 +2946,10 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
                     catch (SemaphoreFullException)
                     {
                         // Already signalled — ignore.
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        // idleSignal was disposed (cancellation raced with idle-change) — ignore.
                     }
                 }
             }

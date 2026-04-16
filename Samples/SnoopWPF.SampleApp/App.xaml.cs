@@ -1,10 +1,12 @@
 namespace SnoopWPF.SampleApp;
 
 using System;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using SnoopWPF.Agent.Contracts;
+using SnoopWPF.Agent.Contracts.Protocol;
 using SnoopWPF.Agent.Engine;
 using SnoopWPF.Agent.Server;
 
@@ -14,7 +16,10 @@ using SnoopWPF.Agent.Server;
 ///
 /// Launch paths:
 ///   (default / --mcp-stdio)    Co-located mode: MCP server on stdio transport.
-///   --snoop-pipe=NAME --snoop-token=HEX  Brokered mode: target connects to external broker.
+///   --snoop-pipe=NAME           Brokered mode (secure): broker writes a single-line JSON
+///                               handshake payload to stdin containing pipe name and token.
+///   --snoop-pipe=NAME --snoop-token=HEX  Brokered mode (legacy, deprecated): token passed
+///                               on the command line. Emits a deprecation warning to stderr.
 ///   --smoke                     Self-test: start agent, call wpf_get_session_info,
 ///                               assert windows.Count >= 1, exit 0 (non-zero on failure).
 /// </summary>
@@ -34,9 +39,70 @@ public partial class App : Application
         bool smoke = HasFlag(args, "--smoke");
 
         string? pipeName = GetFlagValue(args, "--snoop-pipe");
-        string? token = GetFlagValue(args, "--snoop-token");
+        string? tokenFromArgs = GetFlagValue(args, "--snoop-token");
 
-        // Brokered mode: both --snoop-pipe and --snoop-token must be present.
+        // Resolve the token and pipe name for brokered mode.
+        string? token = null;
+
+        if (!string.IsNullOrEmpty(pipeName))
+        {
+            if (!string.IsNullOrEmpty(tokenFromArgs))
+            {
+                // Legacy path: token was passed on the command line.
+                // Emit a deprecation warning so operators know to upgrade.
+                Console.Error.WriteLine(
+                    "[SnoopWPF.SampleApp] WARNING: --snoop-token on the command line is deprecated " +
+                    "and will be removed in a future release. Upgrade the broker to use the stdin " +
+                    "handshake (BrokerHandshakePayload) so the session token is not exposed on the " +
+                    "process command line.");
+                token = tokenFromArgs;
+            }
+            else
+            {
+                // Secure path: broker writes a single-line JSON handshake payload to our stdin.
+                // Read it synchronously during startup before the WPF message pump starts.
+                string? line = Console.In.ReadLine();
+                if (string.IsNullOrWhiteSpace(line))
+                {
+                    Console.Error.WriteLine(
+                        "[SnoopWPF.SampleApp] ERROR: --snoop-pipe was set but stdin contained no " +
+                        "handshake payload. Expected a single-line JSON BrokerHandshakePayload.");
+                    Application.Current.Shutdown(3);
+                    return;
+                }
+
+                BrokerHandshakePayload? payload = null;
+                try
+                {
+                    payload = JsonSerializer.Deserialize<BrokerHandshakePayload>(line);
+                }
+                catch (JsonException ex)
+                {
+                    Console.Error.WriteLine(
+                        $"[SnoopWPF.SampleApp] ERROR: Failed to parse handshake payload from stdin: {ex.Message}");
+                    Application.Current.Shutdown(3);
+                    return;
+                }
+
+                if (payload is null || string.IsNullOrEmpty(payload.Token))
+                {
+                    Console.Error.WriteLine(
+                        "[SnoopWPF.SampleApp] ERROR: Handshake payload from stdin was null or missing token.");
+                    Application.Current.Shutdown(3);
+                    return;
+                }
+
+                // Use the pipe name from the payload if provided; otherwise keep the command-line one.
+                if (!string.IsNullOrEmpty(payload.Pipe))
+                {
+                    pipeName = payload.Pipe;
+                }
+
+                token = payload.Token;
+            }
+        }
+
+        // Brokered mode: both pipe name and token must be resolved.
         bool brokeredMode = !string.IsNullOrEmpty(pipeName) && !string.IsNullOrEmpty(token);
 
         // Keep a hidden window open for the lifetime of the application.
