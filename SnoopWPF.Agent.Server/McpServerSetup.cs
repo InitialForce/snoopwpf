@@ -288,6 +288,109 @@ internal static class McpServerSetup
     }
 
     // -------------------------------------------------------------------------
+    // Brokered-mode entry point (reconnect loop)
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Brokered-mode named-pipe server with a reconnect loop.
+    /// Opens a <see cref="NamedPipeServerStream"/> (CurrentUserOnly, maxInstances=1),
+    /// performs the <see cref="PerformPipeHandshakeAsync"/> handshake, runs the MCP server
+    /// until the client disconnects, then disposes the stream and recreates it for the next
+    /// connection. Loops until <paramref name="ct"/> is cancelled.
+    /// </summary>
+    internal static async Task RunBrokeredPipeAsync(
+        ISnoopInspector inspector,
+        SessionPolicy policy,
+        string pipeName,
+        string sessionTokenHex,
+        CancellationToken ct)
+    {
+        var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
+        var serverOptions = new McpServerOptions
+        {
+            ServerInfo = new Implementation
+            {
+                Name = "snoop-wpf",
+                Version = version,
+            },
+        };
+
+        var services = BuildServiceCollection(inspector, policy);
+        var sp = services.BuildServiceProvider();
+
+        // Reconnect loop: re-create the pipe after each client disconnect.
+        // This supports broker crash-and-restart without requiring a target restart.
+        while (!ct.IsCancellationRequested)
+        {
+            var pipeServer = new NamedPipeServerStream(
+                pipeName,
+                PipeDirection.InOut,
+                maxNumberOfServerInstances: 1,
+                PipeTransmissionMode.Byte,
+                PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+
+            try
+            {
+                Trace.TraceInformation(
+                    "SnoopWPF.Agent (Brokered) waiting for connection on pipe '{0}'.", pipeName);
+
+                try
+                {
+                    await pipeServer.WaitForConnectionAsync(ct).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Cancellation while waiting — exit the loop cleanly.
+                    return;
+                }
+
+                bool handshakeOk = await PerformPipeHandshakeAsync(pipeServer, sessionTokenHex, ct)
+                    .ConfigureAwait(false);
+
+                if (!handshakeOk)
+                {
+                    Trace.TraceWarning(
+                        "SnoopWPF.Agent (Brokered) handshake failed. Connection rejected; waiting for next client.");
+                    // Dispose and loop to accept a new connection.
+                    continue;
+                }
+
+                Trace.TraceInformation("SnoopWPF.Agent (Brokered) client connected and authenticated.");
+                var transport = new StreamServerTransport(pipeServer, pipeServer);
+                await using var server = McpServer.Create(transport, serverOptions, serviceProvider: sp);
+
+                try
+                {
+                    await server.RunAsync(ct).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Cancelled — exit loop.
+                    return;
+                }
+                catch (IOException)
+                {
+                    // Client disconnected mid-session — loop and wait for next connection.
+                    Trace.TraceInformation(
+                        "SnoopWPF.Agent (Brokered) client disconnected. Waiting for next connection.");
+                }
+
+                Trace.TraceInformation(
+                    "SnoopWPF.Agent (Brokered) session ended. Re-creating pipe for next connection.");
+            }
+            finally
+            {
+                pipeServer.Dispose();
+            }
+
+            if (ct.IsCancellationRequested)
+            {
+                return;
+            }
+        }
+    }
+
+    // -------------------------------------------------------------------------
 
     /// <summary>
     /// Builds a <see cref="IServiceCollection"/> with <see cref="ISnoopInspector"/> and all tool types

@@ -174,8 +174,8 @@ public static class SnoopAgent
                 ?? throw new InvalidOperationException(
                     "SnoopAgent.StartBrokered() requires a valid WPF Application with a Dispatcher.");
 
-            // Brokered mode uses a distinct session mode.
-            var policy = SessionPolicy.Create(SessionMode.CoLocated, options);
+            // Brokered mode uses SessionMode.Brokered — passes opts through unchanged (owned app).
+            var policy = SessionPolicy.Create(SessionMode.Brokered, options);
 
             var inspectorOptions = new SnoopInspectorOptions
             {
@@ -198,8 +198,10 @@ public static class SnoopAgent
             // Auto-stop when the application exits.
             app.Exit += (_, _) => handle.Dispose();
 
-            // Start the server task.
-            _ = Task.Run(() => RunServerAsync(inspector, options, policy, handle, cts.Token));
+            // Run the brokered reconnect loop on the thread pool.
+            // NOTE: unlike StartCoLocated, self-tests are skipped here because the WPF dispatcher
+            // and HwndSource may not yet be fully initialised at StartBrokered call time.
+            _ = Task.Run(() => RunBrokeredAsync(inspector, policy, pipeName, sessionToken, cts.Token));
 
             return handle;
         }
@@ -239,6 +241,32 @@ public static class SnoopAgent
         {
             // Surface unexpected errors without crashing the host process.
             Trace.TraceError("SnoopWPF.Agent MCP server error: {0}", ex.Message);
+        }
+    }
+
+    private static async Task RunBrokeredAsync(
+        SnoopInspector inspector,
+        SessionPolicy policy,
+        string pipeName,
+        string sessionTokenHex,
+        CancellationToken ct)
+    {
+        try
+        {
+            // Boot-sequence self-tests (same as CoLocated path).
+            SelfTest.UnsafeAccessorBindings();
+            SelfTest.HwndSourcePresent();
+
+            await McpServerSetup.RunBrokeredPipeAsync(inspector, policy, pipeName, sessionTokenHex, ct)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Normal shutdown — swallow.
+        }
+        catch (Exception ex)
+        {
+            Trace.TraceError("SnoopWPF.Agent MCP server (Brokered) error: {0}", ex.Message);
         }
     }
 }
