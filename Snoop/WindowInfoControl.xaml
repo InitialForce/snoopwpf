@@ -6,6 +6,7 @@
              xmlns:infrastructure="clr-namespace:Snoop.Infrastructure"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:snoop="clr-namespace:Snoop"
+             xmlns:snoopinj="clr-namespace:Snoop;assembly=Snoop.Injector"
              xmlns:snoopwpf="urn:snoopwpf"
              d:DesignHeight="40"
              d:DesignWidth="600"
@@ -20,7 +21,7 @@
     <Border>
         <StackPanel Height="40"
                     Margin="8 0 0 0"
-                    d:DataContext="{d:DesignInstance snoop:WindowInfo}"
+                    d:DataContext="{d:DesignInstance snoopinj:WindowInfo}"
                     Orientation="Horizontal">
             <Path Width="16"
                   Height="16"

@@ -1,4 +1,4 @@
-﻿namespace Snoop;
+namespace Snoop;
 
 using System;
 using System.Diagnostics;
@@ -9,6 +9,10 @@ using Snoop.Infrastructure;
 
 public class ProcessInfo
 {
+    private const string SnoopCoreAssemblyName = "Snoop.Core";
+    private const string SnoopManagerTypeName = "Snoop.Infrastructure.SnoopManager";
+    private const string StartSnoopMethodName = "StartSnoop";
+
     private bool? isOwningProcessElevated;
 
     public ProcessInfo(int processId)
@@ -25,7 +29,7 @@ public class ProcessInfo
 
     public bool IsProcessElevated => this.isOwningProcessElevated ??= NativeMethods.IsProcessElevated(this.Process);
 
-    public AttachResult Snoop(IntPtr targetHwnd)
+    public AttachResult Snoop(IntPtr targetHwnd, TransientSettingsData transientSettingsData)
     {
         if (Application.Current?.CheckAccess() == true)
         {
@@ -34,7 +38,7 @@ public class ProcessInfo
 
         try
         {
-            InjectorLauncherManager.Launch(this, targetHwnd, typeof(SnoopManager).GetMethod(nameof(SnoopManager.StartSnoop))!, CreateTransientSettingsData(SnoopStartTarget.SnoopUI, targetHwnd));
+            InjectorLauncherManager.Launch(this, targetHwnd, SnoopCoreAssemblyName, SnoopManagerTypeName, StartSnoopMethodName, transientSettingsData.WriteToFile());
         }
         catch (Exception e)
         {
@@ -51,7 +55,7 @@ public class ProcessInfo
         return new AttachResult();
     }
 
-    public AttachResult Magnify(IntPtr targetHwnd)
+    public AttachResult Magnify(IntPtr targetHwnd, TransientSettingsData transientSettingsData)
     {
         if (Application.Current?.CheckAccess() == true)
         {
@@ -60,7 +64,7 @@ public class ProcessInfo
 
         try
         {
-            InjectorLauncherManager.Launch(this, targetHwnd, typeof(SnoopManager).GetMethod(nameof(SnoopManager.StartSnoop))!, CreateTransientSettingsData(SnoopStartTarget.Zoomer, targetHwnd));
+            InjectorLauncherManager.Launch(this, targetHwnd, SnoopCoreAssemblyName, SnoopManagerTypeName, StartSnoopMethodName, transientSettingsData.WriteToFile());
         }
         catch (Exception e)
         {
@@ -75,23 +79,5 @@ public class ProcessInfo
         }
 
         return new AttachResult();
-    }
-
-    private static TransientSettingsData CreateTransientSettingsData(SnoopStartTarget startTarget, IntPtr targetWindowHandle)
-    {
-        var settings = Settings.Default;
-
-        return new TransientSettingsData
-        {
-            StartTarget = startTarget,
-            TargetWindowHandle = targetWindowHandle.ToInt64(),
-
-            MultipleAppDomainMode = settings.MultipleAppDomainMode,
-            MultipleDispatcherMode = settings.MultipleDispatcherMode,
-            SetOwnerWindow = settings.SetOwnerWindow,
-            ShowActivated = settings.ShowActivated,
-            EnableDiagnostics = settings.EnableDiagnostics,
-            ILSpyPath = settings.ILSpyPath
-        };
     }
 }

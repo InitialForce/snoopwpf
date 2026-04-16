@@ -11,6 +11,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using Snoop.Data;
 using Snoop.Infrastructure;
 using Snoop.Windows;
 
@@ -177,7 +178,7 @@ public partial class WindowFinder
 
     public static void AttachSnoop(WindowInfo windowInfo)
     {
-        var result = windowInfo.OwningProcessInfo?.Snoop(windowInfo.HWnd);
+        var result = windowInfo.OwningProcessInfo?.Snoop(windowInfo.HWnd, SnoopSettingsHelper.CreateTransientSettingsData(SnoopStartTarget.SnoopUI, windowInfo.HWnd));
 
         if (result?.Success == false)
         {
@@ -187,7 +188,7 @@ public partial class WindowFinder
 
     private static void AttachMagnify(WindowInfo windowInfo)
     {
-        var result = windowInfo.OwningProcessInfo?.Magnify(windowInfo.HWnd);
+        var result = windowInfo.OwningProcessInfo?.Magnify(windowInfo.HWnd, SnoopSettingsHelper.CreateTransientSettingsData(SnoopStartTarget.Zoomer, windowInfo.HWnd));
 
         if (result?.Success == false)
         {

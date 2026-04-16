@@ -18,6 +18,7 @@ using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Threading;
 using Snoop.Core;
+using Snoop.Data;
 using Snoop.Infrastructure;
 using Snoop.Views;
 using Snoop.Windows;
@@ -200,7 +201,7 @@ public partial class AppChooser
             return;
         }
 
-        var result = window.OwningProcessInfo?.Snoop(window.HWnd);
+        var result = window.OwningProcessInfo?.Snoop(window.HWnd, SnoopSettingsHelper.CreateTransientSettingsData(SnoopStartTarget.SnoopUI, window.HWnd));
 
         if (result?.Success == false)
         {
@@ -217,7 +218,7 @@ public partial class AppChooser
             return;
         }
 
-        var result = window.OwningProcessInfo?.Magnify(window.HWnd);
+        var result = window.OwningProcessInfo?.Magnify(window.HWnd, SnoopSettingsHelper.CreateTransientSettingsData(SnoopStartTarget.Zoomer, window.HWnd));
 
         if (result?.Success == false)
         {
@@ -327,23 +328,4 @@ public partial class AppChooser
         this.WindowInfos.SortDescriptions.Clear();
         this.WindowInfos.SortDescriptions.Add(new SortDescription(propertyName, sortDirection));
     }
-}
-
-public class AttachResult
-{
-    public AttachResult()
-    {
-        this.Success = true;
-    }
-
-    public AttachResult(Exception attachException)
-    {
-        this.Success = false;
-
-        this.AttachException = attachException;
-    }
-
-    public bool Success { get; }
-
-    public Exception? AttachException { get; }
 }

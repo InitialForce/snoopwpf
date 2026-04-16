@@ -14,6 +14,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:options="http://schemas.microsoft.com/winfx/2006/xaml/presentation/options"
         xmlns:snoop="clr-namespace:Snoop"
+        xmlns:snoopinj="clr-namespace:Snoop;assembly=Snoop.Injector"
         xmlns:snoopwpf="urn:snoopwpf"
         x:Name="Root"
         Title="Snoop"
@@ -472,7 +473,7 @@
             <ComboBox.Resources>
                 <!-- Drop down list item template -->
                 <DataTemplate x:Key="DropDownItemTemplate"
-                              DataType="{x:Type snoop:WindowInfo}">
+                              DataType="{x:Type snoopinj:WindowInfo}">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"
@@ -560,7 +561,7 @@
 
                 <!-- Selection item template for compact representation -->
                 <DataTemplate x:Key="SelectionItemTemplate"
-                              DataType="{x:Type snoop:WindowInfo}">
+                              DataType="{x:Type snoopinj:WindowInfo}">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
@@ -588,7 +589,7 @@
             </ComboBox.Resources>
             <ComboBox.ItemTemplate>
                 <!-- Due to design limitations we can not just set SelectionBoxItemTemplate and be happy -->
-                <DataTemplate DataType="snoop:WindowInfo">
+                <DataTemplate DataType="snoopinj:WindowInfo">
                     <ContentPresenter x:Name="Presenter"
                                       Content="{Binding}"
                                       ContentTemplate="{StaticResource DropDownItemTemplate}" />

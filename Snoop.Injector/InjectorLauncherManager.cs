@@ -19,9 +19,15 @@ using Snoop.InjectorLauncher;
 /// </summary>
 public static class InjectorLauncherManager
 {
+    /// <summary>
+    /// Set to true to launch the injector launcher with a visible window and enable debug logging.
+    /// Callers (e.g. Snoop GUI) should set this before calling <see cref="Launch"/>.
+    /// </summary>
+    public static bool Debug { get; set; }
+
     public static void Launch(ProcessInfo processInfo, IntPtr targetHwnd, MethodInfo methodInfo, TransientSettingsData transientSettingsData)
     {
-        Launch(processInfo, targetHwnd, methodInfo.DeclaringType!.Assembly.GetName().Name, methodInfo.DeclaringType.FullName!, methodInfo.Name, transientSettingsData.WriteToFile());
+        Launch(processInfo, targetHwnd, methodInfo.DeclaringType!.Assembly.GetName().Name!, methodInfo.DeclaringType.FullName!, methodInfo.Name, transientSettingsData.WriteToFile());
     }
 
     public static void Launch(ProcessInfo processInfo, IntPtr targetHwnd, string assembly, string className, string methodName, string transientSettingsFile)
@@ -56,7 +62,7 @@ Snoop requires this component, which is part of the Snoop project, to do it's jo
                 ClassName = className,
                 MethodName = methodName,
                 SettingsFile = transientSettingsFile,
-                Debug = Program.Debug,
+                Debug = Debug,
                 AttachConsoleToParent = true
             };
 
@@ -65,7 +71,7 @@ Snoop requires this component, which is part of the Snoop project, to do it's jo
             {
                 UseShellExecute = false,
                 CreateNoWindow = true,
-                WindowStyle = Program.Debug ? ProcessWindowStyle.Normal : ProcessWindowStyle.Hidden,
+                WindowStyle = Debug ? ProcessWindowStyle.Normal : ProcessWindowStyle.Hidden,
                 Verb = processInfo.IsProcessElevated
                     ? "runas"
                     : null,

@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using CommandLine;
 using Snoop.Core;
+using Snoop.Data;
 using Snoop.Infrastructure;
 
 public static class Program
@@ -38,8 +39,9 @@ public static class Program
 
     private static int Inspect(InspectCommandLineOptions options)
     {
+        var targetHwnd = new IntPtr(options.TargetHwnd);
         var processInfo = new ProcessInfo(options.TargetPID);
-        var result = processInfo.Snoop(new IntPtr(options.TargetHwnd));
+        var result = processInfo.Snoop(targetHwnd, SnoopSettingsHelper.CreateTransientSettingsData(SnoopStartTarget.SnoopUI, targetHwnd));
         return result.Success
             ? 0
             : 1;
@@ -47,8 +49,9 @@ public static class Program
 
     private static int Magnify(MagnifyCommandLineOptions options)
     {
+        var targetHwnd = new IntPtr(options.TargetHwnd);
         var processInfo = new ProcessInfo(options.TargetPID);
-        var result = processInfo.Magnify(new IntPtr(options.TargetHwnd));
+        var result = processInfo.Magnify(targetHwnd, SnoopSettingsHelper.CreateTransientSettingsData(SnoopStartTarget.Zoomer, targetHwnd));
         return result.Success
             ? 0
             : 1;
@@ -57,6 +60,7 @@ public static class Program
     private static int Run(SnoopCommandLineOptions options)
     {
         Debug = options.Debug;
+        InjectorLauncherManager.Debug = options.Debug;
 
         if (IsConsoleApp == false
             && options.ShowConsole)

@@ -22,11 +22,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="..\Snoop.InjectorLauncher\InjectorLauncherCommandLineOptions.cs" Link="InjectorLauncherCommandLineOptions.cs" />
-  </ItemGroup>
-
-  <ItemGroup>
-     <ProjectReference Include="../Snoop.Core/Snoop.Core.csproj" /> 
+    <ProjectReference Include="../Snoop.Core/Snoop.Core.csproj" />
+    <ProjectReference Include="../Snoop.Injector/Snoop.Injector.csproj" />
   </ItemGroup>
 
   <ItemGroup>
