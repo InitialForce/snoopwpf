@@ -10,6 +10,29 @@ using System.Windows.Media;
 using System.Windows.Threading;
 
 /// <summary>
+/// Minimal relay command implementation for integration test fixtures.
+/// </summary>
+internal sealed class RelayCommand : ICommand
+{
+    private readonly Action<object?> execute;
+    private readonly Predicate<object?>? canExecute;
+
+    public RelayCommand(Action<object?> execute, Predicate<object?>? canExecute = null)
+    {
+        this.execute = execute ?? throw new ArgumentNullException(nameof(execute));
+        this.canExecute = canExecute;
+    }
+
+#pragma warning disable CS0067 // Event never used — ICommand requires the declaration
+    public event EventHandler? CanExecuteChanged;
+#pragma warning restore CS0067
+
+    public bool CanExecute(object? parameter) => this.canExecute?.Invoke(parameter) ?? true;
+
+    public void Execute(object? parameter) => this.execute(parameter);
+}
+
+/// <summary>
 /// Creates a minimal WPF Application and Window on a dedicated STA thread
 /// for use in integration tests. Provides known test elements for inspection.
 /// Dispose to shut down the STA thread and all WPF resources.
@@ -216,6 +239,38 @@ public sealed class TestWpfApp : IDisposable
             Height = 32,
         };
         rootPanel.Children.Add(noCommandButton);
+
+        // Button with a relay-style command that always allows execution (M2-01 tests).
+        var executeCount = 0;
+        var alwaysExecutableCommand = new RelayCommand(
+            execute: _ => executeCount++,
+            canExecute: _ => true);
+
+        var executableCommandButton = new Button
+        {
+            Name = "testExecutableCommandButton",
+            Content = "Executable Command",
+            Width = 120,
+            Height = 32,
+            Command = alwaysExecutableCommand,
+            CommandParameter = "test-param",
+        };
+        rootPanel.Children.Add(executableCommandButton);
+
+        // Button with a relay command that never allows execution (M2-01 CannotExecuteCommand test).
+        var neverExecutableCommand = new RelayCommand(
+            execute: _ => { },
+            canExecute: _ => false);
+
+        var nonExecutableCommandButton = new Button
+        {
+            Name = "testNonExecutableCommandButton",
+            Content = "Cannot Execute",
+            Width = 120,
+            Height = 32,
+            Command = neverExecutableCommand,
+        };
+        rootPanel.Children.Add(nonExecutableCommandButton);
 
         // VirtualizingStackPanel-backed ListBox with 10 000 items (M1-06 / M2-04b).
         var testBigList = new ListBox

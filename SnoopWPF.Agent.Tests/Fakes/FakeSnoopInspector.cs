@@ -47,6 +47,8 @@ public sealed class FakeSnoopInspector : ISnoopInspector
 
     public Func<string, CancellationToken, Task<List<BehaviorDto>>>? OnGetBehaviors { get; set; }
 
+    public Func<string, CancellationToken, Task<StateDeltaDto>>? OnExecuteCommand { get; set; }
+
 #pragma warning restore SA1201
 
     // ---------- ISnoopInspector implementation ----------
@@ -161,4 +163,11 @@ public sealed class FakeSnoopInspector : ISnoopInspector
 
     public Task<BindingResolutionDto> ResolveBindingAsync(WpfLocator locator, string propertyName, CancellationToken ct)
         => throw new NotImplementedException("M2-08");
+
+    public Task<StateDeltaDto> ExecuteCommandAsync(string nodeId, CancellationToken ct)
+        => (this.OnExecuteCommand ?? throw new NotImplementedException("OnExecuteCommand not set"))
+            .Invoke(nodeId, ct);
+
+    public Task<StateDeltaDto> ExecuteCommandAsync(WpfLocator locator, CancellationToken ct)
+        => throw new NotImplementedException("M2-01");
 }

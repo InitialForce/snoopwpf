@@ -1617,6 +1617,110 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
         return await this.GetBehaviorsAsync(nodeId, ct).ConfigureAwait(false);
     }
 
+    // ── M2-01: wpf_execute_command ────────────────────────────────────────────
+
+    /// <inheritdoc/>
+    public Task<StateDeltaDto> ExecuteCommandAsync(string nodeId, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(nodeId))
+        {
+            throw new ArgumentException("nodeId must not be null or empty.", nameof(nodeId));
+        }
+
+        return this.RunOnDispatcherAsync(() =>
+        {
+            // Guard: mutation must be explicitly enabled (L0 execute = mutation).
+            if (!this.options.EnableMutation)
+            {
+                throw new SnoopException(
+                    SnoopErrorCode.MutationDisabled,
+                    "Mutation is disabled. Set EnableMutation=true in SnoopInspectorOptions to allow wpf_execute_command.",
+                    targetId: nodeId,
+                    suggestions: new[] { SnoopSuggestions.MutationDisabled });
+            }
+
+            var target = this.ResolveNodeOrThrow(nodeId);
+            this.VerifyElementConnectivity(target, nodeId);
+
+            if (target is not DependencyObject depObj)
+            {
+                return new StateDeltaDto
+                {
+                    Success = false,
+                    ElementVisible = false,
+                    StateChanged = false,
+                    FailureReason = FailureReason.PatternNotSupported,
+                    Suggestion = FailureReasonDescriptor.Suggest(FailureReason.PatternNotSupported, null),
+                };
+            }
+
+            // Resolve Command DP (ButtonBase.CommandProperty is the canonical L0 DP).
+            var command = depObj.GetValue(System.Windows.Controls.Primitives.ButtonBase.CommandProperty)
+                          as System.Windows.Input.ICommand;
+
+            if (command is null)
+            {
+                return new StateDeltaDto
+                {
+                    Success = false,
+                    ElementVisible = true,
+                    StateChanged = false,
+                    FailureReason = FailureReason.PatternNotSupported,
+                    Suggestion = FailureReasonDescriptor.Suggest(FailureReason.PatternNotSupported, null),
+                };
+            }
+
+            // Capture previousValue: window count acts as a coarse state proxy.
+            var windowCountBefore = System.Windows.Application.Current?.Windows.Count ?? 0;
+            var previousValue = windowCountBefore.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+            // Resolve optional CommandParameter.
+            var commandParameter = depObj.GetValue(System.Windows.Controls.Primitives.ButtonBase.CommandParameterProperty);
+
+            // CanExecute gate.
+            if (!command.CanExecute(commandParameter))
+            {
+                return new StateDeltaDto
+                {
+                    Success = false,
+                    ElementVisible = true,
+                    StateChanged = false,
+                    FailureReason = FailureReason.CannotExecuteCommand,
+                    Suggestion = FailureReasonDescriptor.Suggest(FailureReason.CannotExecuteCommand, null),
+                    PreviousValue = previousValue,
+                };
+            }
+
+            // Execute the command.
+            command.Execute(commandParameter);
+
+            // Compute stateChanged: compare window count before vs after.
+            var windowCountAfter = System.Windows.Application.Current?.Windows.Count ?? 0;
+            var treeVersionDelta = windowCountAfter - windowCountBefore;
+            var stateChanged = treeVersionDelta != 0;
+
+            System.Diagnostics.Trace.WriteLine(
+                $"[SnoopWPF.Agent] ExecuteCommand: nodeId={nodeId}, windowDelta={treeVersionDelta}");
+
+            return new StateDeltaDto
+            {
+                Success = true,
+                ElementVisible = true,
+                StateChanged = stateChanged,
+                TreeVersionDelta = treeVersionDelta,
+                PreviousValue = previousValue,
+                ChosenTier = InputTier.L0,
+            };
+        }, ct);
+    }
+
+    /// <inheritdoc/>
+    public async Task<StateDeltaDto> ExecuteCommandAsync(WpfLocator locator, CancellationToken ct)
+    {
+        var nodeId = await this.ResolveLocatorAsync(locator, ct).ConfigureAwait(false);
+        return await this.ExecuteCommandAsync(nodeId, ct).ConfigureAwait(false);
+    }
+
     // ── M2-08: wpf_resolve_binding ────────────────────────────────────────────
 
     /// <inheritdoc/>

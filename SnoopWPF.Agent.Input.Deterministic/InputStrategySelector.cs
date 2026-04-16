@@ -89,8 +89,8 @@ public sealed class InputStrategySelector
             return null;
         }
 
-        // Mutation gate: SetProperty requires EnableMutation.
-        if (!this.policy.EnableMutation && intent.Kind == InputIntentKind.SetProperty)
+        // Mutation gate: SetProperty and ExecuteCommand require EnableMutation.
+        if (!this.policy.EnableMutation && IsMutationIntent(intent.Kind))
         {
             failureReason = FailureReason.MutationDisabled;
             return null;
@@ -128,5 +128,15 @@ public sealed class InputStrategySelector
         return kind is InputIntentKind.Click
                     or InputIntentKind.Toggle
                     or InputIntentKind.ExpandCollapse;
+    }
+
+    /// <summary>
+    /// Returns <see langword="true"/> for intents that mutate application state and therefore
+    /// require <see cref="SessionPolicy.EnableMutation"/> = <see langword="true"/>.
+    /// </summary>
+    private static bool IsMutationIntent(InputIntentKind kind)
+    {
+        return kind is InputIntentKind.SetProperty
+                    or InputIntentKind.ExecuteCommand;
     }
 }

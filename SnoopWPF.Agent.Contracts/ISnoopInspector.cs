@@ -161,6 +161,19 @@ public interface ISnoopInspector
     /// <summary>Locator overload for <see cref="GetBehaviorsAsync(string,CancellationToken)"/>.</summary>
     Task<List<BehaviorDto>> GetBehaviorsAsync(WpfLocator locator, CancellationToken ct);
 
+    // ── M2-01: wpf_execute_command ────────────────────────────────────────────
+
+    /// <summary>
+    /// Resolves the <c>Command</c> DP on <paramref name="nodeId"/>, checks
+    /// <see cref="System.Windows.Input.ICommand.CanExecute"/>, and invokes
+    /// <see cref="System.Windows.Input.ICommand.Execute"/> (L0, M2-01).
+    /// Returns a <see cref="StateDeltaDto"/> describing the outcome.
+    /// </summary>
+    Task<StateDeltaDto> ExecuteCommandAsync(string nodeId, CancellationToken ct);
+
+    /// <summary>Locator overload for <see cref="ExecuteCommandAsync(string,CancellationToken)"/>.</summary>
+    Task<StateDeltaDto> ExecuteCommandAsync(WpfLocator locator, CancellationToken ct);
+
     // ── M2-08: wpf_resolve_binding ────────────────────────────────────────────
 
     /// <summary>
