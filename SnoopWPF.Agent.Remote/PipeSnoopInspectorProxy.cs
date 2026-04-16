@@ -518,6 +518,14 @@ public sealed class PipeSnoopInspectorProxy : ISnoopInspector, IAsyncDisposable,
         => throw new NotImplementedException("M1-06");
 
     /// <inheritdoc/>
+    public Task<StateDeltaDto> SelectItemAsync(string nodeId, string identifier, CancellationToken ct)
+        => this.InvokeAsync<StateDeltaDto>("SelectItem", new { nodeId, identifier }, ct);
+
+    /// <inheritdoc/>
+    public Task<StateDeltaDto> SelectItemAsync(WpfLocator locator, string identifier, CancellationToken ct)
+        => throw new NotImplementedException("M2-04a");
+
+    /// <inheritdoc/>
     public Task<StateDeltaDto> SetCheckStateAsync(string nodeId, string state, CancellationToken ct)
         => this.InvokeAsync<StateDeltaDto>("SetCheckState", new { nodeId, state }, ct);
 
@@ -548,6 +556,14 @@ public sealed class PipeSnoopInspectorProxy : ISnoopInspector, IAsyncDisposable,
     /// <inheritdoc/>
     public Task<StateDeltaDto> ClickAsync(WpfLocator locator, CancellationToken ct)
         => throw new NotImplementedException("M2-05");
+
+    /// <inheritdoc/>
+    public Task<StateDeltaDto> ToggleAsync(string nodeId, CancellationToken ct)
+        => this.InvokeAsync<StateDeltaDto>("Toggle", new { nodeId }, ct);
+
+    /// <inheritdoc/>
+    public Task<StateDeltaDto> ToggleAsync(WpfLocator locator, CancellationToken ct)
+        => throw new NotImplementedException("M2-06");
 
     /// <inheritdoc/>
     public Task<BindingResolutionDto> ResolveBindingAsync(string nodeId, string propertyName, CancellationToken ct)

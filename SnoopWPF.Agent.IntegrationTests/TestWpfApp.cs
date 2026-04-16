@@ -303,6 +303,20 @@ public sealed class TestWpfApp : IDisposable
         };
         rootPanel.Children.Add(nonInvokableElement);
 
+        // ── M2-04a: wpf_select_item elements ────────────────────────────────────
+
+        // ComboBox: Name="testComboBox" — non-virtualized, used by SelectItem integration tests.
+        var testComboBox = new ComboBox
+        {
+            Name = "testComboBox",
+            Width = 200,
+            Height = 24,
+        };
+        testComboBox.Items.Add("Apple");
+        testComboBox.Items.Add("Banana");
+        testComboBox.Items.Add("Cherry");
+        rootPanel.Children.Add(testComboBox);
+
         // ── M2-03: wpf_set_check_state elements ─────────────────────────────────
 
         // CheckBox: Name="testCheckBox" — used by SetCheckState integration tests (M2-03).
@@ -324,7 +338,7 @@ public sealed class TestWpfApp : IDisposable
         };
         rootPanel.Children.Add(testRadioButton);
 
-        // Bare ToggleButton: Name="testToggleButton" — used to verify wpf_toggle rejection (M2-03).
+        // Bare ToggleButton: Name="testToggleButton" — used by SetCheckState rejection (M2-03) and Toggle tests (M2-06).
         var testToggleButton = new System.Windows.Controls.Primitives.ToggleButton
         {
             Name = "testToggleButton",
@@ -332,6 +346,25 @@ public sealed class TestWpfApp : IDisposable
             IsChecked = false,
         };
         rootPanel.Children.Add(testToggleButton);
+
+        // ── M2-06: wpf_toggle elements ────────────────────────────────────────
+
+        // Menu with a checkable MenuItem — used to verify IToggleProvider on MenuItem (M2-06).
+        var checkableMenuItem = new MenuItem
+        {
+            Name = "testCheckableMenuItem",
+            Header = "Checkable Item",
+            IsCheckable = true,
+            IsChecked = false,
+        };
+        var testMenu = new Menu
+        {
+            Name = "testMenu",
+            Width = 200,
+            Height = 24,
+        };
+        testMenu.Items.Add(checkableMenuItem);
+        rootPanel.Children.Add(testMenu);
 
         // VirtualizingStackPanel-backed ListBox with 10 000 items (M1-06 / M2-04b).
         var testBigList = new ListBox

@@ -1617,6 +1617,178 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
         return await this.GetBehaviorsAsync(nodeId, ct).ConfigureAwait(false);
     }
 
+    // ── M2-04a: wpf_select_item (L0 basic — non-virtualized) ─────────────────
+
+    /// <inheritdoc/>
+    public Task<StateDeltaDto> SelectItemAsync(string nodeId, string identifier, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(nodeId))
+        {
+            throw new ArgumentException("nodeId must not be null or empty.", nameof(nodeId));
+        }
+
+        if (string.IsNullOrEmpty(identifier))
+        {
+            throw new ArgumentException("identifier must not be null or empty.", nameof(identifier));
+        }
+
+        return this.RunOnDispatcherAsync(() =>
+        {
+            // Guard: mutation must be explicitly enabled.
+            if (!this.options.EnableMutation)
+            {
+                throw new SnoopException(
+                    SnoopErrorCode.MutationDisabled,
+                    "Mutation is disabled. Set EnableMutation=true in SnoopInspectorOptions to allow wpf_select_item.",
+                    targetId: nodeId,
+                    suggestions: new[] { SnoopSuggestions.MutationDisabled });
+            }
+
+            var target = this.ResolveNodeOrThrow(nodeId);
+            this.VerifyElementConnectivity(target, nodeId);
+
+            if (target is not System.Windows.Controls.Primitives.Selector selector)
+            {
+                return new StateDeltaDto
+                {
+                    Success = false,
+                    ElementVisible = false,
+                    StateChanged = false,
+                    FailureReason = FailureReason.PatternNotSupported,
+                    Suggestion = StateDelta.FailureReasonDescriptor.Suggest(FailureReason.PatternNotSupported, null),
+                };
+            }
+
+            // Resolve item index from identifier.
+            int resolvedIndex;
+            FailureReason selectFailureReason;
+            if (!ResolveItemIndex(selector, identifier, out resolvedIndex, out selectFailureReason))
+            {
+                return new StateDeltaDto
+                {
+                    Success = false,
+                    ElementVisible = true,
+                    StateChanged = false,
+                    FailureReason = selectFailureReason,
+                    Suggestion = StateDelta.FailureReasonDescriptor.Suggest(selectFailureReason, null),
+                };
+            }
+
+            var previousIndex = selector.SelectedIndex;
+            var previousValue = previousIndex >= 0 && previousIndex < selector.Items.Count
+                ? selector.Items[previousIndex]?.ToString()
+                : null;
+
+            selector.SetValue(System.Windows.Controls.Primitives.Selector.SelectedIndexProperty, resolvedIndex);
+
+            var newIndex = selector.SelectedIndex;
+            var newValue = newIndex >= 0 && newIndex < selector.Items.Count
+                ? selector.Items[newIndex]?.ToString()
+                : null;
+            var stateChanged = previousIndex != newIndex;
+
+            System.Diagnostics.Trace.WriteLine(
+                $"[SnoopWPF.Agent] SelectItem({selector.GetType().Name}): nodeId={nodeId}, index={resolvedIndex}, stateChanged={stateChanged}");
+
+            return new StateDeltaDto
+            {
+                Success = true,
+                ElementVisible = true,
+                StateChanged = stateChanged,
+                PreviousValue = previousValue,
+                NewValue = newValue,
+                ChosenTier = InputTier.L0,
+            };
+        }, ct);
+    }
+
+    /// <inheritdoc/>
+    public async Task<StateDeltaDto> SelectItemAsync(WpfLocator locator, string identifier, CancellationToken ct)
+    {
+        var nodeId = await this.ResolveLocatorAsync(locator, ct).ConfigureAwait(false);
+        return await this.SelectItemAsync(nodeId, identifier, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Resolves a zero-based item index from an <paramref name="identifier"/> string
+    /// within the given <paramref name="selector"/>'s Items collection.
+    /// Returns <see langword="true"/> when a unique match is found.
+    /// </summary>
+    private static bool ResolveItemIndex(
+        System.Windows.Controls.Primitives.Selector selector,
+        string identifier,
+        out int resolvedIndex,
+        out FailureReason failureReason)
+    {
+        // 1. Try numeric index.
+        int numericIndex;
+        if (int.TryParse(identifier, System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture, out numericIndex))
+        {
+            if (numericIndex < 0 || numericIndex >= selector.Items.Count)
+            {
+                resolvedIndex = -1;
+                failureReason = FailureReason.ElementNotFound;
+                return false;
+            }
+
+            resolvedIndex = numericIndex;
+            failureReason = default(FailureReason);
+            return true;
+        }
+
+        // 2. Exact text match (case-insensitive).
+        var exactMatches = new System.Collections.Generic.List<int>();
+        var partialMatches = new System.Collections.Generic.List<int>();
+
+        for (var i = 0; i < selector.Items.Count; i++)
+        {
+            var itemText = selector.Items[i]?.ToString() ?? string.Empty;
+
+            if (string.Equals(itemText, identifier, StringComparison.OrdinalIgnoreCase))
+            {
+                exactMatches.Add(i);
+            }
+            else if (itemText.IndexOf(identifier, StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                partialMatches.Add(i);
+            }
+        }
+
+        if (exactMatches.Count == 1)
+        {
+            resolvedIndex = exactMatches[0];
+            failureReason = default(FailureReason);
+            return true;
+        }
+
+        if (exactMatches.Count > 1)
+        {
+            resolvedIndex = -1;
+            failureReason = FailureReason.LocatorAmbiguous;
+            return false;
+        }
+
+        // 3. Partial text match — unambiguous substring only.
+        if (partialMatches.Count == 1)
+        {
+            resolvedIndex = partialMatches[0];
+            failureReason = default(FailureReason);
+            return true;
+        }
+
+        if (partialMatches.Count > 1)
+        {
+            resolvedIndex = -1;
+            failureReason = FailureReason.LocatorAmbiguous;
+            return false;
+        }
+
+        resolvedIndex = -1;
+        failureReason = FailureReason.ElementNotFound;
+        return false;
+    }
+
     // ── M2-03: wpf_set_check_state ────────────────────────────────────────────
 
     /// <inheritdoc/>
@@ -2097,6 +2269,109 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
     {
         var nodeId = await this.ResolveLocatorAsync(locator, ct).ConfigureAwait(false);
         return await this.ClickAsync(nodeId, ct).ConfigureAwait(false);
+    }
+
+    // ── M2-06: wpf_toggle ────────────────────────────────────────────────────
+
+    /// <inheritdoc/>
+    public Task<StateDeltaDto> ToggleAsync(string nodeId, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(nodeId))
+        {
+            throw new ArgumentException("nodeId must not be null or empty.", nameof(nodeId));
+        }
+
+        return this.RunOnDispatcherAsync(() =>
+        {
+            // Guard: automation must be explicitly enabled (L1 requires EnableAutomation).
+            if (!this.options.EnableAutomation)
+            {
+                throw new SnoopException(
+                    SnoopErrorCode.MutationDisabled,
+                    "Automation is disabled. Set EnableAutomation=true in SnoopInspectorOptions to allow wpf_toggle.",
+                    targetId: nodeId,
+                    suggestions: new[] { SnoopSuggestions.MutationDisabled });
+            }
+
+            var target = this.ResolveNodeOrThrow(nodeId);
+            this.VerifyElementConnectivity(target, nodeId);
+
+            if (target is not System.Windows.UIElement uiElement)
+            {
+                return new StateDeltaDto
+                {
+                    Success = false,
+                    ElementVisible = false,
+                    StateChanged = false,
+                    FailureReason = FailureReason.PatternNotSupported,
+                    Suggestion = FailureReasonDescriptor.Suggest(FailureReason.PatternNotSupported, null),
+                };
+            }
+
+            // Reject CheckBox and RadioButton — suggest wpf_set_check_state (L0 preferred for deterministic state).
+            if (uiElement is System.Windows.Controls.CheckBox or System.Windows.Controls.RadioButton)
+            {
+                return new StateDeltaDto
+                {
+                    Success = false,
+                    ElementVisible = true,
+                    StateChanged = false,
+                    FailureReason = FailureReason.PatternNotSupported,
+                    Suggestion = new SuggestionDto
+                    {
+                        Tool = "wpf_set_check_state",
+                        Args = new System.Collections.Generic.List<NameValuePairDto>
+                        {
+                            new() { Name = "nodeId", Value = nodeId },
+                            new()
+                            {
+                                Name = "hint",
+                                Value = "Use wpf_set_check_state (L0) for CheckBox/RadioButton to specify a deterministic target state.",
+                            },
+                        },
+                    },
+                };
+            }
+
+            // Obtain automation peer and IToggleProvider.
+            var peer = System.Windows.Automation.Peers.UIElementAutomationPeer.CreatePeerForElement(uiElement);
+            var toggleProvider = peer?.GetPattern(
+                System.Windows.Automation.Peers.PatternInterface.Toggle)
+                as System.Windows.Automation.Provider.IToggleProvider;
+
+            if (toggleProvider is null)
+            {
+                return new StateDeltaDto
+                {
+                    Success = false,
+                    ElementVisible = true,
+                    StateChanged = false,
+                    FailureReason = FailureReason.PatternNotSupported,
+                    Suggestion = FailureReasonDescriptor.Suggest(FailureReason.PatternNotSupported, null),
+                };
+            }
+
+            // Toggle via IToggleProvider — flips current state (non-deterministic).
+            toggleProvider.Toggle();
+
+            System.Diagnostics.Trace.WriteLine(
+                $"[SnoopWPF.Agent] ToggleAsync: nodeId={nodeId}, type={uiElement.GetType().Name}");
+
+            return new StateDeltaDto
+            {
+                Success = true,
+                ElementVisible = true,
+                StateChanged = true,
+                ChosenTier = InputTier.L1,
+            };
+        }, ct);
+    }
+
+    /// <inheritdoc/>
+    public async Task<StateDeltaDto> ToggleAsync(WpfLocator locator, CancellationToken ct)
+    {
+        var nodeId = await this.ResolveLocatorAsync(locator, ct).ConfigureAwait(false);
+        return await this.ToggleAsync(nodeId, ct).ConfigureAwait(false);
     }
 
     // ── M2-08: wpf_resolve_binding ────────────────────────────────────────────

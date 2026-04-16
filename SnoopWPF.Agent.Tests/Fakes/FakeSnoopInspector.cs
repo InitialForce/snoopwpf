@@ -53,6 +53,8 @@ public sealed class FakeSnoopInspector : ISnoopInspector
 
     public Func<string, CancellationToken, Task<StateDeltaDto>>? OnExecuteCommand { get; set; }
 
+    public Func<string, string, CancellationToken, Task<StateDeltaDto>>? OnSelectItem { get; set; }
+
 #pragma warning restore SA1201
 
     // ---------- ISnoopInspector implementation ----------
@@ -168,6 +170,13 @@ public sealed class FakeSnoopInspector : ISnoopInspector
     public Task<BindingResolutionDto> ResolveBindingAsync(WpfLocator locator, string propertyName, CancellationToken ct)
         => throw new NotImplementedException("M2-08");
 
+    public Task<StateDeltaDto> SelectItemAsync(string nodeId, string identifier, CancellationToken ct)
+        => (this.OnSelectItem ?? throw new NotImplementedException("OnSelectItem not set"))
+            .Invoke(nodeId, identifier, ct);
+
+    public Task<StateDeltaDto> SelectItemAsync(WpfLocator locator, string identifier, CancellationToken ct)
+        => throw new NotImplementedException("M2-04a");
+
     public Task<StateDeltaDto> SetCheckStateAsync(string nodeId, string state, CancellationToken ct)
         => (this.OnSetCheckState ?? throw new NotImplementedException("OnSetCheckState not set"))
             .Invoke(nodeId, state, ct);
@@ -194,6 +203,12 @@ public sealed class FakeSnoopInspector : ISnoopInspector
 
     public Task<StateDeltaDto> ClickAsync(WpfLocator locator, CancellationToken ct)
         => throw new NotImplementedException("M2-05");
+
+    public Task<StateDeltaDto> ToggleAsync(string nodeId, CancellationToken ct)
+        => throw new NotImplementedException("M2-06");
+
+    public Task<StateDeltaDto> ToggleAsync(WpfLocator locator, CancellationToken ct)
+        => throw new NotImplementedException("M2-06");
 
     public Task<WaitForPropertyResultDto> WaitForPropertyAsync(
         WpfLocator locator, string propertyName, string? expectedValue, int timeoutMs, string presenceExpected, CancellationToken ct)

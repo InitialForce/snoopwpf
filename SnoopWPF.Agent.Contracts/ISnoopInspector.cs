@@ -161,6 +161,27 @@ public interface ISnoopInspector
     /// <summary>Locator overload for <see cref="GetBehaviorsAsync(string,CancellationToken)"/>.</summary>
     Task<List<BehaviorDto>> GetBehaviorsAsync(WpfLocator locator, CancellationToken ct);
 
+    // ── M2-04a: wpf_select_item ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Selects an item in an <c>ItemsControl</c>/<c>Selector</c> identified by
+    /// <paramref name="nodeId"/> via <c>SetValue(Selector.SelectedIndexProperty, …)</c>
+    /// (L0, M2-04a, non-virtualized path).
+    ///
+    /// <paramref name="identifier"/> accepts:
+    /// <list type="bullet">
+    ///   <item>Zero-based integer index (e.g. <c>"0"</c>).</item>
+    ///   <item>Exact text — matched case-insensitively against each item's <c>ToString()</c>.</item>
+    ///   <item>Partial text — unambiguous substring; ambiguous → <see cref="FailureReason.LocatorAmbiguous"/>.</item>
+    /// </list>
+    ///
+    /// Returns a <see cref="StateDeltaDto"/> describing the outcome.
+    /// </summary>
+    Task<StateDeltaDto> SelectItemAsync(string nodeId, string identifier, CancellationToken ct);
+
+    /// <summary>Locator overload for <see cref="SelectItemAsync(string,string,CancellationToken)"/>.</summary>
+    Task<StateDeltaDto> SelectItemAsync(WpfLocator locator, string identifier, CancellationToken ct);
+
     // ── M2-03: wpf_set_check_state ───────────────────────────────────────────
 
     /// <summary>
@@ -218,6 +239,23 @@ public interface ISnoopInspector
 
     /// <summary>Locator overload for <see cref="ClickAsync(string,CancellationToken)"/>.</summary>
     Task<StateDeltaDto> ClickAsync(WpfLocator locator, CancellationToken ct);
+
+    // ── M2-06: wpf_toggle ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Flips the toggle state of the element identified by <paramref name="nodeId"/>
+    /// via the UI Automation <see cref="System.Windows.Automation.Provider.IToggleProvider"/>
+    /// pattern (L1, M2-06). Non-deterministic — always flips to the opposite state.
+    /// <c>CheckBox</c> and <c>RadioButton</c> are rejected with
+    /// <see cref="FailureReason.PatternNotSupported"/> and a <c>wpf_set_check_state</c>
+    /// suggestion per PRD §5.2.
+    /// Automation must be enabled (<c>EnableAutomation=true</c> in options).
+    /// Returns a <see cref="StateDeltaDto"/> describing the outcome.
+    /// </summary>
+    Task<StateDeltaDto> ToggleAsync(string nodeId, CancellationToken ct);
+
+    /// <summary>Locator overload for <see cref="ToggleAsync(string,CancellationToken)"/>.</summary>
+    Task<StateDeltaDto> ToggleAsync(WpfLocator locator, CancellationToken ct);
 
     // ── M2-08: wpf_resolve_binding ────────────────────────────────────────────
 
