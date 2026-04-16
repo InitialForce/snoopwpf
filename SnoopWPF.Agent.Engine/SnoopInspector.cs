@@ -3245,7 +3245,10 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
                 suggestions: new[] { SnoopSuggestions.SessionNotFound });
         }
 
-        await this.concurrencySemaphore.WaitAsync(ct).ConfigureAwait(false);
+        // FX-C1: link caller CT with dispose CTS so WaitAsync throws OperationCanceledException
+        // (not ObjectDisposedException) if Dispose() races with this call.
+        using var semWaitCts = CancellationTokenSource.CreateLinkedTokenSource(ct, this.disposeCts.Token);
+        await this.concurrencySemaphore.WaitAsync(semWaitCts.Token).ConfigureAwait(false);
 
         try
         {
