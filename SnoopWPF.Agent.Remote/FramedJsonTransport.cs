@@ -22,7 +22,6 @@ internal sealed class FramedJsonTransport
     };
 
     private readonly Stream stream;
-    private readonly byte[] lengthBuffer = new byte[4];
 
     internal FramedJsonTransport(Stream stream)
     {
@@ -42,9 +41,11 @@ internal sealed class FramedJsonTransport
                 $"Outgoing frame size {body.Length} exceeds MaxFrameSize {ProtocolConstants.MaxFrameSize}.");
         }
 
-        BinaryPrimitives.WriteInt32LittleEndian(this.lengthBuffer, body.Length);
+        // Use a method-local buffer so SendAsync and ReceiveAsync never share state.
+        byte[] sendLengthBuffer = new byte[4];
+        BinaryPrimitives.WriteInt32LittleEndian(sendLengthBuffer, body.Length);
 
-        await this.stream.WriteAsync(this.lengthBuffer, 0, 4, ct).ConfigureAwait(false);
+        await this.stream.WriteAsync(sendLengthBuffer, 0, 4, ct).ConfigureAwait(false);
         await this.stream.WriteAsync(body, 0, body.Length, ct).ConfigureAwait(false);
         await this.stream.FlushAsync(ct).ConfigureAwait(false);
     }
@@ -57,10 +58,12 @@ internal sealed class FramedJsonTransport
     internal async Task<T?> ReceiveAsync<T>(CancellationToken ct)
     {
         // Read 4-byte length prefix.
+        // Use a method-local buffer so SendAsync and ReceiveAsync never share state.
+        byte[] receiveLengthBuffer = new byte[4];
         int bytesRead = 0;
         while (bytesRead < 4)
         {
-            int n = await this.stream.ReadAsync(this.lengthBuffer, bytesRead, 4 - bytesRead, ct).ConfigureAwait(false);
+            int n = await this.stream.ReadAsync(receiveLengthBuffer, bytesRead, 4 - bytesRead, ct).ConfigureAwait(false);
             if (n == 0)
             {
                 if (bytesRead == 0)
@@ -75,7 +78,7 @@ internal sealed class FramedJsonTransport
             bytesRead += n;
         }
 
-        int frameLength = BinaryPrimitives.ReadInt32LittleEndian(this.lengthBuffer);
+        int frameLength = BinaryPrimitives.ReadInt32LittleEndian(receiveLengthBuffer);
 
         if (frameLength < 0 || frameLength > ProtocolConstants.MaxFrameSize)
         {

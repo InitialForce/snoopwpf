@@ -4,6 +4,8 @@ using System;
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using SnoopWPF.Agent.Contracts;
@@ -91,11 +93,22 @@ public sealed class PipeConnection : IDisposable
 
         await this.transport.SendAsync(challenge, ct).ConfigureAwait(false);
 
-        // 3. Read response.
+        // 3. Read response — with a per-handshake timeout to prevent an unresponsive or
+        //    rogue agent from blocking the host indefinitely.
         HandshakeResponse? response;
+        using var handshakeCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        handshakeCts.CancelAfter(TimeSpan.FromMilliseconds(ProtocolConstants.HandshakeTimeoutMs));
         try
         {
-            response = await this.transport.ReceiveAsync<HandshakeResponse>(ct).ConfigureAwait(false);
+            response = await this.transport.ReceiveAsync<HandshakeResponse>(handshakeCts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            // Inner CTS fired — the agent did not respond within the timeout.
+            throw new SnoopException(
+                SnoopErrorCode.OperationTimedOut,
+                $"Handshake timed out after {ProtocolConstants.HandshakeTimeoutMs} ms. " +
+                "The agent did not respond in time.");
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -121,8 +134,9 @@ public sealed class PipeConnection : IDisposable
                 $"agent={response.ProtocolVersion}. {SnoopSuggestions.ProtocolMismatch}");
         }
 
-        // 5. Verify the agent echoed back our session token.
-        if (response.SessionToken != sessionToken)
+        // 5. Verify the agent echoed back our session token using constant-time comparison
+        //    to prevent timing oracle attacks.
+        if (!ConstantTimeTokenEquals(response.SessionToken, sessionToken))
         {
             throw new SnoopException(
                 SnoopErrorCode.ProtocolMismatch,
@@ -214,6 +228,32 @@ public sealed class PipeConnection : IDisposable
         }
 
         return (int)pid;
+    }
+
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Compares two session-token strings using constant-time byte comparison to prevent
+    /// timing oracle attacks. Returns false immediately if lengths differ (length is not secret).
+    /// </summary>
+    private static bool ConstantTimeTokenEquals(string? a, string? b)
+    {
+        if (a is null || b is null)
+        {
+            return false;
+        }
+
+        byte[] aBytes = Encoding.UTF8.GetBytes(a);
+        byte[] bBytes = Encoding.UTF8.GetBytes(b);
+
+        // Length check is not secret — differing lengths are an immediate mismatch.
+        // FixedTimeEquals requires equal-length spans; guard here to satisfy that contract.
+        if (aBytes.Length != bBytes.Length)
+        {
+            return false;
+        }
+
+        return CryptographicOperations.FixedTimeEquals(aBytes, bBytes);
     }
 
     // -------------------------------------------------------------------------

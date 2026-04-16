@@ -27,6 +27,9 @@ internal sealed class PipeAgentServer : IDisposable
     // Tracks in-flight request CancellationTokenSources keyed by request id.
     private readonly ConcurrentDictionary<int, CancellationTokenSource> inFlightRequests = new();
 
+    // Serializes writes to pipeStream so concurrent response frames do not interleave.
+    private readonly SemaphoreSlim writeLock = new SemaphoreSlim(1, 1);
+
     private NamedPipeClientStream? pipeStream;
     private bool disposed;
 
@@ -240,20 +243,31 @@ internal sealed class PipeAgentServer : IDisposable
         }
 
         // Cancel all in-flight requests on exit.
-        foreach (var kvp in this.inFlightRequests)
+        // Use ToArray() + TryRemove so we don't race with handler finally blocks that also
+        // call TryRemove and Dispose on their own CTS entries.
+        foreach (var kvp in this.inFlightRequests.ToArray())
         {
-            kvp.Value.Cancel();
-            kvp.Value.Dispose();
+            if (this.inFlightRequests.TryRemove(kvp.Key, out var removed))
+            {
+                removed.Cancel();
+                removed.Dispose();
+            }
         }
-
-        this.inFlightRequests.Clear();
     }
 
     private async Task SendResponseAsync(PipeResponse response, CancellationToken ct)
     {
         var bytes = JsonFramedSerializer.Serialize(response);
-        // Synchronize writes so responses don't interleave.
-        await JsonFramedSerializer.WriteFrameAsync(this.pipeStream!, bytes, ct).ConfigureAwait(false);
+        // Serialize writes so concurrent response frames do not interleave on the byte stream.
+        await this.writeLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await JsonFramedSerializer.WriteFrameAsync(this.pipeStream!, bytes, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            this.writeLock.Release();
+        }
     }
 
     // -----------------------------------------------------------------
@@ -403,19 +417,42 @@ internal sealed class PipeAgentServer : IDisposable
         try
         {
             var json = Encoding.UTF8.GetString(frameBytes);
-            // Quick heuristic: cancel frames have "cancel":true
+            // Quick prefilter: cancel frames always contain the literal "cancel" key.
             // Use IndexOf for net462 compatibility (string.Contains(string, StringComparison) is net5+).
             if (json.IndexOf("\"cancel\"", StringComparison.Ordinal) < 0)
             {
                 return false;
             }
 
+#if NET6_0_OR_GREATER
+            // On net6+, use JsonDocument to verify the root-level "cancel" field is boolean true.
+            // This prevents a false positive if "cancel" appears inside a property value or
+            // nested object (e.g. a PipeRequest whose paramsJson contains "cancel":true).
+            using var doc = System.Text.Json.JsonDocument.Parse(frameBytes);
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("cancel", out var cancelProp) ||
+                cancelProp.ValueKind != System.Text.Json.JsonValueKind.True)
+            {
+                return false;
+            }
+
+            if (!root.TryGetProperty("id", out var idProp) ||
+                !idProp.TryGetInt32(out cancelId))
+            {
+                return false;
+            }
+
+            return true;
+#else
+            // On net462, DataContractJsonSerializer only maps top-level fields, so the
+            // Cancel property is true only when "cancel":true appears at the root.
             var cancel = JsonFramedSerializer.Deserialize<PipeCancelPayload>(frameBytes);
             if (cancel.Cancel)
             {
                 cancelId = cancel.Id;
                 return true;
             }
+#endif
         }
         catch (Exception)
         {
@@ -490,6 +527,8 @@ internal sealed class PipeAgentServer : IDisposable
         {
             // Ignore disposal errors.
         }
+
+        this.writeLock.Dispose();
     }
 }
 

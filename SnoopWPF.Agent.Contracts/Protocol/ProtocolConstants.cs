@@ -10,4 +10,7 @@ public static class ProtocolConstants
 
     /// <summary>Current protocol version. Both sides must agree.</summary>
     public const int ProtocolVersion = 1;
+
+    /// <summary>Maximum time in milliseconds the host waits for the agent handshake response.</summary>
+    public const int HandshakeTimeoutMs = 5_000;
 }
