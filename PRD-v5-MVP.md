@@ -13,13 +13,22 @@
 > honest-schedule 18-tool path. The aggressive-cut path remains a
 > documented alternative if shipping sooner is the higher priority.
 >
-> **Codebase state** (as of this revision): BEAD-027 complete;
-> post-BEAD-027 "review-fix wave" closed all 8 addressable §14 bugs
-> and the security/threading findings from Waves 2+3. BEAD-028 (docs,
-> security, log hardening) is the only remaining pre-existing bead.
-> M1/M2 feature work unstarted. 11 agent projects including 3 test
-> projects. Implementation is further along in hardening than the
-> PRD's Wave-2 snapshot suggested; M1 feature scope unchanged.
+> **Codebase state** (post-verification round): BEAD-027 complete;
+> post-BEAD-027 review-fix wave closed all 8 addressable §14 bugs and
+> the security/threading findings from Waves 2+3. 11 agent projects
+> including 3 test projects. M1/M2 feature work unstarted.
+>
+> **BEAD-028 is still open** (3 of 5 acceptance criteria unmet: missing
+> root `SECURITY.md`, missing `CHANGELOG.md` 1.0.0 entry, `SnoopLog.txt`
+> ACL/rotation documented but not implemented). 41 commits unpushed so
+> CI has not validated the review-fix wave. Volatility inconsistency on
+> `disposed` fields in `NodeRegistry` + `CursorManager`. See §10 M-pre
+> cleanup — these close before M0 starts.
+>
+> **Consumer-side PRD**: `/c/work/desktop/wpf-mcp/PRD-snoop-integration.md`
+> covers the MotionCatalyst integration work (boot sequence, Console
+> remediation, FlaUI shim, coverage-gap audit, CI dual-stack, MC-
+> specific scenarios). Cross-references this doc at library touchpoints.
 
 ---
 
@@ -111,33 +120,105 @@ party apps.
 
 ### 4.1 Integration modes
 
-Two modes ship in MVP:
+Three modes ship in MVP:
 
 | Mode | Hosts MCP | Transport | Max tier | Use |
 |------|-----------|-----------|----------|-----|
-| **Co-located** | Target WPF app | stdio | L1 | Owned apps. Primary. |
-| **Injection** | `snoop-mcp.exe` external | stdio + pipe to target | L0 read-only | Third-party apps. Inspection only. |
+| **Co-located** | Target WPF app | stdio | L1 | Owned apps, single long-lived process (e.g. a developer attaches Claude Code to a running instance for diagnostics). |
+| **Brokered** | External broker process | stdio-MCP (broker) + named-pipe (broker ↔ target) | **L1** | **Owned apps with multi-instance lifecycle** — MC test runs, crash recovery, multi-product `-p` switches. Broker holds the MCP connection; target processes come and go. Primary mode for MC. |
+| **Injection** | External injector (`snoop-mcp.exe`) | stdio + pipe to target | L0 read-only | Third-party apps; runtime DLL injection into opaque processes. Inspection only. |
 
-NuGet in-process + named pipe is retained from v3 but unchanged.
+**Why three.** MCP clients (Claude Code, Cursor, Cline) launch a single
+stdio child per `.mcp.json` entry and stay attached. They cannot rediscover
+a new process. Co-located mode therefore only works when the target is
+long-lived and stable. Brokered mode separates the MCP stdio anchor
+(broker process) from the agent's in-process execution (target process),
+so the target can restart, crash, or be spawned with different arguments
+per scenario without the MCP client noticing.
 
-### 4.2 Boot sequence (co-located)
+Brokered and Injection both use external-broker + named-pipe but differ:
+Injection runtime-loads the agent into an opaque third-party app (L0
+read-only, MF-11 forces `EnableRedaction: true`); Brokered requires the
+target to link the agent at compile time and cooperate on the pipe name
+(full L1, MF-11 does not apply — owned app).
+
+NuGet in-process + named pipe transport from v3 is the foundation for
+Brokered mode and is retained unchanged.
+
+### 4.2 Boot sequences
+
+**Co-located** (single long-lived process, e.g. dev attaches Claude to
+running MC):
 
 ```
-MotionCatalyst.exe --mcp-stdio [--headless]
+TargetApp.exe --mcp-stdio [--headless]
   1. Program.Main line 1: Console.SetOut(TextWriter.Null) — stdout takeover
      (FD held by SnoopAgent for MCP). Must precede CliFx.
   2. CliFx argument parse; detect --mcp-stdio.
-  3. AsyncApp spawns GUI thread; WPF Application + Dispatcher created there.
+  3. Application spawns GUI thread; WPF Application + Dispatcher created there.
   4. In _app.Dispatcher.BeginInvoke: SnoopAgent.StartCoLocated(options).
   5. Agent self-test: UnsafeAccessor resolution, HwndSource existence.
   6. MCP loop runs on a transport thread; every tool marshals to Dispatcher.
 ```
 
+**Brokered** (MC's primary mode; broker owns MCP, spawns targets):
+
+```
+[broker startup — Claude Code connects here, stays connected]
+
+snoop-broker.exe --scope=motioncatalyst
+  0. Program.Main line 1: Console.SetOut(TextWriter.Null) — broker owns
+     MCP stdio. Must precede any other Program.Main code.
+  1. Program.Main: set up MCP stdio server on the broker's own stdio.
+  2. Register broker lifecycle tools (not in the 18):
+       broker_launch_target(args[]) → spawns target with --snoop-pipe=<name>
+       broker_exit_target()
+       broker_restart_target()
+       broker_attach_target(pid)
+  3. Register 18+4 tool proxies. Each proxy call routes over the named
+     pipe to the currently-active target. Broker transparently handles
+     target restart: pipe-disconnect + `broker_launch_target` re-spawns,
+     next tool call transparently reconnects.
+  4. If no target is live when a non-lifecycle tool is called, return
+     failureReason: TARGET_NOT_RUNNING with suggestion
+     { tool: "broker_launch_target", args: {} }.
+
+[target process (MC) — spawnable, short-lived across scenarios]
+
+TargetApp.exe --snoop-pipe=<pipe-name> [--headless] [other args]
+  1. Program.Main: no stdout takeover needed (target owns its own stdio;
+     broker owns MCP stdio).
+  2. CliFx argument parse; detect --snoop-pipe.
+  2a. Parse --snoop-pipe=<name> AND --snoop-token=<hex> (broker-supplied
+      256-bit hex token). Both are required for brokered mode.
+  3. Application spawns GUI thread; WPF Application + Dispatcher created.
+  4. In _app.Dispatcher.BeginInvoke:
+       SnoopAgent.StartBrokered(_app, pipeName, sessionTokenHex, options).
+     Opens a `NamedPipeServerStream(pipeName, PipeDirection.InOut,
+     maxAllowedInstances=1, options=PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly)`.
+     Performs PerformPipeHandshakeAsync (5s timeout, FixedTimeEquals token compare).
+  5. Agent self-test as before.
+  6. Tool-call loop pulls frames off the pipe; marshals each to
+     Dispatcher; writes response frames back.
+```
+
+Broker and target communicate via the existing
+`SnoopWPF.Agent.Remote` framing protocol. Broker is a new thin process
+built on `SnoopWPF.Agent.BrokerHost` + `.Remote`. The broker executable name
+(`snoop-broker.exe` / `SnoopWPF.Agent.Broker.exe` / repurposed
+`McpFlaUIHelper.exe`) is a packaging decision, not an architecture one.
+
+**Broker spawn contract**: when the broker launches a target via
+`Process.Start`, it MUST set `RedirectStandardOutput=true` and drain the
+child's stdout to discard (or use `CreateNoWindow=true` with explicit
+stdout redirection). The target's stdout must never be inherited by the
+broker because the broker owns the MCP stdio stream.
+
 ### 4.3 Session policy
 
 Bound at session creation, not per-call:
 
-- `Mode`: co-located | injection.
+- `Mode`: co-located | brokered | injection.
 - `MaxTier`: L0 | L1 (MVP cap; L3/L4 deferred).
 - `EnableAutomation`: bool; gates all L1 input.
 - `EnableMutation`: bool; gates `wpf_set_property` and L0 semantic shortcuts.
@@ -430,7 +511,7 @@ commands may not mutate their host element).
 
 ### 7.4 `failureReason` enum (Wave-3 W3-C1, W3-E2)
 
-Exactly these 12 values. Tool descriptions include per-value suggestion
+Exactly these 13 values. Tool descriptions include per-value suggestion
 semantics so the agent re-invokes correctly.
 
 | Value | Trigger | `suggestion.tool` |
@@ -447,6 +528,7 @@ semantics so the agent re-invokes correctly.
 | `DISPATCHER_BUSY` | Dispatcher couldn't acquire frame within budget | `wpf_pump_until_idle` |
 | `ELEMENT_OUTSIDE_VIEWPORT` | Action requires visibility but target is scrolled out | `wpf_select_item` on parent list, or `null` if no scrollable parent |
 | `PATTERN_NOT_SUPPORTED` | Element does not support the AutomationPeer pattern the tool requires | `wpf_get_properties` (inspect supported patterns) |
+| `TARGET_NOT_RUNNING` | Brokered mode and no target is currently connected to the pipe. | `broker_launch_target` |
 
 ### 7.5 `suggestion` schema
 
@@ -621,6 +703,21 @@ projects marked `[SnoopMcpEntrypoint]`. Existing snoopwpf bugs (SnoopAgent
 injection mode in MVP (injection is inspection-only). L3/L4 never
 available in injection mode; deferred to v2.0.
 
+**Brokered pipe hardening** (required, not optional): the
+`NamedPipeServerStream` used by `StartBrokered` MUST be created with
+`PipeOptions.CurrentUserOnly` in addition to `PipeOptions.Asynchronous`.
+`CurrentUserOnly` restricts the pipe ACL to the current Windows user so
+that other local accounts cannot connect without going through a privilege
+escalation. In addition, the target MUST perform the same 256-bit
+session-token handshake (`PerformPipeHandshakeAsync` pattern from
+`McpServerSetup.RunWithPipeAsync`) using `CryptographicOperations.FixedTimeEquals`
+for constant-time comparison, with a 5-second timeout. The session token is
+a 256-bit value (32 bytes from `RandomNumberGenerator`) supplied to the
+target by the broker via the `--snoop-token=<hex>` command-line argument.
+This hardening is **not optional for MVP** — it is the same security
+posture as the v3 injection-mode pipe, applied symmetrically to
+Brokered mode.
+
 **MF-11 unconditional redaction** (Wave-3 R-A #8): session policy in
 injection mode forces `EnableRedaction = true` regardless of caller
 `SnoopAgentOptions`. The gate lives at session construction
@@ -628,8 +725,15 @@ injection mode forces `EnableRedaction = true` regardless of caller
 before returning), not as a tool-handler check. Rationale: an agent
 injected into a third-party app (password manager, etc.) must never
 expose unredacted DP values via the 9 observe tools, even if the
-invoker forgot to configure redaction. Co-located mode retains the
-caller's redaction choice because the caller owns the app.
+invoker forgot to configure redaction.
+
+**Brokered and Co-located modes retain the caller's redaction
+choice** because the caller owns the app at compile time. The
+injection-specific override applies only when the target is opaque
+(loaded at runtime via injection, not linked at compile time).
+`SessionPolicy.Create(Brokered, opts)` and
+`SessionPolicy.Create(CoLocated, opts)` pass `EnableRedaction`
+through unchanged.
 
 ### 9.8 `DOTNET_STARTUP_HOOKS` verification (Wave-2 MF-8)
 
@@ -654,6 +758,42 @@ Live edit is deferred to v2.0. When it ships, explicit allowlist required:
 ---
 
 ## 10. Milestones
+
+### M-pre — Cleanup (~1–2 days, unblocks M0)
+
+Verification round (post-BEAD-027 audit) surfaced four items that
+should close before M0 spikes start. None are large; leaving them open
+introduces risk that compounds into M1.
+
+- **Close BEAD-028 properly, or re-scope.** 3 of 5 acceptance criteria
+  unmet:
+  1. `SECURITY.md` missing at repo root (only `docs/security.md`
+     exists; no vulnerability-disclosure section or contact).
+  2. `CHANGELOG.md` has no 1.0.0 entry — latest entry is upstream
+     snoop `6.1.0 preview`.
+  3. SnoopLog ACL + rotation: `docs/security.md:180` claims
+     `SnoopLog.txt` is ACL'd and rotated per session;
+     `Snoop.InjectorLauncher/Injector.cs:29` uses plain
+     `FileInfo.AppendText()` with no ACL. The documentation lies
+     about the code. Either implement ACL + rotation, or remove the
+     claim from `docs/security.md` until it ships. **Integrity
+     issue: unresolved documentation drift from code is worse than
+     missing documentation.**
+- **Push the 41 unmerged commits** on `develop` so CI validates the
+  review-fix wave. Discovering a CI break now is cheap; discovering
+  during M1 is expensive.
+- **Fix the volatility inconsistency** on `disposed` fields:
+  `SnoopWPF.Agent.Engine/Infrastructure/NodeRegistry.cs` and
+  `SnoopWPF.Agent.Engine/Infrastructure/CursorManager.cs` have plain
+  `bool disposed`; `SnoopInspector` and `PipeAgentServer` correctly use
+  `volatile bool`. The review-fix wave fixed two but missed two. Add
+  `volatile` to the two missing fields.
+- **Full-repo doc-vs-code integrity sweep**: given one false claim was
+  found in `docs/security.md:180`, do a quick pass on any
+  security-relevant documentation (`docs/security.md`, `README.md`
+  security section, CHANGELOG security notes) to check whether any
+  other claims have drifted from code. This is ~1 hour of work and is
+  worth doing once, so the PRD can trust the docs as a reference.
 
 ### M0 — Spikes (1–2 weeks, blocks only M1 items that depend on them)
 
@@ -944,6 +1084,35 @@ M1 items.
 The M1 bug-fix workload is therefore substantially reduced from the
 original estimate: only items 9 and 10 remain, and both land alongside
 their parent features.
+
+**Additional debt surfaced by the verification round** (bucketed by
+resolution path rather than bug numbers):
+
+- **Volatility inconsistency on `disposed` fields** — handled in M-pre
+  cleanup, not M1. See §10 M-pre.
+- **`InspectElementDto.ParentNodeId` hardcoded to `string.Empty`**
+  (`SnoopInspector.cs:462`) — pre-existing stub. Becomes blocking for
+  the `WpfLocator` bead if parent-chain resolution is needed. Close
+  as part of the `WpfLocator` bead's acceptance criteria, not
+  separately.
+- **`ISnoopInspector` uses `string nodeId` throughout** — adding
+  `WpfLocator` will require a breaking interface change (new overloads
+  or a `OneOf<string, WpfLocator>` parameter). Path-alias shorthand at
+  `SnoopInspector.cs:1487` (`nodeId.Contains("\\")`) shows a
+  precedent for in-band encoding, but that approach does not scale
+  for a full locator union. Plan for either: (a) new method
+  signatures on `ISnoopInspector` with existing ones marked
+  `[Obsolete]`, or (b) wrapper parameter type that accepts both
+  forms. Decision lives in the `WpfLocator` bead's design step.
+- **`LiveInjectionTests [Ignore("RequiresInjection")]`** — real
+  injection scenarios have no automated CI coverage. Not a regression,
+  but a real gap. M1 injection-mode beads should add a manual
+  acceptance step to cover the ignored paths, or the CI workflow
+  should add a headless WPF + injection test matrix leg (defer to M2
+  or v1.1).
+- **Multi-session pipe support** — `McpServerSetup.cs:103-106`
+  documents the limitation with a comment. Not MVP scope. Leave as
+  in-code TODO; surface in v1.1 backlog.
 
 ---
 

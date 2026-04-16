@@ -1,5 +1,32 @@
 # SnoopWPF.Agent — Implementation Beads v5-MVP
 
+> **ARCHITECTURE CHANGE 2026-04-16** — Brokered mode added as a third
+> integration mode alongside CoLocated and Injection. Read
+> `ARCHITECTURE-CHANGE-2026-04-16-BROKERED-MODE.md` in this directory
+> BEFORE starting any affected bead. Then re-read `PRD-v5-MVP.md` §4.1,
+> §4.2, §9.7 for the normative definition.
+>
+> Affected existing beads: **M1-01** (rename Start→StartCoLocated + Brokered
+> enum), **M1-04**, **M1-06** (add testBigList fixture), **M1-10** (add
+> TargetNotRunning), **M1-13** (brokered audit target-only), **M1-16**
+> ([McpStdioEntrypoint] attribute name), **M1-19**, **M1-21** (hardened pipe),
+> **M1-22** (concrete pre-flight grep), **M2-04b** (uses M1-06 fixture),
+> **M2-13** (remove), **M2-14** (remove), **M2-15** (split into 15a+15b),
+> **M2-16** (retarget from Shim.FlaUI), **M2-17** (brokered-suite replaces
+> flaui-suite), **M2-18** (BrokerHost library), **M2-19** (SampleApp flags),
+> **M2-21** (new BrokerHost library), **MP-02** (GitHub Security Advisories).
+>
+> New beads required: **M1-21** (`StartBrokered` API), **M1-22**
+> (brokered-mode pipe framing), **M2-21** (`SnoopWPF.Agent.Host` broker
+> scaffolding).
+>
+> The MC-side consumer PRD at
+> `/c/work/desktop/wpf-mcp/PRD-snoop-integration.md` describes the
+> desktop-side broker process (`UiMcpHost.exe`, replaces
+> `McpFlaUIHelper.exe`). The snoopwpf agent does not implement
+> `UiMcpHost` — that is MC-side work. Snoopwpf ships the generic
+> broker scaffolding that `UiMcpHost` consumes from NuGet.
+
 > Generated from `PRD-v5-MVP.md` (scope-frozen, 18 agent-visible + 4 utility tools,
 > 3 milestones, P50 18–22 weeks). Companion to `BEADS.md` v6 (the 30 beads that
 > shipped the v3 substrate). This document takes over at M-pre and runs through M2
@@ -94,7 +121,8 @@ v5-MVP:
   tail.
 - **S6. Stdout takeover.** `SnoopAgent.StartCoLocated` first statement is
   `Console.SetOut(TextWriter.Null)`. Analyzer `SWPF0001` flags `Console.Write*`
-  in assemblies marked `[SnoopMcpEntrypoint]`.
+  in assemblies marked `[McpStdioEntrypoint]` (CoLocated targets, Brokered
+  brokers, and Injection hosts; NOT Brokered targets).
 - **S7. Injection mode is inspection-only in MVP.** `InputStrategySelector` refuses
   to construct L0/L1 strategies when `SessionPolicy.Mode == Injection`. Any future
   L3/L4 enablement lands in v2.0 with its own security review.
@@ -151,11 +179,14 @@ public sealed record SessionPolicy
     {
         var enableRedaction = mode == SessionMode.Injection ? true : opts.EnableRedaction; // MF-11
         var maxTier = mode == SessionMode.Injection ? InputTier.L0ReadOnly : opts.MaxTier; // S7
+        // CoLocated and Brokered: pass opts through unchanged (owned apps, caller-chosen redaction).
+        // Injection: force EnableRedaction=true, cap MaxTier=L0ReadOnly.
+        // Brokered: identical to CoLocated for policy purposes (full L1, caller owns redaction choice).
         // ...
     }
 }
 
-public enum SessionMode { CoLocated = 0, Injection = 1 }
+public enum SessionMode { CoLocated = 0, Brokered = 1, Injection = 2 }
 public enum InputTier   { L0ReadOnly = 0, L0 = 1, L1 = 2 /* L2/L3/L4 deferred */ }
 ```
 
@@ -195,6 +226,7 @@ public enum FailureReason
     DispatcherBusy = 9,
     ElementOutsideViewport = 10,
     PatternNotSupported = 11,
+    TargetNotRunning = 12,
 }
 
 [DataContract]
@@ -309,9 +341,9 @@ IDs are `{phase}-{NN}` with two-digit numbers to preserve sort order.
 |--------|--------|------------|-------|-------|
 | M-pre  | `MP-`  | 01–03      | 3     | Close BEAD-028, fix drift, unblock M0 |
 | M0     | `M0-`  | 01–07      | 7     | Spikes (S-1/2/3/3b/5) + pre-M1 audits (PR-1/PR-2) |
-| M1     | `M1-`  | 01–20      | 20    | Session policy, locator, state delta, idle contract, redaction, audit, analyzers |
-| M2     | `M2-`  | 01–19      | 19    | L0/L1 act tools, extract, sync, shim, VeriGUI, CI, NuGet, MC integration |
-| Total  |        |            | 49    | |
+| M1     | `M1-`  | 01–22      | 22    | Session policy, locator, state delta, idle contract, redaction, audit, analyzers, StartBrokered (M1-21), pipe framing (M1-22) |
+| M2     | `M2-`  | 01–21      | 19    | L0/L1 act tools, extract, sync, VeriGUI (M2-15a+15b), CI, NuGet, BrokerHost library (M2-21); M2-13 and M2-14 REMOVED per 2026-04-16 arch change |
+| Total  |        |            | 51    | |
 
 **Dependency graph (ASCII DAG, top blocks bottom)**
 
@@ -363,8 +395,14 @@ M0-01  M0-02  M0-03           ─ M0-01..03 parallel
          │
          ▼
  M1-19 (Console.Out takeover + bug fixes) ── parallel ── M1-20 (UnsafeAccessor self-test + HwndSource precondition)
+         │
+         ▼
+ M1-21 (StartBrokered API — hardened pipe + reconnect loop)
+         │
+         ▼
+ M1-22 (pipe framing — FramedJsonTransport, in-order guarantee)
 
- ─── M2 begins after M1-20 ───
+ ─── M2 begins after M1-22 ───
 
  M2-01 wpf_execute_command (L0)           M2-05 wpf_click (L1)
    │                                        │
@@ -383,12 +421,19 @@ M0-01  M0-02  M0-03           ─ M0-01..03 parallel
  M2-08 wpf_resolve_binding (Extract)
  M2-09 wpf_wait_for_property ── M2-10 wpf_poll_changes ── M2-11 wpf_pump_until_idle
  M2-12 wpf_fetch_blob
- M2-13 Shim.FlaUI scaffolding ── M2-14 Shim.FlaUI IUIActionCatalog impl
- M2-15 VeriGUI 100-scenario harness
+ [M2-13 REMOVED — shim moved to MC repo per 2026-04-16 arch change]
+ [M2-14 REMOVED — same rationale as M2-13]
+ M2-15a VeriGUI harness project + runner + CI
+   │
+   ▼
+ M2-15b VeriGUI 100 scenarios
  M2-16 Coverage-gap closure per PR-1 outcome
  M2-17 CI dual-stack finalize (builds on M0-07 PR-2)
  M2-18 NuGet packaging + signing + feed decision
- M2-19 MotionCatalyst integration (serial with other M2 beads)
+ M2-21 SnoopWPF.Agent.BrokerHost library (new ClassLibrary; depends on M1-21, M1-22)
+   │
+   ▼
+ M2-19 Brokered-mode consumer deliverables (snoopwpf-side only)
 ```
 
 Parallelization allowed where explicit `[PARALLEL WITH: ...]` is listed on the
@@ -491,8 +536,11 @@ grep -n "AppendText" /c/work/snoopwpf/Snoop.InjectorLauncher/Injector.cs
 1. **Create `SECURITY.md`** covering:
    - Scope (this fork, InitialForce/snoopwpf).
    - Supported versions (develop + latest tag).
-   - Private disclosure contact (security@initialforce.no OR GitHub security
-     advisories — pick one with the maintainer before writing).
+   - Private disclosure channel: **GitHub Security Advisories**. Contact
+     field = link to the repo's `/security/advisories/new` URL
+     (`https://github.com/InitialForce/snoopwpf/security/advisories/new`).
+     Do not list an email address — GitHub Security Advisories is the chosen
+     disclosure channel.
    - Response timeline.
    - Cryptographic primitives actually shipped (HMAC-SHA256 audit chain, pipe
      ACL `CurrentUserOnly`, 256-bit session token via RandomNumberGenerator).
@@ -870,8 +918,8 @@ flagged in PRD §8.3.
 ## M0-06: Pre-M1 audit PR-1 — Coverage-gap audit vs MC SpecFlow scenarios
 
 **PRD ref:** PRD-v5-MVP §10 M0 pre-M1 task PR-1
-**Blocks:** M2-13 (Shim.FlaUI), M2-16 (coverage-gap closure) — without this audit
-M2 gate definition is unverified.
+**Blocks:** M2-16 (coverage-gap closure) — without this audit M2 gate definition
+is unverified. [M2-13 REMOVED per 2026-04-16 arch change.]
 **[PARALLEL WITH: M0-07]**
 **Estimated:** no code; research + 1 markdown file; 2 days.
 
@@ -911,7 +959,7 @@ grep -q "shim\|FlaUI\|descoped" /c/work/snoopwpf/COVERAGE-GAP-AUDIT.md
 docs(M0-06): PR-1 coverage-gap audit — MC 18 scenarios
 
 <N> scenarios covered by MVP shim, <M> kept on FlaUI, <K> descoped. Gate
-definition for M2 <stands / needs rewrite>. Drives M2-13..16.
+definition for M2 <stands / needs rewrite>. Drives M2-16.
 ```
 
 ---
@@ -969,7 +1017,7 @@ Pre-M1 de-risk per PRD-v5-MVP §10 PR-2.
 
 # Phase M1 — Foundation + Hardening
 
-> PRD §10 M1. 20 beads implementing SessionPolicy, [Sensitive]+MF-10, MF-11,
+> PRD §10 M1. 22 beads implementing SessionPolicy, [Sensitive]+MF-10, MF-11,
 > WpfLocator, state-delta schema, IIdlingResource contract, HMAC audit writer,
 > IDeterministicInputStrategy scaffold, analyzers. M1 closes when all v3
 > integration tests are still green AND S-3b circular-dep test is green AND
@@ -980,6 +1028,13 @@ Pre-M1 de-risk per PRD-v5-MVP §10 PR-2.
 > core.
 
 ## M1-01: SessionPolicy + SessionMode + InputTier
+
+> **UPDATED 2026-04-16** — `SessionMode` enum must include a third
+> value `Brokered` (between `CoLocated = 0` and `Injection = 2`).
+> `SessionPolicy.Create(Brokered, opts)` behaves identically to
+> `CoLocated` for policy (owned app, caller-chosen redaction).
+> MF-11 redaction-forcing applies to `Injection` only. See
+> `ARCHITECTURE-CHANGE-2026-04-16-BROKERED-MODE.md`.
 
 **PRD ref:** PRD §4.3 + FD-2 above.
 **Blocks:** M1-02 through M1-20.
@@ -1006,14 +1061,27 @@ prevents the v4 C2 class of bug where tools checked options mid-call.
 ```bash
 grep -n "EnableMutation" /c/work/snoopwpf/SnoopWPF.Agent.Server/SnoopAgent.cs
 grep -rn "SessionPolicy" /c/work/snoopwpf/ 2>&1 | head -5   # expect zero hits
+# Find all call sites for the existing SnoopAgent.Start method to update in step 0 below
+grep -rn "SnoopAgent\.Start(" /c/work/snoopwpf/ --include="*.cs"
 ```
 
 **Steps**
 
+0. **Rename `SnoopAgent.Start(...)` to `SnoopAgent.StartCoLocated(...)`** and
+   update all call sites (use the pre-flight grep above to find them). Keep the
+   original `Start()` method as a one-release compatibility shim:
+   ```csharp
+   [Obsolete("Use StartCoLocated. This overload will be removed in v2.0.")]
+   public static SnoopAgentHandle Start(SnoopAgentOptions? options = null)
+       => StartCoLocated(options);
+   ```
+   This ensures existing samples and downstream consumers still compile for one
+   release cycle without a hard break.
 1. Write the three type files per FD-2.
 2. `SessionPolicy.Create(mode, opts)`:
    - In injection mode: `EnableRedaction = true` (MF-11), `MaxTier = L0ReadOnly` (S7).
    - In co-located mode: pass through opts.
+   - In brokered mode: pass through opts (identical to co-located for policy — owned app, caller owns redaction choice, full L1 available).
 3. Add options fields with documented defaults (automation=false, mutation=false,
    redaction=true in MVP — safe by default).
 4. Thread a `SessionPolicy` reference through `SnoopAgentHandle` → tool
@@ -1024,6 +1092,9 @@ grep -rn "SessionPolicy" /c/work/snoopwpf/ 2>&1 | head -5   # expect zero hits
      `opts.EnableRedaction == false` (MF-11).
    - `SessionPolicy.Create(Injection, opts).MaxTier == L0ReadOnly` (S7).
    - `SessionPolicy.Create(CoLocated, opts)` preserves `opts`.
+   - `SessionPolicy.Create(Brokered, opts)` preserves `opts` (same as CoLocated).
+   - MF-11 redaction-forcing test still targets `Injection` only; new test
+     confirms `Brokered` respects caller redaction choice.
 
 **Acceptance criteria**
 
@@ -1130,6 +1201,12 @@ ToString leak path flagged in PRD-v5-MVP §9.2.
 ---
 
 ## M1-04: MF-11 injection-mode forced redaction enforcement (tool-side)
+
+> **UPDATED 2026-04-16** — Clarify wording: MF-11 redaction-forcing
+> applies to `Injection` mode only. `CoLocated` and `Brokered` pass
+> through the caller's `EnableRedaction` choice unchanged (both are
+> owned-app modes where the caller has compile-time control). No
+> behavioural change; doc-level clarity only.
 
 **PRD ref:** PRD §9.7 MF-11. Enforcement complements the factory-level override in M1-01.
 **Depends on:** M1-01, M1-03.
@@ -1247,6 +1324,12 @@ overloads remain for compat (deprecated via analyzer in M1-17, not
 - **Fix** `InspectElementDto.ParentNodeId` hardcoded empty string at
   `SnoopInspector.cs:462` (PRD §14 debt item). Parent resolution is now
   meaningful because locators can walk ancestors.
+- **Edit** `SnoopWPF.Agent.IntegrationTests/TestWpfApp.cs` — add a
+  `VirtualizingStackPanel`-backed `ListBox` named `testBigList` with
+  `ItemsSource = Enumerable.Range(0, 10000).Select(i => $"Item {i}")` and
+  `x:Name="testBigList"` (or the equivalent code-behind `Name` assignment).
+  This fixture is required by the virtualized-list locator test below and
+  by M2-04b.
 
 **Tests**
 
@@ -1403,11 +1486,11 @@ serialization-time rule.
 
 ## M1-10: `FailureReason` enum coverage + suggestion machinery
 
-**PRD ref:** PRD §7.4 (12-value enum), §7.5 (suggestion schema).
+**PRD ref:** PRD §7.4 (13-value enum), §7.5 (suggestion schema).
 **Depends on:** M1-09.
-**Estimated:** 1 helper file + tests, ~120 LOC.
+**Estimated:** 1 helper file + tests, ~130 LOC.
 
-**Context.** PRD §7.4 table defines 12 triggers and their suggested remediation
+**Context.** PRD §7.4 table defines 13 triggers and their suggested remediation
 tool. This bead writes the `FailureReasonDescriptor` helper that maps a
 `FailureReason` value to a `SuggestionDto` with machine-executable args.
 Prose suggestions are not permitted.
@@ -1425,6 +1508,7 @@ Prose suggestions are not permitted.
           // … 10 more
           FailureReason.AutomationDisabled => null,
           FailureReason.MutationDisabled => null,
+          FailureReason.TargetNotRunning => new SuggestionDto { Tool = "broker_launch_target", Args = new() },
           _ => null,
       };
   }
@@ -1443,9 +1527,9 @@ dotnet.exe test /c/work/snoopwpf/SnoopWPF.Agent.Tests \
 ```
 feat(M1-10): FailureReason → Suggestion machinery
 
-All 12 PRD §7.4 enum values map to machine-executable SuggestionDto with
+All 13 PRD §7.4 enum values map to machine-executable SuggestionDto with
 tool+args. Null for AutomationDisabled/MutationDisabled (session reconfig
-required — no auto-remediation).
+required — no auto-remediation). TargetNotRunning maps to broker_launch_target.
 ```
 
 ---
@@ -1562,6 +1646,12 @@ for M2-11 wpf_pump_until_idle.
   - `reason` field with embedded newlines is sanitized (newlines replaced,
     `\0` dropped, 256-char cap).
 
+**Brokered-mode audit log scope**: in Brokered mode the audit log is
+**target-only**. The broker process does not write audit entries. This
+avoids HMAC chain collision on `{sessionId}.jsonl` when broker and target
+would otherwise race to write to the same file. The M2-21 acceptance test
+asserts the broker's `BrokerHost` never constructs an `AuditLogWriter`.
+
 **Acceptance criteria**
 
 ```bash
@@ -1577,7 +1667,8 @@ feat(M1-13): HMAC audit writer on Channel<AuditEntry>
 Single background writer holds chain state; HMAC-SHA256 over entryJson ||
 prevHmac || sessionKey || counterNonce; session key from RNG, not process
 identity. Tests cover monotonic seq, chain recomputation, tamper detection,
-reason sanitization. Closes PRD §9.4 bug #10.
+reason sanitization. Brokered-mode audit is target-only (broker does not
+write entries — avoids HMAC chain collision). Closes PRD §9.4 bug #10.
 ```
 
 ---
@@ -1663,26 +1754,39 @@ selector.
 
 ## M1-16: Roslyn analyzer `SWPF0001` — `Console.Write*` in MCP entrypoint
 
+> **UPDATED 2026-04-16** — Analyzer attribute name is `[McpStdioEntrypoint]`
+> (single attribute, no mode parameter). The analyzer fires on any project
+> that owns the MCP stdio anchor: CoLocated targets, Brokered brokers (e.g.
+> MC's `UiMcpHost`), and Injection hosts (`snoop-mcp.exe`). The analyzer
+> does NOT fire on Brokered targets (e.g. MC itself) — they own their own
+> stdout and `Console.Write*` is harmless log spam. Note: the broker-side
+> spawn contract (M2-21) is the belt-and-braces guarantee that even if a
+> Brokered target does `Console.Write`, it never corrupts MCP stdio (because
+> the broker drains/discards the target's stdout via `RedirectStandardOutput`).
+
 **PRD ref:** PRD §9.5, global rule S6.
 **Depends on:** none strict (can parallel with M1-17/M1-18).
 **[PARALLEL WITH: M1-17, M1-18]**
 **Estimated:** 1 analyzer project, ~200 LOC.
 
-**Context.** Consumer apps marked with a new `[SnoopMcpEntrypoint]` attribute
-(ships in `Contracts`) must not call `Console.Write*` — stdout is claimed by
-the MCP transport. Analyzer catches this at build time.
+**Context.** Consumer apps marked with `[McpStdioEntrypoint]` (ships in
+`Contracts`) must not call `Console.Write*` — stdout is claimed by the MCP
+transport. The analyzer catches this at build time. CoLocated targets,
+Brokered brokers, and Injection hosts all apply this attribute. Brokered
+targets do not (they do not own the MCP stdio stream).
 
 **Files to create/edit**
 
 - **Create** `SnoopWPF.Agent.Analyzers/SnoopWPF.Agent.Analyzers.csproj` —
   Microsoft.CodeAnalysis.CSharp reference; analyzer + code-fix.
-- **Create** `SnoopWPF.Agent.Contracts/SnoopMcpEntrypointAttribute.cs`.
+- **Create** `SnoopWPF.Agent.Contracts/McpStdioEntrypointAttribute.cs`
+  (attribute name is `[McpStdioEntrypoint]`, no mode parameter).
 - **Create** `SnoopWPF.Agent.Analyzers/Console0001Analyzer.cs` +
   `Console0001CodeFix.cs`.
 - **Edit** `SnoopWPF.Agent.Server/SnoopWPF.Agent.Server.csproj` — analyzer
   package reference so consumers pull it with the server NuGet.
 - Tests in `SnoopWPF.Agent.Analyzers.Tests` (new project):
-  - Console.Write in attribute-marked entry → diagnostic.
+  - Console.Write in `[McpStdioEntrypoint]`-marked entry → diagnostic.
   - Console.Write in non-marked code → no diagnostic.
   - Code-fix replaces with `Trace.TraceInformation`.
 
@@ -1697,7 +1801,7 @@ grep -q "SnoopWPF.Agent.Analyzers" /c/work/snoopwpf/SnoopWPF.Agent.Server/SnoopW
 **Commit**
 
 ```
-feat(M1-16): SWPF0001 analyzer — no Console.Write in [SnoopMcpEntrypoint]
+feat(M1-16): SWPF0001 analyzer — no Console.Write in [McpStdioEntrypoint]
 
 Build-time catch for the stdout-contention class of bug (PRD §9.5). Ships
 with SnoopWPF.Agent.Server so consumers get it automatically. Code fix
@@ -1776,6 +1880,11 @@ or viewModel= forms for persistence.
 ---
 
 ## M1-19: `Console.Out` takeover in `StartCoLocated`
+
+> **UPDATED 2026-04-16** — Still valid as written (applies only to
+> `StartCoLocated`). Add a unit test asserting `StartBrokered` does
+> NOT touch `Console.Out` — the broker owns MCP stdio, the target
+> owns its own stdout. See new bead M1-21 for `StartBrokered` API.
 
 **PRD ref:** PRD §9.5, global rule S6.
 **Depends on:** M1-16 (analyzer pairing; attribute defined there).
@@ -1866,16 +1975,147 @@ dotnet.exe test /c/work/snoopwpf/SnoopWPF.Agent.IntegrationTests \
 feat(M1-20): UnsafeAccessor + HwndSource startup self-test
 
 Boot-sequence step 5 (PRD §4.2). Adds smoke tests for the two
-precondition classes that MVP and future L3 rely on. Closes M1.
+precondition classes that MVP and future L3 rely on.
+```
+
+---
+
+## M1-21: `SnoopAgent.StartBrokered(app, pipeName, sessionTokenHex, opts)` API
+
+> **NEW 2026-04-16** per architecture change. Read
+> `ARCHITECTURE-CHANGE-2026-04-16-BROKERED-MODE.md` first.
+
+**PRD ref:** PRD §4.1 Brokered mode, §4.2 brokered boot sequence, §9.7 Brokered pipe hardening.
+**Depends on:** M1-01, M1-22.
+**Estimated:** ~280 LOC + unit/integration tests.
+
+**API signature**
+
+```csharp
+public static SnoopAgentHandle StartBrokered(
+    Application app,
+    string pipeName,
+    string sessionTokenHex,
+    SnoopAgentOptions opts);
+```
+
+**Required behaviour**
+
+- Open `NamedPipeServerStream(pipeName, PipeDirection.InOut, maxAllowedInstances=1,
+  PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly)`.
+- Perform the same `PerformPipeHandshakeAsync` pattern as
+  `McpServerSetup.RunWithPipeAsync`: 5-second timeout,
+  `CryptographicOperations.FixedTimeEquals` token compare,
+  `sessionTokenHex` is the expected token.
+- **Reconnect loop**: after the client disconnects, dispose the old
+  `NamedPipeServerStream`, recreate it with the same options, then call
+  `WaitForConnectionAsync` again. Loop indefinitely until `SnoopAgent.Stop()`
+  is called or the process exits. This supports broker crash-and-restart
+  without requiring a target restart.
+- `Console.Out` is NOT touched — the target owns its own stdout; the broker
+  (separate process) owns the MCP stdio anchor.
+
+**Files to create/edit**
+
+- `SnoopWPF.Agent.Server/SnoopAgent.cs` — add `StartBrokered(app, pipeName, sessionTokenHex, opts)`.
+- `SnoopAgent.Stop()` (if not already present) — drains pending requests and
+  closes the pipe gracefully so the broker sees a clean disconnect and the
+  reconnect loop terminates.
+
+**Tests**
+
+- Unit test: mock-broker round-trip — broker client connects, sends a framed
+  request, receives a framed response. Assert `Console.Out` is untouched
+  (contrast with `StartCoLocated` which takes it over per M1-19).
+- Reconnect test: broker disconnects mid-session, re-connects, next tool call
+  succeeds (verifies the reconnect loop).
+- Redaction target-side test: a `[Sensitive]`-marked DP's value arrives at the
+  mock broker as the redaction sentinel, not the raw value.
+- Negative test: client connecting without valid token → handshake rejection
+  (constant-time compare, no timing leak).
+- Negative test: connecting from a different Windows user account →
+  `PipeOptions.CurrentUserOnly` refusal (pipe open fails at OS level).
+
+**Acceptance criteria**
+
+```bash
+dotnet.exe test /c/work/snoopwpf/SnoopWPF.Agent.Tests \
+    --filter "FullyQualifiedName~StartBrokered"
+dotnet.exe test /c/work/snoopwpf/SnoopWPF.Agent.IntegrationTests \
+    --filter "FullyQualifiedName~BrokeredRoundTrip"
+```
+
+**Commit**
+
+```
+feat(M1-21): SnoopAgent.StartBrokered — hardened named-pipe transport
+
+PipeOptions.CurrentUserOnly + 256-bit token handshake (PerformPipeHandshakeAsync
+pattern). Reconnect loop supports broker crash/restart. Console.Out untouched
+(broker owns MCP stdio). Explicit sessionTokenHex parameter required.
+```
+
+---
+
+## M1-22: Brokered-mode pipe framing
+
+> **NEW 2026-04-16** per architecture change. Read
+> `ARCHITECTURE-CHANGE-2026-04-16-BROKERED-MODE.md` first.
+
+**PRD ref:** PRD §4.1, §4.2. Reuses `SnoopWPF.Agent.Remote`
+framing from v3 if that project already provides request-ID
+correlation + in-order guarantees; otherwise adds them.
+**Depends on:** none (pure framing library work; can run first in M1 phase).
+**Estimated:** ≤300 LOC including tests (split if larger).
+
+**Pre-flight command**
+
+```bash
+grep -n "class FramedJsonTransport" /c/work/snoopwpf/SnoopWPF.Agent.Remote/*.cs
+```
+
+If the class exists, the bead scope is: audit the class, add an in-order-delivery
+guarantee test, add clean-disconnect handling, and expose the framing publicly
+(change `internal` to `public`) so `StartBrokered` (M1-21) can consume it
+without a cross-project workaround. If the class does not exist, scope is:
+implement it from scratch per the frame schema below.
+
+**Files to create/edit**
+
+- `SnoopWPF.Agent.Remote/FramedJsonTransport.cs` — frame format
+  (`{ requestId, method, params | result | error }`), in-order delivery
+  guarantee, clean disconnect handling. Make class `public` so M1-21 and
+  M2-21 can reference it.
+- Unit tests covering: normal request/response, malformed frames,
+  client disconnect mid-request, server disconnect mid-response,
+  in-order delivery assertion.
+
+**Acceptance criteria**
+
+```bash
+dotnet.exe test /c/work/snoopwpf/SnoopWPF.Agent.Tests \
+    --filter "FullyQualifiedName~RemoteFraming"
+```
+
+**Commit**
+
+```
+feat(M1-22): brokered-mode pipe framing in SnoopWPF.Agent.Remote
+
+Request-ID correlation, in-order guarantee, clean disconnect.
+FramedJsonTransport made public. Consumed by StartBrokered (M1-21)
+and external brokers (M2-21). ≤300 LOC.
 ```
 
 ---
 
 # Phase M2 — Act + Extract + Sync + Integration
 
-> PRD §10 M2. 19 beads spanning L0/L1 act tools, one extract tool, three sync
-> utilities, the FlaUI shim, VeriGUI harness, CI dual-stack, NuGet packaging,
-> MotionCatalyst integration. Target 6–8 weeks serialized.
+> PRD §10 M2. Beads span L0/L1 act tools, one extract tool, three sync
+> utilities, VeriGUI harness, CI dual-stack, NuGet packaging,
+> brokered-mode consumer deliverables, broker scaffolding. Target
+> 6–8 weeks serialized. (M2-13 / M2-14 shim beads removed per
+> 2026-04-16 architecture change.)
 
 ## M2-01: `wpf_execute_command` (L0)
 
@@ -2044,7 +2284,9 @@ materialisation lands in M2-04b.
     items, scroll via `BringIndexIntoView` / `ScrollIntoView`.
   - Budget: ≤ 20 scroll-materialise iterations before returning
     `ELEMENT_OUTSIDE_VIEWPORT` + suggestion with refined locator.
-- Test on `TestWpfApp` 10,000-item virtualized list.
+- Test on `TestWpfApp` `testBigList` fixture (the `VirtualizingStackPanel`-backed
+  10,000-item `ListBox` added in M1-06). Since M1-06 lands before M2, the
+  fixture is already present; this bead simply drives it.
 
 **Acceptance criteria**
 
@@ -2342,101 +2584,95 @@ dumps) retrieved on demand.
 
 ---
 
-## M2-13: `SnoopWPF.Agent.Shim.FlaUI` scaffolding
+## M2-13: REMOVED — shim moved to MC repo
 
-**PRD ref:** PRD §12.3. M0-06 audit drove scope.
-**Depends on:** M0-06 outcome.
-**Estimated:** 1 .csproj + skeleton, ~60 LOC.
+**Status:** Removed 2026-04-16.
 
-**Files to create**
+The `IUIActionCatalog` shim is MC-specific and lives in the MC repo
+(`/c/work/desktop/wpf-mcp`) as `UiMcpActionCatalog` under
+`src/motioncatalyst/Tests/MotionCatalyst.Test.UI/Core/`. Snoopwpf
+exposes the tool surface over MCP; MC adapts it to its own
+`IUIActionCatalog` interface. Keeping the shim out of snoopwpf avoids
+coupling the library to MC's test-interface names.
 
-- `SnoopWPF.Agent.Shim.FlaUI/SnoopWPF.Agent.Shim.FlaUI.csproj` —
-  `net8.0-windows`, references `SnoopWPF.Agent.Contracts` +
-  `SnoopWPF.Agent.Tools`.
-- `SnoopWPF.Agent.Shim.FlaUI/IUIActionCatalog.cs` — interface matching MC's
-  existing abstraction.
+See `ARCHITECTURE-CHANGE-2026-04-16-BROKERED-MODE.md` and
+`/c/work/desktop/wpf-mcp/PRD-snoop-integration.md` §6.
 
-**Acceptance criteria**
+## M2-14: REMOVED — see M2-13
 
-```bash
-dotnet.exe build /c/work/snoopwpf/Snoop.sln -c Debug
-dotnet.exe sln /c/work/snoopwpf/Snoop.sln list | grep -q Shim.FlaUI
-```
-
-**Commit**
-
-```
-feat(M2-13): SnoopWPF.Agent.Shim.FlaUI scaffolding
-
-Scope derived from M0-06 coverage-gap audit. Implementation in M2-14.
-```
+**Status:** Removed 2026-04-16. Merged with M2-13 under the same
+rationale.
 
 ---
 
-## M2-14: `SnoopWPF.Agent.Shim.FlaUI` `IUIActionCatalog` impl
-
-**PRD ref:** PRD §12.3 (~400–600 LOC).
-**Depends on:** M2-13, M2-01..M2-07 (delegates to act tools).
-**Estimated:** ~500 LOC.
-
-**Files to create**
-
-- `SnoopWPF.Agent.Shim.FlaUI/McpUIActionCatalog.cs` — implements
-  `IUIActionCatalog`; every method maps to an MCP tool call via an in-proc
-  transport shim.
-- Tests against `TestWpfApp` mirroring MC SpecFlow steps for the audit-covered
-  scenarios.
-
-**Acceptance criteria**
-
-```bash
-dotnet.exe test /c/work/snoopwpf/SnoopWPF.Agent.Shim.FlaUI.Tests
-```
-
-**Commit**
-
-```
-feat(M2-14): Shim.FlaUI IUIActionCatalog implementation
-
-Maps SpecFlow step primitives to MCP tool calls. 70% scenario coverage per
-M0-06 audit; remaining 30% handled in M2-16.
-```
-
----
-
-## M2-15: VeriGUI 100-scenario harness
+## M2-15a: VeriGUI harness project + runner + CI integration
 
 **PRD ref:** PRD §11 metric #3, §13 US-MVP-070.
-**Depends on:** M2-01..M2-11 (tools) + M1-20 (self-test).
-**Estimated:** harness + 100 scenario markdown files; ~1,500 LOC across
-C# and scenarios.
+**Depends on:** M2-11.
+**Estimated:** ≤400 LOC (C# project + runner + CI YAML).
 
 **Files to create**
 
 - `SnoopWPF.Agent.VeriGuiHarness/SnoopWPF.Agent.VeriGuiHarness.csproj`.
-- `SnoopWPF.Agent.VeriGuiHarness/Scenarios/*.md` — 100 scenarios following
-  the VeriGUI template (action + expected state delta).
-- `SnoopWPF.Agent.VeriGuiHarness/Runner.cs` — reads scenarios, drives tool
-  calls, measures:
+- `SnoopWPF.Agent.VeriGuiHarness/Runner.cs` — reads scenario markdown files
+  from `Scenarios/`, drives tool calls, measures:
   - Action success rate.
   - **Repeat-on-unchanged-state rate** (acceptance: < 5% per §11.3).
-- CI workflow step uploads report.
+  - p95 per-call latency (acceptance: < 10 ms per §11).
+- CI workflow step: runs runner, asserts thresholds non-zero, uploads report.
 
 **Acceptance criteria**
 
 ```bash
 dotnet.exe run --project /c/work/snoopwpf/SnoopWPF.Agent.VeriGuiHarness -- \
-    --run --out /tmp/verigui-report.json
-jq '.repeatOnUnchangedRate' /tmp/verigui-report.json | awk '$1 < 0.05'
+    --run --out /tmp/verigui-report.json --assert-pass-thresholds
+# Runner exits non-zero if repeatOnUnchangedRate >= 0.05 or p95PerCallMs >= 10.
+# No jq required — thresholds are evaluated inside the runner.
 ```
 
 **Commit**
 
 ```
-test(M2-15): VeriGUI 100-scenario harness
+test(M2-15a): VeriGUI harness runner + CI integration
 
-Measures repeat-on-unchanged-state rate; §11 metric #3 target < 5%. Runner
-+ 100 scenarios + CI integration.
+Runner reads Scenarios/*.md, measures repeat-on-unchanged-state rate and p95
+latency; exits non-zero on threshold violation (no jq required). Scenarios
+land in M2-15b.
+```
+
+---
+
+## M2-15b: VeriGUI 100-scenario authoring
+
+**PRD ref:** PRD §11 metric #3, §13 US-MVP-070.
+**Depends on:** M2-15a.
+**Estimated:** ≤800 LOC of scenario markdown; runner unchanged from M2-15a.
+
+**Files to create**
+
+- `SnoopWPF.Agent.VeriGuiHarness/Scenarios/*.md` — 100 scenarios following
+  the VeriGUI template (action + expected state delta). Auto-seed N scenarios
+  by replaying integration tests with a random-intent injector; hand-curate
+  the remaining (100 − N). Minimum N is whatever the integration test suite
+  produces organically — capture replays, then author the remainder by hand.
+
+**Acceptance criteria**
+
+```bash
+# Scenario count
+ls /c/work/snoopwpf/SnoopWPF.Agent.VeriGuiHarness/Scenarios/*.md | wc -l  # expect ≥ 100
+# Full run passes
+dotnet.exe run --project /c/work/snoopwpf/SnoopWPF.Agent.VeriGuiHarness -- \
+    --run --out /tmp/verigui-report.json --assert-pass-thresholds
+```
+
+**Commit**
+
+```
+test(M2-15b): VeriGUI 100 scenarios (N auto-seeded + (100-N) hand-curated)
+
+Measures repeat-on-unchanged-state rate; §11 metric #3 target < 5%. Closes
+the VeriGUI acceptance gate.
 ```
 
 ---
@@ -2444,20 +2680,26 @@ Measures repeat-on-unchanged-state rate; §11 metric #3 target < 5%. Runner
 ## M2-16: Coverage-gap closure per PR-1 outcome
 
 **PRD ref:** PRD §12.3.
-**Depends on:** M0-06 (audit), M2-14 (shim impl).
+**Depends on:** M0-06 (audit). [M2-14 REMOVED per 2026-04-16 arch change.]
 **Estimated:** variable (0–800 LOC), depending on audit outcome.
 
-**Context.** The audit decides per scenario: shim covers / FlaUI stays /
+**Context.** The audit (M0-06) decides per scenario: shim covers / FlaUI stays /
 descoped. This bead implements only the "shim covers" additions identified.
+There is no Shim.FlaUI project in this repo (that moved to the MC repo as
+`UiMcpActionCatalog`). Coverage features are added as new strategies under
+`SnoopWPF.Agent.Input.Deterministic/Strategies/` or as broker-scaffolding
+features under M2-21 where appropriate.
 
 **Steps**
 
 1. Read `COVERAGE-GAP-AUDIT.md`.
 2. For each scenario marked "shim covers" in the audit but not yet supported,
    add the needed strategy/tool extension. Common cases:
-   - Slider value setter with range normalization → new strategy.
+   - Slider value setter with range normalization → new strategy under
+     `SnoopWPF.Agent.Input.Deterministic/Strategies/`.
    - License-dialog detection → use `wpf_wait_for_property(presenceExpected)`.
-   - `ResetToHome` state-machine reset → composite helper in `Shim.FlaUI`.
+   - `ResetToHome` state-machine reset → broker lifecycle tool in M2-21
+     (MC-specific tools live in the MC repo; generic scaffolding lives in BrokerHost).
 3. Add one test per covered scenario.
 4. Any scenario marked "FlaUI stays" → document in
    `docs/shim-retained-flaui.md`.
@@ -2465,18 +2707,19 @@ descoped. This bead implements only the "shim covers" additions identified.
 **Acceptance criteria**
 
 ```bash
-# Every shim-covered scenario has a test
-# (script: read the audit, loop over shim-covered rows, assert a matching test exists)
-dotnet.exe test /c/work/snoopwpf/SnoopWPF.Agent.Shim.FlaUI.Tests
+# Every coverage-gap scenario has a matching integration test
+dotnet.exe test /c/work/snoopwpf/SnoopWPF.Agent.IntegrationTests \
+    --filter "FullyQualifiedName~CoverageGap"
 ```
 
 **Commit**
 
 ```
-feat(M2-16): coverage-gap closure — <N> shim-covered scenarios
+feat(M2-16): coverage-gap closure — <N> scenarios
 
-Scope driven by M0-06 audit. Adds <list of strategies/helpers>. FlaUI-
-retained scenarios documented in docs/shim-retained-flaui.md.
+Scope driven by M0-06 audit. Adds <list of strategies/helpers> under
+Input.Deterministic/Strategies/. FlaUI-retained scenarios documented in
+docs/shim-retained-flaui.md. [M2-14 REMOVED per 2026-04-16 arch change.]
 ```
 
 ---
@@ -2484,28 +2727,31 @@ retained scenarios documented in docs/shim-retained-flaui.md.
 ## M2-17: CI dual-stack finalize
 
 **PRD ref:** PRD §12.4, §13 US-MVP-071.
-**Depends on:** M0-07 (PR-2 baseline CI), M2-14 (shim).
+**Depends on:** M0-07 (PR-2 baseline CI). [M2-14 REMOVED; flaui-suite job
+scope replaced by brokered-suite per 2026-04-16 arch change.]
 **Estimated:** ~100 LOC YAML edits.
 
 **Files to edit**
 
-- `.github/workflows/agent-ci.yml` — add `flaui-suite` job alongside
-  `snoop-suite` job. Matrix net6/8 on x64 `windows-latest`. Both must pass.
+- `.github/workflows/agent-ci.yml` — add `brokered-suite` job alongside
+  `snoop-suite` job. The `brokered-suite` runs the Brokered-mode integration
+  tests output by M2-21 (broker + target round-trip, reconnect, redaction
+  target-side, negative handshake tests). Matrix net8 on x64 `windows-latest`.
+  Both `snoop-suite` and `brokered-suite` must pass.
 
-**Acceptance criteria**
+**Acceptance criteria** (MANUAL VERIFICATION)
 
-```bash
-# Pushed to feature branch, PR opened, both jobs green on the PR. Document
-# the PR URL in the commit body.
-```
+Push to a feature branch, open a PR, confirm both `snoop-suite` and
+`brokered-suite` jobs go green. Report the PR URL in the commit body.
 
 **Commit**
 
 ```
-ci(M2-17): dual-stack CI — FlaUI + Snoop suites (both-pass gate)
+ci(M2-17): dual-stack CI — brokered-suite + snoop-suite (both-pass gate)
 
-Closes PRD §12.4 / US-MVP-071. Diff-based equivalence gate deferred; MVP
-acceptance is both-pass.
+Adds brokered-suite job running M2-21 integration tests. Closes PRD §12.4 /
+US-MVP-071. [M2-14 flaui-suite removed per 2026-04-16 arch change.]
+PR URL: <insert URL>
 ```
 
 ---
@@ -2520,8 +2766,16 @@ acceptance is both-pass.
 
 - `SnoopWPF.Agent.Server/SnoopWPF.Agent.Server.csproj` — packable metadata
   (PackageId=SnoopWPF.Agent, icon, readme, license, repo URL, tags).
-- `SnoopWPF.Agent.Shim.FlaUI/SnoopWPF.Agent.Shim.FlaUI.csproj` — packable
-  metadata.
+- `SnoopWPF.Agent.BrokerHost/SnoopWPF.Agent.BrokerHost.csproj` — packable
+  metadata. This is the new ClassLibrary project created in M2-21 (type
+  ClassLibrary, `net8.0-windows`), consumed by external brokers (including
+  MC's `UiMcpHost`). Note: the existing `SnoopWPF.Agent.Host` (the injection-mode
+  `snoop-mcp.exe`, OutputType=Exe) stays unchanged and is NOT packaged as a
+  library NuGet.
+- `SnoopWPF.Agent.Remote/SnoopWPF.Agent.Remote.csproj` — packable metadata.
+  Pipe client + framing; consumed by external brokers.
+- `SnoopWPF.Agent.Contracts/SnoopWPF.Agent.Contracts.csproj` — packable
+  metadata. DTOs + `WpfLocator` + interfaces.
 - `SnoopWPF.Agent.Analyzers/SnoopWPF.Agent.Analyzers.csproj` — analyzer
   packaging convention (content `analyzers/dotnet/cs/`).
 - `.github/workflows/release.yml` — on tag `v*`, build in Release, sign
@@ -2542,40 +2796,141 @@ test -f /c/work/snoopwpf/docs/packaging.md
 ```
 build(M2-18): NuGet packaging + release workflow
 
-SnoopWPF.Agent + SnoopWPF.Agent.Shim.FlaUI + SnoopWPF.Agent.Analyzers
+SnoopWPF.Agent.Server + .Host + .Remote + .Contracts + .Analyzers
 packable; SignPath.io signing; initial feed GitHub Packages with nuget.org
 flip documented.
 ```
 
 ---
 
-## M2-19: MotionCatalyst integration (serial with other M2 beads)
+## M2-21: `SnoopWPF.Agent.BrokerHost` broker scaffolding (new library)
 
-**PRD ref:** PRD §12. Cross-repo work — consumer-side PRD at
-`/c/work/desktop/wpf-mcp/PRD-snoop-integration.md` governs MC-side changes.
-**Depends on:** M2-18 (NuGet feed available for MC to reference).
-**Estimated:** 5–7 weeks per PRD §15 (serial). This bead tracks the
-snoopwpf-side work for the integration.
+> **NEW 2026-04-16** per architecture change. Read
+> `ARCHITECTURE-CHANGE-2026-04-16-BROKERED-MODE.md` first.
 
-**Scope (this repo only)**
+**PRD ref:** PRD §4.1 Brokered mode. Generic broker pieces only —
+lifecycle tools like `mc_launch` are MC-specific and live in the MC
+repo's `UiMcpHost` project, not here.
+**Depends on:** M1-21 (`StartBrokered`), M1-22 (pipe framing).
+**Estimated:** ~500 LOC + tests.
 
-- Sample app (`Samples/SnoopWPF.SampleApp`) gains a headless `--mcp-stdio`
-  launch path demonstrating the full MC boot sequence.
-- Docs `docs/motioncatalyst-integration.md` with the exact
-  `Program.cs` patch, `.mcp.json`, and Console.Write remediation list for
-  MC side.
-- Integration smoke test in `SnoopWPF.Agent.IntegrationTests` simulating a
-  complete MC-equivalent scenario (pick one from the coverage audit).
+**Scope**
+
+Create a **new project** `SnoopWPF.Agent.BrokerHost/` (type ClassLibrary,
+`net8.0-windows`). The existing `SnoopWPF.Agent.Host` is the injection-mode
+`snoop-mcp.exe` (OutputType=Exe, `AssemblyName=snoop-mcp`) and stays
+completely unchanged. Do NOT modify it.
+
+`SnoopWPF.Agent.BrokerHost` exposes:
+
+- `BrokerHost.Start(McpServerTransport transport, BrokerOptions opts)` —
+  sets `Console.SetOut(TextWriter.Null)` as its first statement (broker owns
+  MCP stdio), then installs the 18-tool MCP surface; each tool routes through
+  a pipe client to whichever target is currently connected.
+- `BrokerOptions.PipeName` — name of the pipe to connect to.
+- `BrokerOptions.OnTargetDisconnected` — callback hook for external lifecycle
+  code (MC's `UiMcpHost` uses this to surface `TARGET_NOT_RUNNING` failures).
+- Generic tool-proxy registration that downstream consumers extend with their
+  own lifecycle tools (`mc_launch`, etc).
+- `BrokerTargetSpawner.Spawn(exe, args, pipeName, tokenHex)` — calls
+  `Process.Start` with `UseShellExecute=false`, `CreateNoWindow=true`,
+  `RedirectStandardOutput=true`, `RedirectStandardError=true`. Spawns
+  background drain-tasks that read and discard target stdout/stderr (optionally
+  forward to a log file, never to broker's stdout).
+- No MC-specific code in this project — lifecycle tools belong to the external
+  broker consuming this library.
+
+**Files to create** (all under `SnoopWPF.Agent.BrokerHost/`)
+
+- `SnoopWPF.Agent.BrokerHost/SnoopWPF.Agent.BrokerHost.csproj` — ClassLibrary,
+  `net8.0-windows`, references `SnoopWPF.Agent.Contracts`, `SnoopWPF.Agent.Remote`.
+- `SnoopWPF.Agent.BrokerHost/BrokerHost.cs`
+- `SnoopWPF.Agent.BrokerHost/BrokerOptions.cs`
+- `SnoopWPF.Agent.BrokerHost/ToolProxyRegistrar.cs`
+- `SnoopWPF.Agent.BrokerHost/BrokerTargetSpawner.cs`
+
+**Tests**
+
+- Unit test: `BrokerTargetSpawner.Spawn` produces a `Process` with
+  `StartInfo.RedirectStandardOutput == true`.
+- Integration test: broker launches sample target with
+  `--snoop-pipe=<name> --snoop-token=<hex>`; target's stdout does NOT appear
+  on broker's stdout (assert by reading broker's stdio for 500 ms, confirm
+  empty).
+- Integration test: broker + target round-trip over all 18 tools; each tool
+  call succeeds (this feeds M2-19).
+- Unit test: asserts `BrokerHost` does NOT instantiate `AuditLogWriter`
+  (target-only audit invariant from M1-13 / B-5).
 
 **Acceptance criteria**
 
 ```bash
-# Sample runs headlessly and exposes MCP over stdio
-dotnet.exe run --project /c/work/snoopwpf/Samples/SnoopWPF.SampleApp -- --mcp-stdio --smoke
-# Smoke test green
+dotnet.exe test /c/work/snoopwpf/SnoopWPF.Agent.Tests \
+    --filter "FullyQualifiedName~BrokerHost"
 dotnet.exe test /c/work/snoopwpf/SnoopWPF.Agent.IntegrationTests \
-    --filter "FullyQualifiedName~McEquivalentScenario"
-test -f /c/work/snoopwpf/docs/motioncatalyst-integration.md
+    --filter "FullyQualifiedName~BrokerHost|FullyQualifiedName~BrokerTargetSpawner"
+```
+
+**Commit**
+
+```
+feat(M2-21): SnoopWPF.Agent.BrokerHost — new library (not converted from Host EXE)
+
+New ClassLibrary net8.0-windows. Console.SetOut(TextWriter.Null) as first
+statement (broker owns MCP stdio). BrokerTargetSpawner redirects target
+stdout/stderr so child output never reaches broker stdio. Audit is
+target-only (BrokerHost never constructs AuditLogWriter). MC's UiMcpHost
+adds lifecycle tools on top.
+```
+
+---
+
+## M2-19: Brokered-mode consumer deliverables (snoopwpf-side only)
+
+**PRD ref:** PRD §12, §4.1 Brokered mode. Cross-repo work —
+consumer-side PRD at `/c/work/desktop/wpf-mcp/PRD-snoop-integration.md`
+governs MC-side changes (including `UiMcpHost.exe`). This bead tracks
+only the snoopwpf-side deliverables that MC depends on.
+**Depends on:** M2-18 (pre-release packages on GitHub Packages feed),
+M2-21 (`SnoopWPF.Agent.Host` broker scaffolding).
+**Estimated:** ~2 weeks.
+
+**Scope (this repo only)**
+
+- **Edit** `Samples/SnoopWPF.SampleApp/Program.cs` — add `--mcp-stdio`
+  and `--snoop-pipe=<name>` flag parsing. Also add a `--smoke` self-test
+  flag that calls `wpf_get_session_info`, asserts `windows.Count >= 1`, and
+  exits 0 on success (non-zero on failure). This enables the M2-19 acceptance
+  criteria to be validated with a single runnable command.
+- Sample app (`Samples/SnoopWPF.SampleApp`) gains two launch paths:
+  - `--mcp-stdio` — existing co-located demo (unchanged).
+  - `--snoop-pipe=<name>` — new brokered demo. Sample runs as the
+    target, spawned by a test broker.
+- Sample broker (`Samples/SnoopWPF.SampleBroker`) — a minimal
+  external broker demonstrating the `SnoopWPF.Agent.Host` +
+  `.Remote` package consumption. Includes lifecycle tools
+  (`sample_launch`, `sample_exit`) mirroring the shape MC's
+  `UiMcpHost` will implement.
+- Docs `docs/brokered-mode-integration.md` with the exact target-side
+  `Program.cs` patch (`--snoop-pipe` flag, `StartBrokered`
+  dispatcher call) and broker-side skeleton as reference for
+  consumers.
+- Brokered-mode integration test in `SnoopWPF.Agent.IntegrationTests`:
+  sample broker spawns sample target, issues each tool in the 18-tool
+  surface over the pipe, asserts state-delta schema across all
+  mutation tools.
+
+**Acceptance criteria**
+
+```bash
+# Co-located sample still works (back-compat check)
+dotnet.exe run --project /c/work/snoopwpf/Samples/SnoopWPF.SampleApp -- --mcp-stdio --smoke
+# Brokered sample: broker + target round-trip
+dotnet.exe run --project /c/work/snoopwpf/Samples/SnoopWPF.SampleBroker -- --smoke
+# Integration test green
+dotnet.exe test /c/work/snoopwpf/SnoopWPF.Agent.IntegrationTests \
+    --filter "FullyQualifiedName~BrokeredRoundTrip"
+test -f /c/work/snoopwpf/docs/brokered-mode-integration.md
 ```
 
 **M2 GATE** — closes v5-MVP. All of:
@@ -2587,18 +2942,19 @@ dotnet.exe test /c/work/snoopwpf/SnoopWPF.Agent.Tests
 dotnet.exe test /c/work/snoopwpf/SnoopWPF.Agent.IntegrationTests
 dotnet.exe test /c/work/snoopwpf/SnoopWPF.Agent.InjectionTests
 dotnet.exe test /c/work/snoopwpf/SnoopWPF.Agent.Analyzers.Tests
-dotnet.exe test /c/work/snoopwpf/SnoopWPF.Agent.Shim.FlaUI.Tests
-dotnet.exe run --project /c/work/snoopwpf/SnoopWPF.Agent.VeriGuiHarness -- --run --out /tmp/verigui-report.json
-jq '.repeatOnUnchangedRate < 0.05 and .p95PerCallMs < 10' /tmp/verigui-report.json
+dotnet.exe run --project /c/work/snoopwpf/SnoopWPF.Agent.VeriGuiHarness -- \
+    --run --out /tmp/verigui-report.json --assert-pass-thresholds
+# Runner exits non-zero if repeatOnUnchangedRate >= 0.05 or p95PerCallMs >= 10.
 ```
 
 **Commit**
 
 ```
-feat(M2-19): MotionCatalyst integration — sample app + smoke test + docs
+feat(M2-19): brokered-mode consumer deliverables
 
-snoopwpf-side deliverables for the MC integration (consumer-side lives in
-/c/work/desktop/wpf-mcp). Closes v5-MVP per PRD §11 gate metrics.
+Sample target + sample broker + integration test + docs. MC-side
+UiMcpHost.exe consumes the Host + Remote NuGets published in M2-18.
+Closes v5-MVP per PRD §11 gate metrics.
 ```
 
 ---
@@ -2623,6 +2979,17 @@ If a divergence conflicts with PRD intent, flag it for a PRD amendment.
 | M2-15  | §11 metric #3 + §13 US-MVP-070 | Harness is a new project, not test-suite code | 100 scenarios + runner + report is too much for a test fixture; standalone project clarifies ownership and CI path. |
 | M2-18  | §13 US-MVP-072 | Defers `nuget.org` publication to post-first-stable | PRD allowed feed choice; GitHub Packages first lets us iterate on package shape without nuget.org irreversibility. |
 | M2-19  | §12 | This repo's half; MC repo has its own beads in consumer-side PRD | PRD §15 treats M2+MC as serial; this ID captures only the snoopwpf-side deliverables. |
+| M1-21  | §4.1, §4.2 (post 2026-04-16 arch change) | NEW bead — not in original PRD | `StartBrokered` API added after 2026-04-16 architecture change; see `ARCHITECTURE-CHANGE-2026-04-16-BROKERED-MODE.md`. |
+| M1-22  | §4.1, §4.2 (post 2026-04-16 arch change) | NEW bead — not in original PRD | Brokered-mode pipe framing; possibly reuses existing `SnoopWPF.Agent.Remote` pieces. |
+| M2-21  | §4.1 (post 2026-04-16 arch change) | NEW bead — not in original PRD | Generic broker scaffolding in `SnoopWPF.Agent.Host`; MC's `UiMcpHost` consumes from NuGet. Lifecycle tools are MC-specific and live in the MC repo, not here. |
+| M2-13  | §12.3 | REMOVED post 2026-04-16 | Shim moved to MC repo as `UiMcpActionCatalog` to avoid coupling snoopwpf to MC's test interfaces. |
+| M2-14  | §12.3 | REMOVED post 2026-04-16 | Same rationale as M2-13. |
+| FD-2 (M1-01) | §4.3 (post 2026-04-16) | `SessionMode` enum widened from 2 values `{CoLocated=0, Injection=1}` to 3 values `{CoLocated=0, Brokered=1, Injection=2}` | Architecture change adds Brokered as third integration mode; FD-2 frozen block updated to match. |
+| FD-3 (M1-10) | §7.4 (post 2026-04-16) | `FailureReason` enum widened from 12 to 13 values; `TargetNotRunning = 12` added | Brokered mode needs a machine-executable failure code when no target is connected; maps to `broker_launch_target` suggestion. |
+| M1-21 | §4.2 §9.7 (post 2026-04-16 hardening review) | `StartBrokered` gains explicit `sessionTokenHex` parameter; `PipeOptions.CurrentUserOnly` required; reconnect loop required | 4-reviewer security round mandated pipe hardening symmetric with v3 injection-mode pipe; reconnect loop required for broker crash/restart without target restart. |
+| M2-15 | §11 metric #3 §13 US-MVP-070 | Split into M2-15a (harness + runner, ≤400 LOC) and M2-15b (100 scenarios, ≤800 LOC) | Single bead was >1200 LOC; global rule splits at 500 LOC. Runner and scenarios have independent ownership and review cycles. |
+| M2-21 | §4.1 (post 2026-04-16 arch change) | Creates new `SnoopWPF.Agent.BrokerHost` ClassLibrary; does NOT convert or modify existing `SnoopWPF.Agent.Host` injection EXE | The existing Host EXE (`snoop-mcp.exe`, OutputType=Exe) must remain unchanged as the injection-mode host. A separate ClassLibrary is required for NuGet consumption by external brokers. |
+| Footer count | Cross-file | Corrected from 49 to 51 atomic beads: M1 gains M1-21 and M1-22 (+2); M2-15 split into M2-15a and M2-15b (+1); M2-21 added (+1); M2-13 and M2-14 kept as REMOVED stubs (counted) | Total: M-pre(3) + M0(7) + M1(22) + M2(19) = 51. |
 
 Entries not listed here indicate the bead matches the PRD exactly.
 
@@ -2656,7 +3023,7 @@ from a bead.
 
 ---
 
-*End of BEADS-MVP. 49 atomic beads across M-pre (3) + M0 (7) + M1 (20) +
+*End of BEADS-MVP. 51 atomic beads across M-pre (3) + M0 (7) + M1 (22) +
 M2 (19). Execute in order; parallel markers explicit. Every bead ends in one
 atomic commit. Gates at M1 close and M2 close reference runnable commands.
 When M2-19 commits green, v5-MVP ships.*
