@@ -16,4 +16,5 @@ public enum SnoopErrorCode
     SessionNotFound,
     ProtocolMismatch,
     ElementNotRenderable,
+    BlobNotFound,
 }

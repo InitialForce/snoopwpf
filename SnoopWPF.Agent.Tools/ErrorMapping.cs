@@ -50,6 +50,7 @@ public static class ErrorMapping
         SnoopErrorCode.SessionNotFound => SnoopSuggestions.SessionNotFound,
         SnoopErrorCode.ProtocolMismatch => SnoopSuggestions.ProtocolMismatch,
         SnoopErrorCode.ElementNotRenderable => SnoopSuggestions.ElementNotRenderable,
+        SnoopErrorCode.BlobNotFound => SnoopSuggestions.BlobNotFound,
         _ => null,
     };
 }

@@ -37,4 +37,7 @@ public static class SnoopSuggestions
 
     public const string ElementNotRenderable =
         "Element has zero size or is not visible; try wpf_get_windows for a full window screenshot instead";
+
+    public const string BlobNotFound =
+        "Blob has expired (5-minute TTL) or the key is invalid; re-run the originating tool to get a fresh blobRef";
 }

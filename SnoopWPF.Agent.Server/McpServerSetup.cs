@@ -17,6 +17,7 @@ using ModelContextProtocol.Server;
 using SnoopWPF.Agent.Contracts;
 using SnoopWPF.Agent.Contracts.Protocol;
 using SnoopWPF.Agent.Engine;
+using SnoopWPF.Agent.Engine.Blob;
 
 /// <summary>
 /// Internal wiring: builds and runs the MCP server.
@@ -295,6 +296,9 @@ internal static class McpServerSetup
 
         // Register ISnoopInspector so tool constructors can receive it via DI.
         services.AddSingleton<ISnoopInspector>(inspector);
+
+        // Register BlobStore so FetchBlobTool (and future blob-producing tools) share one store.
+        services.AddSingleton<BlobStore>();
 
         // Register every tool class from the Tools assembly via the MCP builder.
         var toolsAssembly = typeof(SnoopWPF.Agent.Tools.SessionInfoTool).Assembly;
