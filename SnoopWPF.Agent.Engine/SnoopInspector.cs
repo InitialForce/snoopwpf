@@ -1,6 +1,7 @@
 namespace SnoopWPF.Agent.Engine;
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -8,6 +9,7 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Media;
 using System.Windows.Threading;
 using Snoop.Data.Tree;
 using Snoop.Infrastructure;
@@ -725,25 +727,217 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
         int take,
         CancellationToken ct)
     {
-        throw new NotImplementedException("BEAD-003b");
+        return this.RunOnDispatcherAsync(() =>
+        {
+            object target;
+
+            if (nodeId is not null)
+            {
+                target = this.ResolveNodeOrThrow(nodeId);
+                this.VerifyElementConnectivity(target, nodeId);
+            }
+            else
+            {
+                target = this.GetEffectiveRootTarget();
+            }
+
+            // ResourceInspector requires a DependencyObject to walk the tree.
+            if (target is not DependencyObject depObj)
+            {
+                // Return empty page — non-DependencyObject roots have no resource dictionaries.
+                return new CursorPage<ResourceDto>
+                {
+                    Items = new List<ResourceDto>(),
+                    NextCursor = null,
+                    TotalCount = 0,
+                    HasMore = false,
+                    Stale = false,
+                };
+            }
+
+            var resources = ResourceInspector.GetResources(depObj, resourceKey, this.options.EnableRedaction);
+
+            // Paginate using index-based cursor snapshot.
+            var snapIds = resources.Select((_, i) => i.ToString()).ToList();
+            var cursorToken = this.cursorManager.CreateCursor(snapIds);
+            var page = this.cursorManager.GetPage(cursorToken, take);
+
+            var pageItems = new List<ResourceDto>(page.Items.Count);
+            foreach (var idxStr in page.Items)
+            {
+                if (int.TryParse(idxStr, out var idx) && idx < resources.Count)
+                {
+                    pageItems.Add(resources[idx]);
+                }
+            }
+
+            return new CursorPage<ResourceDto>
+            {
+                Items = pageItems,
+                NextCursor = page.NextCursor,
+                TotalCount = page.TotalCount,
+                HasMore = page.HasMore,
+                Stale = page.Stale,
+            };
+        }, ct);
     }
 
     /// <inheritdoc/>
     public Task<ScreenshotResultDto> CaptureScreenshotAsync(string? nodeId, CancellationToken ct)
     {
-        throw new NotImplementedException("BEAD-003b");
+        return this.RunOnDispatcherAsync(() =>
+        {
+            Visual? visual;
+
+            if (nodeId is not null)
+            {
+                var target = this.ResolveNodeOrThrow(nodeId);
+                this.VerifyElementConnectivity(target, nodeId);
+
+                if (target is not Visual v)
+                {
+                    throw new SnoopException(
+                        SnoopErrorCode.ElementNotRenderable,
+                        $"Node '{nodeId}' is not a Visual and cannot be captured.",
+                        targetId: nodeId,
+                        suggestions: new[] { SnoopSuggestions.ElementNotRenderable });
+                }
+
+                visual = v;
+            }
+            else
+            {
+                // Default: capture main window.
+                var app = Application.Current;
+                if (app?.MainWindow is null)
+                {
+                    throw new SnoopException(
+                        SnoopErrorCode.SessionNotFound,
+                        "No main window available for screenshot.",
+                        suggestions: new[] { SnoopSuggestions.SessionNotFound });
+                }
+
+                visual = app.MainWindow;
+            }
+
+            // Check the visual has renderable size.
+            var size = ScreenshotCapture.GetRenderSize(visual!);
+            if (size.Width <= 0 || size.Height <= 0)
+            {
+                throw new SnoopException(
+                    SnoopErrorCode.ElementNotRenderable,
+                    $"Element has zero size ({size.Width}x{size.Height}) and cannot be captured.",
+                    targetId: nodeId,
+                    suggestions: new[] { SnoopSuggestions.ElementNotRenderable });
+            }
+
+            var pngBytes = ScreenshotCapture.CaptureAsPng(visual!);
+
+            if (pngBytes is null || pngBytes.Length == 0)
+            {
+                throw new SnoopException(
+                    SnoopErrorCode.ElementNotRenderable,
+                    "Screenshot capture returned no data — element may not be visible or connected.",
+                    targetId: nodeId,
+                    suggestions: new[] { SnoopSuggestions.ElementNotRenderable });
+            }
+
+            // Use actual pixel dimensions capped to max.
+            var effectiveWidth = (int)Math.Min(size.Width, ScreenshotCapture.MaxDimension);
+            var effectiveHeight = (int)Math.Min(size.Height, ScreenshotCapture.MaxDimension);
+
+            return new ScreenshotResultDto
+            {
+                Metadata = new ScreenshotMetadataDto
+                {
+                    Width = effectiveWidth,
+                    Height = effectiveHeight,
+                    NodeId = nodeId ?? string.Empty,
+                },
+                PngBytes = pngBytes,
+            };
+        }, ct);
     }
 
     /// <inheritdoc/>
     public Task<List<TriggerDto>> GetTriggersAsync(string nodeId, CancellationToken ct)
     {
-        throw new NotImplementedException("BEAD-003c");
+        return this.RunOnDispatcherAsync(() =>
+        {
+            var target = this.ResolveNodeOrThrow(nodeId);
+            this.VerifyElementConnectivity(target, nodeId);
+
+            var result = new List<TriggerDto>();
+
+            // Style triggers (including base styles via BasedOn chain).
+            if (target is FrameworkElement fe)
+            {
+                var style = Snoop.Infrastructure.Helpers.FrameworkElementHelper.GetStyle(fe);
+                CollectStyleTriggers(fe, style, "Style", result);
+
+                // Element-level triggers (FrameworkElement.Triggers).
+                foreach (System.Windows.TriggerBase tb in fe.Triggers)
+                {
+                    result.Add(ProjectTrigger(tb, "Element"));
+                }
+
+                // ControlTemplate triggers.
+                if (Snoop.Infrastructure.Helpers.FrameworkElementHelper.GetTemplate(fe) is System.Windows.Controls.ControlTemplate ct2)
+                {
+                    foreach (System.Windows.TriggerBase tb in ct2.Triggers)
+                    {
+                        result.Add(ProjectTrigger(tb, "ControlTemplate"));
+                    }
+                }
+            }
+            else if (target is System.Windows.FrameworkContentElement fce)
+            {
+                var style = Snoop.Infrastructure.Helpers.FrameworkElementHelper.GetStyle(fce);
+                CollectStyleTriggersForFce(fce, style, "Style", result);
+            }
+
+            // DataTemplate triggers (ContentControl / ContentPresenter).
+            if (target is System.Windows.Controls.ContentControl { ContentTemplate: { } contentTemplate })
+            {
+                foreach (System.Windows.TriggerBase tb in contentTemplate.Triggers)
+                {
+                    result.Add(ProjectTrigger(tb, "DataTemplate"));
+                }
+            }
+            else if (target is System.Windows.Controls.ContentPresenter { ContentTemplate: { } cpTemplate })
+            {
+                foreach (System.Windows.TriggerBase tb in cpTemplate.Triggers)
+                {
+                    result.Add(ProjectTrigger(tb, "DataTemplate"));
+                }
+            }
+
+            return result;
+        }, ct);
     }
 
     /// <inheritdoc/>
     public Task<List<BehaviorDto>> GetBehaviorsAsync(string nodeId, CancellationToken ct)
     {
-        throw new NotImplementedException("BEAD-003c");
+        return this.RunOnDispatcherAsync(() =>
+        {
+            var target = this.ResolveNodeOrThrow(nodeId);
+            this.VerifyElementConnectivity(target, nodeId);
+
+            var result = new List<BehaviorDto>();
+
+            if (target is not DependencyObject depObj)
+            {
+                return result;
+            }
+
+            // Try both well-known Interaction libraries via reflection.
+            // If the assembly isn't loaded, return empty (not an error).
+            CollectBehaviorsFromInteraction(depObj, "System.Windows.Interactivity.Interaction, System.Windows.Interactivity", result);
+            CollectBehaviorsFromInteraction(depObj, "Microsoft.Xaml.Behaviors.Interaction, Microsoft.Xaml.Behaviors", result);
+
+            return result;
+        }, ct);
     }
 
     // -------------------------------------------------------------------------
@@ -1092,6 +1286,259 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
         catch
         {
             // Best-effort. If reflection fails, the timer will expire naturally.
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Trigger / Behavior helpers (called only from within Dispatcher.Invoke)
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Walks the BasedOn chain of a FrameworkElement's Style and appends TriggerDtos.
+    /// </summary>
+    private static void CollectStyleTriggers(FrameworkElement instance, System.Windows.Style? style, string source, List<TriggerDto> result)
+    {
+        var current = style;
+        while (current is not null)
+        {
+            foreach (System.Windows.TriggerBase tb in current.Triggers)
+            {
+                result.Add(ProjectTrigger(tb, source));
+            }
+
+            current = GetBaseStyle(instance, current);
+        }
+    }
+
+    /// <summary>
+    /// Walks the BasedOn chain of a FrameworkContentElement's Style and appends TriggerDtos.
+    /// </summary>
+    private static void CollectStyleTriggersForFce(FrameworkContentElement instance, System.Windows.Style? style, string source, List<TriggerDto> result)
+    {
+        var current = style;
+        while (current is not null)
+        {
+            foreach (System.Windows.TriggerBase tb in current.Triggers)
+            {
+                result.Add(ProjectTrigger(tb, source));
+            }
+
+            // Walk BasedOn chain.
+            current = current.BasedOn;
+        }
+    }
+
+    /// <summary>
+    /// Returns the base style for a FrameworkElement's style, including implicit base styles.
+    /// Mirrors the logic in TriggersView.GetBaseStyle.
+    /// </summary>
+    private static System.Windows.Style? GetBaseStyle(FrameworkElement instance, System.Windows.Style style)
+    {
+        if (style.BasedOn is not null)
+        {
+            return style.BasedOn;
+        }
+
+        // Check if the style has an implicit base style via the internal IsBasedOnModified property.
+        var value = StyleIsBasedOnModifiedPropertyInfo?.GetValue(style, null);
+        if (value is true)
+        {
+            return instance.TryFindResource(style.TargetType) as System.Windows.Style;
+        }
+
+        return null;
+    }
+
+#pragma warning disable SA1310
+    private static readonly PropertyInfo? StyleIsBasedOnModifiedPropertyInfo =
+        typeof(System.Windows.Style).GetProperty("IsBasedOnModified", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+#pragma warning restore SA1310
+
+    /// <summary>
+    /// Projects a WPF TriggerBase to a TriggerDto.
+    /// All WPF access happens synchronously on the Dispatcher (caller's responsibility).
+    /// Does NOT use TypeDescriptor — values are obtained via .ToString() only.
+    /// </summary>
+    private static TriggerDto ProjectTrigger(System.Windows.TriggerBase triggerBase, string source)
+    {
+        var dto = new TriggerDto
+        {
+            Source = source,
+            TriggerType = triggerBase.GetType().Name,
+            IsActive = false,
+            Conditions = new List<TriggerConditionDto>(),
+            Setters = new List<TriggerSetterDto>(),
+        };
+
+        switch (triggerBase)
+        {
+            case System.Windows.Trigger t:
+                dto.Conditions.Add(new TriggerConditionDto
+                {
+                    Property = $"{t.Property?.OwnerType?.Name}.{t.Property?.Name}",
+                    Value = t.Value?.ToString() ?? string.Empty,
+                });
+                foreach (System.Windows.SetterBase sb in t.Setters)
+                {
+                    if (sb is System.Windows.Setter s)
+                    {
+                        dto.Setters.Add(new TriggerSetterDto
+                        {
+                            Property = $"{s.Property?.OwnerType?.Name}.{s.Property?.Name}",
+                            Value = s.Value?.ToString() ?? string.Empty,
+                        });
+                    }
+                }
+
+                break;
+
+            case System.Windows.DataTrigger dt:
+                dto.Conditions.Add(new TriggerConditionDto
+                {
+                    Property = dt.Binding is System.Windows.Data.Binding b
+                        ? b.Path?.Path ?? string.Empty
+                        : dt.Binding?.ToString() ?? string.Empty,
+                    Value = dt.Value?.ToString() ?? string.Empty,
+                });
+                foreach (System.Windows.SetterBase sb in dt.Setters)
+                {
+                    if (sb is System.Windows.Setter s)
+                    {
+                        dto.Setters.Add(new TriggerSetterDto
+                        {
+                            Property = $"{s.Property?.OwnerType?.Name}.{s.Property?.Name}",
+                            Value = s.Value?.ToString() ?? string.Empty,
+                        });
+                    }
+                }
+
+                break;
+
+            case System.Windows.MultiTrigger mt:
+                foreach (System.Windows.Condition cond in mt.Conditions)
+                {
+                    dto.Conditions.Add(new TriggerConditionDto
+                    {
+                        Property = $"{cond.Property?.OwnerType?.Name}.{cond.Property?.Name}",
+                        Value = cond.Value?.ToString() ?? string.Empty,
+                    });
+                }
+
+                foreach (System.Windows.SetterBase sb in mt.Setters)
+                {
+                    if (sb is System.Windows.Setter s)
+                    {
+                        dto.Setters.Add(new TriggerSetterDto
+                        {
+                            Property = $"{s.Property?.OwnerType?.Name}.{s.Property?.Name}",
+                            Value = s.Value?.ToString() ?? string.Empty,
+                        });
+                    }
+                }
+
+                break;
+
+            case System.Windows.MultiDataTrigger mdt:
+                foreach (System.Windows.Condition cond in mdt.Conditions)
+                {
+                    dto.Conditions.Add(new TriggerConditionDto
+                    {
+                        Property = cond.Binding is System.Windows.Data.Binding bCond
+                            ? bCond.Path?.Path ?? string.Empty
+                            : cond.Binding?.ToString() ?? string.Empty,
+                        Value = cond.Value?.ToString() ?? string.Empty,
+                    });
+                }
+
+                foreach (System.Windows.SetterBase sb in mdt.Setters)
+                {
+                    if (sb is System.Windows.Setter s)
+                    {
+                        dto.Setters.Add(new TriggerSetterDto
+                        {
+                            Property = $"{s.Property?.OwnerType?.Name}.{s.Property?.Name}",
+                            Value = s.Value?.ToString() ?? string.Empty,
+                        });
+                    }
+                }
+
+                break;
+
+            case System.Windows.EventTrigger et:
+                dto.Conditions.Add(new TriggerConditionDto
+                {
+                    Property = et.RoutedEvent?.Name ?? string.Empty,
+                    Value = et.SourceName ?? string.Empty,
+                });
+                break;
+        }
+
+        return dto;
+    }
+
+    /// <summary>
+    /// Reads behaviors via Interaction.GetBehaviors() reflection for one assembly-qualified type name.
+    /// If the assembly is not loaded, returns without error.
+    /// </summary>
+    private static void CollectBehaviorsFromInteraction(DependencyObject depObj, string assemblyQualifiedName, List<BehaviorDto> result)
+    {
+        var interactionType = Type.GetType(assemblyQualifiedName, throwOnError: false);
+        if (interactionType is null)
+        {
+            return;
+        }
+
+        var getBehaviorsMethod = interactionType.GetMethod("GetBehaviors", BindingFlags.Static | BindingFlags.Public);
+        if (getBehaviorsMethod is null)
+        {
+            return;
+        }
+
+        var behaviors = getBehaviorsMethod.Invoke(null, new object[] { depObj }) as IEnumerable;
+        if (behaviors is null)
+        {
+            return;
+        }
+
+        foreach (var behavior in behaviors)
+        {
+            if (behavior is null)
+            {
+                continue;
+            }
+
+            var behaviorType = behavior.GetType();
+            var dto = new BehaviorDto
+            {
+                TypeName = behaviorType.FullName ?? behaviorType.Name,
+                AssemblyName = behaviorType.Assembly.GetName().Name ?? string.Empty,
+                Properties = new List<NameValuePairDto>(),
+            };
+
+            // Read public instance properties via reflection (NOT TypeDescriptor per security rules).
+            foreach (var prop in behaviorType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            {
+                if (!prop.CanRead || prop.GetIndexParameters().Length > 0)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    var value = prop.GetValue(behavior);
+                    dto.Properties.Add(new NameValuePairDto
+                    {
+                        Name = prop.Name,
+                        Value = value?.ToString() ?? string.Empty,
+                    });
+                }
+                catch
+                {
+                    // Best-effort; skip unreadable properties.
+                }
+            }
+
+            result.Add(dto);
         }
     }
 }
