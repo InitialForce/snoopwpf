@@ -22,48 +22,55 @@ public sealed class SampleViewModel : INotifyPropertyChanged
     private string selectedStatus = "Ready";
     private string selectedItemLabel = string.Empty;
 
+    /// <summary>Initializes a new instance of the <see cref="SampleViewModel"/> class.</summary>
     public SampleViewModel()
     {
-        Items = BuildItems(50);
-        TreeItems = BuildTreeItems();
-        StatusOptions = new List<string> { "Ready", "Running", "Error", "Stopped" };
-        RefreshCommand = new RelayCommand(_ => Refresh());
+        this.Items = BuildItems(50);
+        this.TreeItems = BuildTreeItems();
+        this.StatusOptions = new List<string> { "Ready", "Running", "Error", "Stopped" };
+        this.RefreshCommand = new RelayCommand(_ => this.Refresh());
     }
 
+    /// <summary>Gets or sets the display name.</summary>
     public string Name
     {
-        get => name;
-        set => SetField(ref name, value);
+        get => this.name;
+        set => this.SetField(ref this.name, value);
     }
 
+    /// <summary>Gets or sets the search text.</summary>
     public string SearchText
     {
-        get => searchText;
-        set => SetField(ref searchText, value);
+        get => this.searchText;
+        set => this.SetField(ref this.searchText, value);
     }
 
+    /// <summary>Gets or sets a value indicating whether the alert is active.</summary>
     public bool IsAlertActive
     {
-        get => isAlertActive;
-        set => SetField(ref isAlertActive, value);
+        get => this.isAlertActive;
+        set => this.SetField(ref this.isAlertActive, value);
     }
 
+    /// <summary>Gets or sets the slider value.</summary>
     public double SliderValue
     {
-        get => sliderValue;
-        set => SetField(ref sliderValue, value);
+        get => this.sliderValue;
+        set => this.SetField(ref this.sliderValue, value);
     }
 
+    /// <summary>Gets or sets the selected status.</summary>
     public string SelectedStatus
     {
-        get => selectedStatus;
-        set => SetField(ref selectedStatus, value);
+        get => this.selectedStatus;
+        set => this.SetField(ref this.selectedStatus, value);
     }
 
+    /// <summary>Gets or sets the selected item label.</summary>
     public string SelectedItemLabel
     {
-        get => selectedItemLabel;
-        set => SetField(ref selectedItemLabel, value);
+        get => this.selectedItemLabel;
+        set => this.SetField(ref this.selectedItemLabel, value);
     }
 
     public ObservableCollection<SampleItem> Items { get; }
@@ -74,14 +81,16 @@ public sealed class SampleViewModel : INotifyPropertyChanged
 
     public ICommand RefreshCommand { get; }
 
+    /// <summary>Refreshes the Name property with the current tick count.</summary>
     public void Refresh()
     {
-        Name = $"Refreshed at tick {System.Environment.TickCount64}";
+        this.Name = $"Refreshed at tick {System.Environment.TickCount64}";
     }
 
+    /// <summary>Executes the search and updates SelectedItemLabel.</summary>
     public void ExecuteSearch()
     {
-        SelectedItemLabel = $"Searched: {SearchText}";
+        this.SelectedItemLabel = $"Searched: {this.SearchText}";
     }
 
     private static ObservableCollection<SampleItem> BuildItems(int count)
@@ -91,6 +100,7 @@ public sealed class SampleViewModel : INotifyPropertyChanged
         {
             items.Add(new SampleItem(i, $"Item {i:D3}"));
         }
+
         return items;
     }
 
@@ -115,7 +125,7 @@ public sealed class SampleViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
-        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        => this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 
     private bool SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
     {
@@ -123,8 +133,9 @@ public sealed class SampleViewModel : INotifyPropertyChanged
         {
             return false;
         }
+
         field = value;
-        OnPropertyChanged(propertyName);
+        this.OnPropertyChanged(propertyName);
         return true;
     }
 
@@ -137,10 +148,11 @@ public sealed record SampleItem(int Index, string Label);
 /// <summary>A node in the sample TreeView hierarchy.</summary>
 public sealed class TreeNode
 {
+    /// <summary>Initializes a new instance of the <see cref="TreeNode"/> class.</summary>
     public TreeNode(string label, params TreeNode[] children)
     {
-        Label = label;
-        Children = new List<TreeNode>(children);
+        this.Label = label;
+        this.Children = new List<TreeNode>(children);
     }
 
     public string Label { get; }
@@ -166,7 +178,9 @@ internal sealed class RelayCommand : ICommand
         remove => System.Windows.Input.CommandManager.RequerySuggested -= value;
     }
 
-    public bool CanExecute(object? parameter) => canExecute?.Invoke(parameter) ?? true;
+    /// <inheritdoc/>
+    public bool CanExecute(object? parameter) => this.canExecute?.Invoke(parameter) ?? true;
 
-    public void Execute(object? parameter) => execute(parameter);
+    /// <inheritdoc/>
+    public void Execute(object? parameter) => this.execute(parameter);
 }

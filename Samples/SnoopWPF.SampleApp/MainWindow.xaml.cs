@@ -9,26 +9,27 @@ public partial class MainWindow : Window
 {
     private readonly SampleViewModel viewModel;
 
+    /// <summary>Initializes a new instance of the <see cref="MainWindow"/> class.</summary>
     public MainWindow()
     {
-        InitializeComponent();
+        this.InitializeComponent();
 
-        viewModel = new SampleViewModel();
-        DataContext = viewModel;
+        this.viewModel = new SampleViewModel();
+        this.DataContext = this.viewModel;
     }
 
     private void OnRefreshClicked(object sender, RoutedEventArgs e)
     {
-        viewModel.Refresh();
+        this.viewModel.Refresh();
     }
 
     private void OnToggleAlertClicked(object sender, RoutedEventArgs e)
     {
-        viewModel.IsAlertActive = !viewModel.IsAlertActive;
+        this.viewModel.IsAlertActive = !this.viewModel.IsAlertActive;
     }
 
     private void OnSearchClicked(object sender, RoutedEventArgs e)
     {
-        viewModel.ExecuteSearch();
+        this.viewModel.ExecuteSearch();
     }
 }

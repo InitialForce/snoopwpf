@@ -2,7 +2,7 @@ namespace SnoopWPF.SampleApp;
 
 using System;
 using System.Windows;
-using SnoopWPF.Agent;
+using SnoopWPF.Agent.Server;
 
 /// <summary>
 /// Entry point for the SnoopWPF Sample Application.
@@ -13,6 +13,7 @@ public partial class App : Application
     private SnoopAgentHandle? agentHandle;
     private HiddenWindow? hiddenWindow;
 
+    /// <inheritdoc/>
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -22,28 +23,29 @@ public partial class App : Application
 
         if (!noAgent)
         {
-            // Start the MCP agent. The server binds on 127.0.0.1 (loopback only).
-            // The bearer token and endpoint URI are written to %TEMP%\snoop-agent-{pid}.json.
+            // Start the MCP agent on stdio transport (default).
+            // The endpoint info is written to %TEMP%\snoop-agent-{pid}.json.
             // Do NOT log the bearer token — integration tests read it from the discovery file.
-            agentHandle = SnoopAgent.Start(this, new SnoopAgentOptions
+            this.agentHandle = SnoopAgent.Start(new SnoopAgentOptions
             {
                 EnableMutation = false,
                 EnableRedaction = true,
             });
 
-            Console.WriteLine($"SnoopWPF.Agent MCP server listening at {agentHandle.EndpointUri}");
+            Console.WriteLine("SnoopWPF.Agent MCP server started (stdio transport).");
         }
 
         // Keep a hidden window open for the lifetime of the application.
         // This tests wpf_get_windows with includeHidden=true/false and screenshot edge cases.
-        hiddenWindow = new HiddenWindow();
-        hiddenWindow.Show(); // Show then hide so the window is initialized and measurable
-        hiddenWindow.Hide();
+        this.hiddenWindow = new HiddenWindow();
+        this.hiddenWindow.Show(); // Show then hide so the window is initialized and measurable
+        this.hiddenWindow.Hide();
     }
 
+    /// <inheritdoc/>
     protected override void OnExit(ExitEventArgs e)
     {
-        agentHandle?.Stop();
+        this.agentHandle?.Dispose();
         base.OnExit(e);
     }
 }
