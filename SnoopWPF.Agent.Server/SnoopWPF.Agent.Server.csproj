@@ -11,6 +11,13 @@
         <NoWarn>$(NoWarn);CA1063;CA1816</NoWarn>
     </PropertyGroup>
 
+    <!-- Expose internals (SelfTest, SelfTestTarget) to integration test project -->
+    <ItemGroup>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>SnoopWPF.Agent.IntegrationTests</_Parameter1>
+        </AssemblyAttribute>
+    </ItemGroup>
+
     <!-- NuGet package metadata -->
     <PropertyGroup>
         <PackageId>SnoopWPF.Agent</PackageId>

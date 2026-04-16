@@ -128,6 +128,12 @@ public static class SnoopAgent
     {
         try
         {
+            // Boot-sequence step 5 (PRD §4.2): run startup self-tests BEFORE the MCP loop.
+            // These are placed here (on the thread-pool task) so they run after Console.SetOut
+            // has been redirected (M1-19) and before any MCP messages are accepted.
+            SelfTest.UnsafeAccessorBindings();
+            SelfTest.HwndSourcePresent();
+
             await McpServerSetup.RunServerAsync(inspector, options, policy, handle, ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
