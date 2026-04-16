@@ -92,35 +92,45 @@ public sealed class CursorManager : IDisposable
         var age = now - entry.CreatedAt;
         var stale = age > this.ttl;
 
-        var offset = entry.Offset;
-        var items = entry.Snapshot;
-        var end = Math.Min(offset + pageSize, items.Count);
-        var page = new string[end - offset];
+        int offset;
+        int end;
+        int totalCount;
+        string[] page;
+        bool hasMore;
 
-        for (var i = offset; i < end; i++)
+        lock (entry.SyncLock)
         {
-            page[i - offset] = items[i];
+            offset = entry.Offset;
+            var items = entry.Snapshot;
+            totalCount = items.Count;
+            end = Math.Min(offset + pageSize, totalCount);
+            page = new string[end - offset];
+
+            for (var i = offset; i < end; i++)
+            {
+                page[i - offset] = items[i];
+            }
+
+            hasMore = end < totalCount;
+
+            if (hasMore)
+            {
+                // Advance the offset in the existing entry and return the same cursor token
+                entry.Offset = end;
+            }
+            else
+            {
+                // All pages consumed; remove the snapshot
+                this.snapshots.TryRemove(cursor, out _);
+            }
         }
 
-        var hasMore = end < items.Count;
-        string? nextCursor = null;
-
-        if (hasMore)
-        {
-            // Advance the offset in the existing entry and return the same cursor token
-            entry.Offset = end;
-            nextCursor = cursor;
-        }
-        else
-        {
-            // All pages consumed; remove the snapshot
-            this.snapshots.TryRemove(cursor, out _);
-        }
+        string? nextCursor = hasMore ? cursor : null;
 
         return new CursorPage(
             items: page,
             nextCursor: nextCursor,
-            totalCount: items.Count,
+            totalCount: totalCount,
             hasMore: hasMore,
             stale: stale);
     }
@@ -166,6 +176,7 @@ public sealed class CursorManager : IDisposable
             this.Snapshot = snapshot;
             this.CreatedAt = createdAt;
             this.Offset = 0;
+            this.SyncLock = new object();
         }
 
         public IReadOnlyList<string> Snapshot { get; }
@@ -173,6 +184,9 @@ public sealed class CursorManager : IDisposable
         public DateTimeOffset CreatedAt { get; }
 
         public int Offset { get; set; }
+
+        /// <summary>Guards read-compute-write of Offset against concurrent callers.</summary>
+        public object SyncLock { get; }
     }
 }
 

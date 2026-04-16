@@ -128,7 +128,7 @@ public sealed class NodeRegistry : IDisposable
 
         this.reverse.Clear();
         this.ClearForwardTable();
-        this.counter = 0;
+        Interlocked.Exchange(ref this.counter, 0);
     }
 
     private void ClearForwardTable()

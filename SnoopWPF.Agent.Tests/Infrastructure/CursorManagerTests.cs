@@ -2,6 +2,9 @@ namespace SnoopWPF.Agent.Tests.Infrastructure;
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using NUnit.Framework;
 using SnoopWPF.Agent.Engine.Infrastructure;
 
@@ -180,5 +183,48 @@ public class CursorManagerTests : IDisposable
         this.manager.Dispose();
 
         Assert.Throws<ObjectDisposedException>(() => this.manager.CreateCursor(new[] { "a" }));
+    }
+
+    [Test]
+    public void GetPage_ConcurrentCallers_EachItemReturnedExactlyOnce()
+    {
+        // Arrange: 20-item snapshot, page size 1 so each call advances by one slot.
+        const int itemCount = 20;
+        const int pageSize = 1;
+        const int taskCount = 4;
+
+        var snapshot = Enumerable.Range(1, itemCount).Select(i => $"item:{i}").ToArray();
+        var token = this.manager.CreateCursor(snapshot);
+
+        var collected = new System.Collections.Concurrent.ConcurrentBag<string>();
+
+        // Act: 4 tasks race to drain the cursor.
+        var tasks = Enumerable.Range(0, taskCount).Select(_ => Task.Run(() =>
+        {
+            // Each task keeps calling GetPage until there is no more data for this token.
+            while (true)
+            {
+                var page = this.manager.GetPage(token, pageSize);
+                foreach (var item in page.Items)
+                {
+                    collected.Add(item);
+                }
+
+                // Stop when the token is exhausted (hasMore == false and items empty means consumed).
+                if (!page.HasMore)
+                {
+                    break;
+                }
+            }
+        })).ToArray();
+
+        Task.WaitAll(tasks);
+
+        // Assert: union of all collected items equals the snapshot exactly — no duplicates, no missing.
+        var sorted = collected.OrderBy(x => x).ToArray();
+        var expected = snapshot.OrderBy(x => x).ToArray();
+
+        Assert.That(sorted.Length, Is.EqualTo(itemCount), "Total items collected must equal snapshot size (no duplicates, no missing items).");
+        Assert.That(sorted, Is.EqualTo(expected), "Collected items must match snapshot exactly.");
     }
 }
