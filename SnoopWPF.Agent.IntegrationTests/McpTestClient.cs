@@ -38,8 +38,9 @@ public sealed class McpTestClient : IDisposable
         var options = new SnoopInspectorOptions
         {
             TimeoutMs = 10_000,
-            EnableMutation = true,   // Allow mutation in tests
-            EnableRedaction = false, // Expose all values so tests can assert them
+            EnableMutation = true,      // Allow mutation in tests
+            EnableRedaction = false,    // Expose all values so tests can assert them
+            EnableAutomation = true,    // Allow L1 automation in tests (wpf_click etc.)
         };
 
         this.inspector = new SnoopInspector(
@@ -124,6 +125,16 @@ public sealed class McpTestClient : IDisposable
         string propertyName,
         CancellationToken ct = default)
         => this.inspector.ResolveBindingAsync(nodeId, propertyName, ct);
+
+    /// <summary>
+    /// Polls for structural changes to the WPF visual tree since <paramref name="sinceVersion"/>.
+    /// Returns immediately with the current changeset (M2-10).
+    /// </summary>
+    public Task<Contracts.Dtos.PollChangesResultDto> PollChangesAsync(
+        long sinceVersion = 0,
+        Contracts.WpfLocator? rootLocator = null,
+        System.Threading.CancellationToken ct = default)
+        => this.inspector.PollChangesAsync(sinceVersion, rootLocator, ct);
 
     /// <inheritdoc/>
     public void Dispose()

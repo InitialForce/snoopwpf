@@ -32,4 +32,12 @@ public sealed record DeterministicInputResult
     /// <summary>The input tier the strategy executed at.</summary>
     [DataMember(Name = "chosenTier")]
     public InputTier ChosenTier { get; init; }
+
+    /// <summary>
+    /// When <see langword="true"/>, the act-tool layer should attach a
+    /// <c>wpf_execute_command</c> suggestion to the <see cref="StateDeltaDto"/>
+    /// response because the element has a Command bound and L0 is preferable.
+    /// </summary>
+    [DataMember(Name = "suggestExecuteCommand")]
+    public bool SuggestExecuteCommand { get; init; }
 }

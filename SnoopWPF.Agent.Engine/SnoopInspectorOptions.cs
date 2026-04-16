@@ -27,4 +27,10 @@ public sealed class SnoopInspectorOptions
     /// responses even on success. Set to <see langword="true"/> only in controlled test environments.
     /// </summary>
     public bool AllowSensitiveRetention { get; set; } = false;
+
+    /// <summary>
+    /// Whether UI Automation-based input (L1 tier) is enabled. Default false (safe by default).
+    /// Must be <see langword="true"/> for <c>wpf_click</c> and other L1 act-tools to execute.
+    /// </summary>
+    public bool EnableAutomation { get; set; } = false;
 }

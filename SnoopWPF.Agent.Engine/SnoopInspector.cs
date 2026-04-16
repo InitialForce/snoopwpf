@@ -2342,7 +2342,7 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
             ReferenceEqualityComparer.Instance);
 #else
         var visitedObjects = new System.Collections.Generic.HashSet<object>(
-            SnoopWPF.Agent.Engine.Infrastructure.ObjectReferenceEqualityComparer.Instance);
+            ObjectReferenceEqualityComparer.Instance);
 #endif
         var queue = new Queue<object>();
         queue.Enqueue(root);
