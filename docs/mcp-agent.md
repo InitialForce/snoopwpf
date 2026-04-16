@@ -1,9 +1,10 @@
 # SnoopWPF.Agent — MCP Agent for WPF
 
-SnoopWPF.Agent extends [SnoopWPF](https://github.com/snoopwpf/snoopwpf) with an
-[MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server, enabling AI
-agents — primarily Claude Code and Claude Desktop — to inspect, debug, and interact
-with running WPF applications programmatically.
+SnoopWPF.Agent is maintained in [InitialForce's fork](https://github.com/InitialForce/snoopwpf)
+of [SnoopWPF](https://github.com/snoopwpf/snoopwpf). It extends the canonical Snoop
+WPF spying utility with an [MCP (Model Context Protocol)](https://modelcontextprotocol.io/)
+server, enabling AI agents — primarily Claude Code and Claude Desktop — to inspect,
+debug, and interact with running WPF applications programmatically.
 
 ## Overview
 

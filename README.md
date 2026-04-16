@@ -1,29 +1,74 @@
-# Snoop
+# Snoop (MCP Agent Fork)
+
+> This is [InitialForce](https://github.com/InitialForce)'s fork of
+> [snoopwpf/snoopwpf](https://github.com/snoopwpf/snoopwpf), extending the canonical
+> Snoop WPF spying utility with a Model Context Protocol (MCP) server so AI coding
+> agents can inspect live WPF applications. The Snoop desktop UI is preserved
+> unchanged. If you want the classic Snoop experience,
+> use [upstream](https://github.com/snoopwpf/snoopwpf).
 
 Snoop is an open source WPF spying utility originally created by [Pete Blois](https://github.com/peteblois) and is currently maintained by [Bastian Schmidt](https://github.com/batzen).
 
 It allows you to spy/browse the visual, logical and automation tree of any running WPF application (without the need for a debugger).  
 You can change property values, view triggers, set breakpoints on property changes and many more things.
 
-[![Build status for master branch](https://img.shields.io/appveyor/ci/batzen/snoopwpf/master?style=flat-square&&label=master)](https://ci.appveyor.com/project/batzen/snoopwpf/branch/master)
-[![Build status for develop branch](https://img.shields.io/appveyor/ci/batzen/snoopwpf/develop?style=flat-square&&label=develop)](https://ci.appveyor.com/project/batzen/snoopwpf/branch/develop)
+[![Build status for master branch](https://img.shields.io/appveyor/ci/batzen/snoopwpf/master?style=flat-square&&label=upstream-master)](https://ci.appveyor.com/project/batzen/snoopwpf/branch/master)
+[![Build status for develop branch](https://img.shields.io/appveyor/ci/batzen/snoopwpf/develop?style=flat-square&&label=upstream-develop)](https://ci.appveyor.com/project/batzen/snoopwpf/branch/develop)
 [![Chocolatey version](http://img.shields.io/chocolatey/v/snoop.svg?style=flat-square)](https://chocolatey.org/packages/snoop)
-[![Chocolatey download count](http://img.shields.io/chocolatey/dt/snoop.svg?style=flat-square)](https://chocolatey.org/packages/snoop)
 
-## MCP Agent (AI-Driven Inspection)
+Badges above reflect the upstream build. Fork CI runs via GitHub Actions on the `develop` branch of this repository.
 
-SnoopWPF includes an [MCP (Model Context Protocol)](https://modelcontextprotocol.io/)
-server that enables AI agents — primarily Claude Code and Claude Desktop — to inspect
-WPF applications programmatically.
+## Why this fork exists
 
-**Features:**
+Modern software engineering increasingly leans on AI coding agents (Claude Code,
+Claude Desktop, Cursor, etc.). These agents can read and write source code, run
+commands, and debug programs — but they cannot *observe the running UI* of a WPF
+application. Without runtime visibility, an agent debugging a WPF bug has to work
+from source alone; it can't see the element tree, inspect bindings, verify property
+values at runtime, or capture screenshots.
 
-- 15 MCP tools: visual tree, properties, binding diagnostics, screenshots, triggers, behaviors
-- Two integration modes: NuGet (compile-in) and Injection (no app changes needed)
-- Read-only by default; property mutations opt-in
-- Sensitive property redaction; localhost-only; session-token pipe handshake
+This fork adds that missing piece. The Snoop engine that powers the Snoop desktop
+UI is exposed as an MCP server, so any MCP-compatible agent can drive tree
+navigation, property inspection, binding diagnostics, and screenshots through a
+typed tool surface — for the same app that a developer might be snooping
+interactively in another window.
 
-**Quick start (NuGet mode):**
+## Fork goals
+
+- **AI-agent inspection** via 15 MCP tools covering visual / logical / automation
+  trees, properties with binding and trigger detail, resources, behaviors,
+  screenshots, and diagnostics.
+- **Two deployment modes:**
+  - *NuGet (compile-in)* — reference `SnoopWPF.Agent` and call
+    `SnoopAgent.Start()` at startup. Zero process-injection complexity. Intended
+    for apps you own and can recompile.
+  - *Injection (external host)* — `snoop-mcp.exe` injects into any running WPF
+    process via the existing Snoop injection pipeline. For third-party or legacy
+    apps.
+- **UI coexistence.** The MCP agent and the classic Snoop desktop UI can run in
+  the same process at the same time.
+- **Secure by default.** Read-only unless mutation is explicitly enabled;
+  mutations go through a hardcoded `TypeConverter` whitelist (never
+  `TypeDescriptor.GetConverter`); named-pipe communication is `CurrentUserOnly`
+  with a 256-bit session-token handshake and constant-time verification;
+  properties whose names match a sensitive-keyword list (passwords, tokens, API
+  keys, connection strings) are redacted on every read path, including trigger
+  and behavior inspection.
+- **Upstream compatibility.** The classic `Snoop` and `Snoop.Core` projects stay
+  compatible with upstream. New functionality lives in new `SnoopWPF.Agent.*`
+  projects so upstream merges stay clean. Non-AI bug fixes land here will be
+  offered back upstream.
+
+## Non-goals
+
+- Replacing the classic Snoop desktop UI.
+- Remote inspection over the network — pipes are localhost-only by design.
+- Supporting AI protocols other than MCP.
+- Self-contained single-file WPF apps on the injection path (same upstream limitation).
+
+## MCP Agent quick start
+
+**NuGet mode** (app you own):
 
 ```xml
 <PackageReference Include="SnoopWPF.Agent" />
@@ -34,11 +79,12 @@ WPF applications programmatically.
 protected override void OnStartup(StartupEventArgs e)
 {
     base.OnStartup(e);
-    SnoopAgent.Start();
+    var agent = SnoopAgent.Start();
+    // agent.PipeName + agent.SessionToken when using Pipe transport
 }
 ```
 
-**Quick start (injection mode):**
+**Injection mode** (any running WPF process):
 
 ```json
 // .mcp.json
@@ -49,13 +95,39 @@ protected override void OnStartup(StartupEventArgs e)
 }
 ```
 
-**Documentation:**
+## Documentation
 
 - [MCP Agent Overview](docs/mcp-agent.md)
 - [NuGet Mode](docs/nuget-mode.md)
 - [Injection Mode](docs/injection-mode.md)
 - [MCP Tools Reference](docs/mcp-tools-reference.md)
 - [Security Model](docs/security.md)
+
+## Design documents
+
+Planning artifacts for this fork live at the repository root:
+
+- [`PRD.md`](PRD.md) — product requirements document.
+- [`BEADS.md`](BEADS.md) — implementation specification, 30 beads (atomic work units), with global security and build rules.
+- [`TRANSFORMATION_PLAN.md`](TRANSFORMATION_PLAN.md) — rollout plan used to execute the beads.
+- Earlier planning drafts are retained for history: `PRD-v4-automation.md`, `PRD-v5-MVP.md`, `PRD-v5-ideal.md`, `PRD-v5-sota-research.md`, `PRD-v5-reviews-wave2.md`, `PRD-v5-reviews-wave3.md`.
+
+## Fork project layout
+
+| Project | Purpose |
+|---|---|
+| `SnoopWPF.Agent.Contracts` | Shared DTOs, `ISnoopInspector` interface, protocol types. `net462;net6.0-windows;net8.0-windows`. |
+| `SnoopWPF.Agent.Engine` | Core inspector implementation — tree, properties, bindings, diagnostics, resources, screenshots. Wraps `Snoop.Core`. |
+| `SnoopWPF.Agent.Tools` | 15 MCP tool handlers (one per tool). |
+| `SnoopWPF.Agent.Server` | NuGet-mode entry point: `SnoopAgent.Start()`. Packs to `SnoopWPF.Agent` NuGet. |
+| `SnoopWPF.Agent.Remote` | Host-side pipe client (`PipeSnoopInspectorProxy` implementing `ISnoopInspector`). |
+| `SnoopWPF.Agent.Injection` | Injected-process DLL — hosts inspector, serves pipe, performs handshake. |
+| `SnoopWPF.Agent.Host` | `snoop-mcp.exe` — injects into target PID, speaks MCP on stdio. |
+| `SnoopWPF.Agent.Cli` | `snoop-cli.exe` — interactive CLI wrapper over the same engine. |
+| `Snoop.Injector` | Extracted injection logic (previously embedded in the Snoop GUI project). |
+| `Snoop.Core` / `Snoop` | Upstream projects, preserved. |
+| `Samples/SnoopWPF.SampleApp` | Demonstrates NuGet-mode integration and provides a fixture for manual testing. |
+| `SnoopWPF.Agent.Tests` / `.IntegrationTests` / `.InjectionTests` | Unit, WPF-dispatcher integration, and pipe-protocol tests respectively. |
 
 ---
 
