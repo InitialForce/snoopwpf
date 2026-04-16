@@ -1,5 +1,57 @@
 ﻿# Changelog for Snoop
 
+## [1.0.0] (unreleased)
+
+This release introduces the MCP agent surface and a wave of review-driven fixes.
+
+### New features
+
+- **MCP agent surface (v3, 15 tools, two modes).** `SnoopWPF.Agent` exposes
+  WPF inspection and mutation via the Model Context Protocol in two modes:
+  - **Injection mode** (`snoop-mcp`): out-of-process, injected DLL, named-pipe
+    transport, current-user ACL, 256-bit session token handshake.
+  - **NuGet mode** (`SnoopWPF.Agent` package): in-process, stdio transport,
+    zero-infrastructure embedding for automated test pipelines.
+  Tools include: `wpf_get_visual_tree`, `wpf_get_properties`, `wpf_set_property`,
+  `wpf_find_elements`, `wpf_invoke_command`, `wpf_get_bindings`,
+  `wpf_get_triggers`, `wpf_get_styles`, `wpf_get_resources`,
+  `wpf_get_behaviors`, `wpf_get_diagnostics`, `wpf_screenshot`,
+  `wpf_get_layout`, `wpf_get_data_context`, `wpf_get_storyboards`.
+
+### Review-fix wave
+
+- **stdout redirect:** Injected agent stdout is redirected to a `StringWriter`
+  to prevent WPF apps writing to `Console.Out` from corrupting the stdio
+  MCP framing.
+- **CursorManager CAS:** `CursorManager.SetCursor` now uses
+  `Interlocked.CompareExchange` to avoid a data race when two threads
+  concurrently request a cursor change.
+- **NodeRegistry atomic clear:** `NodeRegistry.Clear` wraps the dictionary
+  replacement in a lock to prevent a concurrent reader from observing a
+  partially-cleared registry.
+- **RedactionFilter dead-code removal:** The unreachable `else` branch in
+  `RedactionFilter.IsRedacted` (which could never execute because the
+  preceding `if` was a strict superset) has been removed.
+- **Error-order fix:** `McpErrorResponse` now sets `error` before `id` in
+  the serialised JSON object, matching the JSON-RPC 2.0 specification order
+  expected by strict validators.
+- **Pipe handshake timeout:** Both sides of the pipe handshake apply a 5-second
+  timeout (`ProtocolConstants.HandshakeTimeoutMs = 5000`) to prevent an
+  unresponsive peer from blocking indefinitely.
+- **Constant-time token compare:** The server verifies the echoed session token
+  via `CryptographicOperations.FixedTimeEquals` to prevent timing oracle attacks.
+
+### Known limitations carried to v1.1
+
+- No TLS — localhost named pipes only; no remote MCP support.
+- `SnoopLog.txt` has no ACL or per-session rotation (plain append log; see
+  `docs/security.md`). ACL + rotation deferred to v1.1.
+- HMAC-SHA256 audit chain for tool invocations is planned but not yet
+  implemented.
+- `--force` flag to override the process-ownership check is not yet implemented.
+
+---
+
 ## 6.1.0 (preview)
 
 - ### Bug fixes

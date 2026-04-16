@@ -177,7 +177,10 @@ Sensitive values are never written to logs:
 - Property values are never included in exception messages or logs.
 - Exception messages are sanitized before logging to strip paths and tokens.
 
-The `SnoopLog.txt` file is ACL'd to the current user and rotated per session.
+`SnoopLog.txt` is a plain append log written via `FileInfo.AppendText`. No ACL or
+rotation is applied. Treat it as containing potentially sensitive payloads when the
+injection launcher surfaces an exception. Deletion on next session start is the user's
+responsibility in MVP; ACL + rotation is tracked for v1.1.
 
 ---
 
