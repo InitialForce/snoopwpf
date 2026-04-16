@@ -172,6 +172,7 @@ public sealed class PipeProtocolTests
 
         public async ValueTask DisposeAsync()
         {
+            this.transport.Dispose();
             await this.clientPipe.DisposeAsync().ConfigureAwait(false);
         }
     }

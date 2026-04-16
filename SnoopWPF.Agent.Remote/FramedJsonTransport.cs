@@ -12,8 +12,9 @@ using SnoopWPF.Agent.Contracts.Protocol;
 /// Reads and writes framed JSON messages over a <see cref="Stream"/>.
 /// Frame format: 4-byte little-endian length prefix followed by a UTF-8 JSON body.
 /// Max frame size is <see cref="ProtocolConstants.MaxFrameSize"/> bytes.
+/// Frames are delivered in the order they are written (in-order guarantee).
 /// </summary>
-internal sealed class FramedJsonTransport
+public sealed class FramedJsonTransport : IDisposable
 {
     private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions
     {
@@ -23,15 +24,25 @@ internal sealed class FramedJsonTransport
 
     private readonly Stream stream;
 
-    internal FramedJsonTransport(Stream stream)
+    // Serialises concurrent writes so multiple callers cannot interleave frame bytes.
+    private readonly SemaphoreSlim writeLock = new SemaphoreSlim(1, 1);
+
+    public FramedJsonTransport(Stream stream)
     {
         this.stream = stream ?? throw new ArgumentNullException(nameof(stream));
     }
 
+    /// <inheritdoc/>
+    public void Dispose()
+    {
+        this.writeLock.Dispose();
+    }
+
     /// <summary>
     /// Serializes <paramref name="value"/> as JSON and sends it as a framed message.
+    /// Concurrent callers are serialized via an internal write lock to guarantee in-order delivery.
     /// </summary>
-    internal async Task SendAsync<T>(T value, CancellationToken ct)
+    public async Task SendAsync<T>(T value, CancellationToken ct)
     {
         byte[] body = JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions);
 
@@ -45,17 +56,26 @@ internal sealed class FramedJsonTransport
         byte[] sendLengthBuffer = new byte[4];
         BinaryPrimitives.WriteInt32LittleEndian(sendLengthBuffer, body.Length);
 
-        await this.stream.WriteAsync(sendLengthBuffer, 0, 4, ct).ConfigureAwait(false);
-        await this.stream.WriteAsync(body, 0, body.Length, ct).ConfigureAwait(false);
-        await this.stream.FlushAsync(ct).ConfigureAwait(false);
+        await this.writeLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await this.stream.WriteAsync(sendLengthBuffer, 0, 4, ct).ConfigureAwait(false);
+            await this.stream.WriteAsync(body, 0, body.Length, ct).ConfigureAwait(false);
+            await this.stream.FlushAsync(ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            this.writeLock.Release();
+        }
     }
 
     /// <summary>
     /// Reads a framed message and deserializes it as <typeparamref name="T"/>.
-    /// Returns <see langword="null"/> if the peer closed the connection cleanly.
+    /// Returns <see langword="null"/> if the peer closed the connection cleanly (EOF at frame boundary).
+    /// Throws <see cref="EndOfStreamException"/> on a partial disconnect mid-frame.
     /// Throws <see cref="InvalidOperationException"/> on protocol violations.
     /// </summary>
-    internal async Task<T?> ReceiveAsync<T>(CancellationToken ct)
+    public async Task<T?> ReceiveAsync<T>(CancellationToken ct)
     {
         // Read 4-byte length prefix.
         // Use a method-local buffer so SendAsync and ReceiveAsync never share state.
@@ -115,7 +135,7 @@ internal sealed class FramedJsonTransport
     /// Deserializes a JSON string (already received from the wire) into <typeparamref name="T"/>.
     /// Used to decode <c>ResultJson</c> / <c>ParamsJson</c> fields.
     /// </summary>
-    internal static T? DeserializeJson<T>(string? json)
+    public static T? DeserializeJson<T>(string? json)
     {
         if (json is null)
         {
@@ -129,7 +149,7 @@ internal sealed class FramedJsonTransport
     /// Serializes <paramref name="value"/> to a compact JSON string.
     /// Used to produce <c>ParamsJson</c> fields in <see cref="PipeRequest"/>.
     /// </summary>
-    internal static string SerializeJson<T>(T value)
+    public static string SerializeJson<T>(T value)
     {
         return JsonSerializer.Serialize(value, JsonOptions);
     }

@@ -184,6 +184,7 @@ public sealed class PipeConnection : IDisposable
         }
 
         this.disposed = true;
+        this.transport.Dispose();
         this.pipe.Dispose();
     }
 
