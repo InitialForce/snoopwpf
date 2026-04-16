@@ -34,6 +34,7 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
     private readonly Dispatcher dispatcher;
     private readonly object? rootTarget;
     private readonly SnoopInspectorOptions options;
+    private readonly SessionPolicy? sessionPolicy;
 
     private readonly NodeRegistry nodeRegistry;
     private readonly CursorManager cursorManager;
@@ -82,6 +83,7 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
         this.dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
         this.rootTarget = rootTarget;
         this.options = options ?? new SnoopInspectorOptions();
+        this.sessionPolicy = sessionPolicy;
 
         if (sessionPolicy is not null)
         {
@@ -1124,6 +1126,13 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
     {
         return this.RunOnDispatcherAsync(() =>
         {
+            // FX-M8: enforce MaxTier before any mutation.
+            var tierResult = this.EnsureMutationTier();
+            if (tierResult is not null)
+            {
+                return tierResult;
+            }
+
             // Guard: mutation must be explicitly enabled.
             if (!this.options.EnableMutation)
             {
@@ -1655,6 +1664,13 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
 
         return this.RunOnDispatcherAsync(() =>
         {
+            // FX-M8: enforce MaxTier before any mutation.
+            var tierResult = this.EnsureMutationTier();
+            if (tierResult is not null)
+            {
+                return tierResult;
+            }
+
             // Guard: mutation must be explicitly enabled.
             if (!this.options.EnableMutation)
             {
@@ -1962,6 +1978,13 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
 
         return this.RunOnDispatcherAsync(() =>
         {
+            // FX-M8: enforce MaxTier before any mutation.
+            var tierResult = this.EnsureMutationTier();
+            if (tierResult is not null)
+            {
+                return tierResult;
+            }
+
             // Guard: mutation must be explicitly enabled.
             if (!this.options.EnableMutation)
             {
@@ -2100,6 +2123,13 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
 
         return this.RunOnDispatcherAsync(() =>
         {
+            // FX-M8: enforce MaxTier before any mutation.
+            var tierResult = this.EnsureMutationTier();
+            if (tierResult is not null)
+            {
+                return tierResult;
+            }
+
             // Guard: mutation must be explicitly enabled.
             if (!this.options.EnableMutation)
             {
@@ -2234,6 +2264,13 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
 
         return this.RunOnDispatcherAsync(() =>
         {
+            // FX-M8: enforce MaxTier before any mutation.
+            var tierResult = this.EnsureMutationTier();
+            if (tierResult is not null)
+            {
+                return tierResult;
+            }
+
             if (!this.options.EnableMutation)
             {
                 throw new SnoopException(
@@ -2314,6 +2351,13 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
 
         return this.RunOnDispatcherAsync(() =>
         {
+            // FX-M8: enforce MaxTier before any mutation.
+            var tierResult = this.EnsureMutationTier();
+            if (tierResult is not null)
+            {
+                return tierResult;
+            }
+
             // Guard: mutation must be explicitly enabled (L0 execute = mutation).
             if (!this.options.EnableMutation)
             {
@@ -2418,6 +2462,13 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
 
         return this.RunOnDispatcherAsync(() =>
         {
+            // FX-M8: enforce MaxTier before any mutation.
+            var tierResult = this.EnsureMutationTier();
+            if (tierResult is not null)
+            {
+                return tierResult;
+            }
+
             // Guard: automation must be explicitly enabled (L1 requires EnableAutomation).
             if (!this.options.EnableAutomation)
             {
@@ -2519,6 +2570,13 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
 
         return this.RunOnDispatcherAsync(() =>
         {
+            // FX-M8: enforce MaxTier before any mutation.
+            var tierResult = this.EnsureMutationTier();
+            if (tierResult is not null)
+            {
+                return tierResult;
+            }
+
             // Guard: automation must be explicitly enabled (L1 requires EnableAutomation).
             if (!this.options.EnableAutomation)
             {
@@ -2629,6 +2687,13 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
 
         return this.RunOnDispatcherAsync(() =>
         {
+            // FX-M8: enforce MaxTier before any mutation.
+            var tierResult = this.EnsureMutationTier();
+            if (tierResult is not null)
+            {
+                return tierResult;
+            }
+
             // Guard: automation must be explicitly enabled (L1 requires EnableAutomation).
             if (!this.options.EnableAutomation)
             {
@@ -3313,6 +3378,28 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
         {
             throw new ObjectDisposedException(nameof(SnoopInspector));
         }
+    }
+
+    /// <summary>
+    /// FX-M8: Returns a TierMismatch failure result if the session policy's MaxTier is below
+    /// <see cref="InputTier.L1"/> (mutation tier). Call at the top of every mutation method.
+    /// Returns <see langword="null"/> when the tier check passes.
+    /// </summary>
+    private StateDeltaDto? EnsureMutationTier()
+    {
+        if (this.sessionPolicy is not null && this.sessionPolicy.MaxTier < InputTier.L1)
+        {
+            return new StateDeltaDto
+            {
+                Success = false,
+                ElementVisible = false,
+                StateChanged = false,
+                FailureReason = FailureReason.TierMismatch,
+                Suggestion = StateDelta.FailureReasonDescriptor.Suggest(FailureReason.TierMismatch, null),
+            };
+        }
+
+        return null;
     }
 
     private object GetEffectiveRootTarget()
