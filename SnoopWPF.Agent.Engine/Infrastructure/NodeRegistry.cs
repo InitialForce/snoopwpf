@@ -119,6 +119,20 @@ public sealed class NodeRegistry : IDisposable
     }
 
     /// <summary>
+    /// Returns the <see cref="WeakReference{T}"/> for a node ID without performing a
+    /// strong-reference resolve.  Callers that need to poll the same object repeatedly
+    /// (e.g. WaitForPropertyAsync) should hold this weak reference and call
+    /// <see cref="WeakReference{T}.TryGetTarget"/> each poll to avoid creating new
+    /// registry entries on every iteration (FX6-A3).
+    /// Returns <see langword="null"/> if the ID is unknown.
+    /// </summary>
+    public WeakReference<object>? TryGetWeakReference(string id)
+    {
+        ThrowIfDisposed(this.disposed, this);
+        return this.reverse.TryGetValue(id, out var weakRef) ? weakRef : null;
+    }
+
+    /// <summary>
     /// Resolves a node ID back to the live WPF object.
     /// Returns null if the object has been garbage collected or the ID is unknown.
     /// </summary>

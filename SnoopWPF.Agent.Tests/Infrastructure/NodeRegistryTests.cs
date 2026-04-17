@@ -178,4 +178,55 @@ public class NodeRegistryTests : IDisposable
         var obj = new object();
         id = this.registry.GetOrCreateId(obj);
     }
+
+    // -----------------------------------------------------------------------
+    // FX6-A3: TryGetWeakReference — stable registry under repeated polls
+    // -----------------------------------------------------------------------
+
+    [Test]
+    public void TryGetWeakReference_ReturnsWeakRefForKnownId()
+    {
+        var obj = new object();
+        var id = this.registry.GetOrCreateId(obj);
+
+        var weakRef = this.registry.TryGetWeakReference(id);
+
+        Assert.That(weakRef, Is.Not.Null);
+        Assert.That(weakRef!.TryGetTarget(out var resolved), Is.True);
+        Assert.That(resolved, Is.SameAs(obj));
+    }
+
+    [Test]
+    public void TryGetWeakReference_ReturnsNullForUnknownId()
+    {
+        var weakRef = this.registry.TryGetWeakReference("0:999999");
+        Assert.That(weakRef, Is.Null);
+    }
+
+    [Test]
+    public void DoesNotLeakRegistryEntries()
+    {
+        // Acceptance for FX6-A3: after the initial registration, repeated calls to
+        // TryGetWeakReference must NOT increment the registry version or add entries.
+        // This simulates what WaitForPropertyAsync does: register once, then poll via WeakRef.
+        var obj = new object();
+        var id = this.registry.GetOrCreateId(obj);
+
+        var versionAfterFirstRegister = this.registry.Version;
+
+        // Simulate 1000 poll iterations that use the weak reference (no GetOrCreateId).
+        var weakRef = this.registry.TryGetWeakReference(id);
+        for (var i = 0; i < 1000; i++)
+        {
+            weakRef!.TryGetTarget(out var target);
+            _ = target; // use the result
+        }
+
+        var versionAfter1000Polls = this.registry.Version;
+
+        Assert.That(
+            versionAfter1000Polls,
+            Is.EqualTo(versionAfterFirstRegister),
+            "Registry version must not grow when polling via WeakReference (FX6-A3: no OOM).");
+    }
 }

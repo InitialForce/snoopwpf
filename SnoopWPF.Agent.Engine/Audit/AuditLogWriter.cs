@@ -42,7 +42,7 @@ using SnoopWPF.Agent.Contracts.Audit;
 /// The file is created with owner-only ACL (Windows, net8+) so that no other local
 /// accounts can read or tamper with the log.
 /// </summary>
-internal sealed class AuditLogWriter : IAsyncDisposable
+internal sealed class AuditLogWriter : IAsyncDisposable, SnoopWPF.Agent.Contracts.IAuditDepthProvider
 {
     private static readonly DataContractJsonSerializerSettings JsonSettings = new DataContractJsonSerializerSettings
     {
@@ -192,6 +192,12 @@ internal sealed class AuditLogWriter : IAsyncDisposable
 
     /// <summary>Exposes the writer end of the internal channel for callers that supply entries.</summary>
     public ChannelWriter<AuditEntry> Writer => this.channel.Writer;
+
+    /// <summary>
+    /// Number of audit entries queued in the channel but not yet written to disk.
+    /// Returns 0 when the queue is empty. Used by <c>wpf_diagnostics</c> (FX6-D3).
+    /// </summary>
+    public int PendingEntryCount => this.channel.Reader.Count;
 
     /// <summary>Returns the session key (32 bytes) — exposed for chain verification in tests.</summary>
     internal byte[] SessionKeyForTest => this.sessionKey;

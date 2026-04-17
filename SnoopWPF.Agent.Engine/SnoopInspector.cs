@@ -3058,6 +3058,14 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
         var pollCount = 0;
         const int MinPollIntervalMs = 50;
 
+        // FX6-A3: resolve the locator to a weak reference ONCE before the poll loop.
+        // Re-resolving on every poll would call LocatorResolver.Resolve which calls
+        // NodeRegistry.GetOrCreateId on each traversed node, creating up to 300 registry
+        // entries per poll × 300 polls = 90 000 entries per 30-second wait — OOM risk.
+        // Instead, resolve once on the first poll, obtain the WeakReference<object> from
+        // NodeRegistry, then poll the weak reference directly on subsequent iterations.
+        WeakReference<object>? elementWeakRef = null;
+
         while (true)
         {
             ct.ThrowIfCancellationRequested();
@@ -3072,8 +3080,31 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
             {
                 var pollResult = await this.RunOnDispatcherAsync(() =>
                 {
-                    var root = this.GetEffectiveRootTarget();
-                    var resolved = this.locatorResolver.TryResolve(locator, root);
+                    // FX6-A3: on first poll, resolve locator → nodeId → WeakReference.
+                    // On subsequent polls, use the cached weak reference directly.
+                    object? resolved;
+                    if (elementWeakRef is null)
+                    {
+                        // First poll: resolve via locator and cache a weak reference.
+                        var root = this.GetEffectiveRootTarget();
+                        resolved = this.locatorResolver.TryResolve(locator, root);
+                        if (resolved is not null)
+                        {
+                            // Retrieve the weak reference from the registry (the locator
+                            // resolver already called GetOrCreateId, so the entry exists).
+                            var nodeId = this.nodeRegistry.GetExistingId(resolved);
+                            if (nodeId is not null)
+                            {
+                                elementWeakRef = this.nodeRegistry.TryGetWeakReference(nodeId);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Subsequent polls: skip tree traversal — just dereference weak ref.
+                        resolved = elementWeakRef.TryGetTarget(out var target) ? target : null;
+                    }
+
                     if (resolved is null)
                     {
                         return new WaitForPropertyPollResult(false, null);
