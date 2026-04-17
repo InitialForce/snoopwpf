@@ -425,7 +425,7 @@ public sealed class HandshakeSecurityTests
                 ProtocolVersion = ProtocolConstants.ProtocolVersion,
                 AgentVersion = "1.0.0",
                 TargetRuntime = "net8.0",
-                ProofHmac = capturedProof, // This was HMAC(key, oldNonce), NOT HMAC(key, newNonce).
+                ProofHmac = capturedProof!, // This was HMAC(key, oldNonce), NOT HMAC(key, newNonce).
             };
             await SendFramedAsync(replayPipes.ClientStream, replayResponse, CancellationToken.None)
                 .ConfigureAwait(false);
