@@ -16,6 +16,7 @@ jobs:
   snoop-suite:
     name: snoop-suite (${{ matrix.target }})
     runs-on: windows-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -62,6 +63,7 @@ jobs:
   brokered-suite:
     name: brokered-suite (net8.0-windows / x64)
     runs-on: windows-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -93,6 +95,7 @@ jobs:
   verigui-harness:
     name: verigui-harness (net8.0-windows)
     runs-on: windows-latest
+    timeout-minutes: 10
     needs: snoop-suite
 
     steps:
