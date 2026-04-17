@@ -149,7 +149,7 @@ live in the consuming application (`UiMcpHost`, `SnoopWPF.SampleBroker`, etc.).
 Consume from the GitHub Packages feed (M2-18):
 
 ```xml
-<PackageReference Include="SnoopWPF.Agent.Server" Version="5.0.0-*" />     <!-- target side -->
-<PackageReference Include="SnoopWPF.Agent.BrokerHost" Version="5.0.0-*" /> <!-- broker side -->
-<PackageReference Include="SnoopWPF.Agent.Remote" Version="5.0.0-*" />     <!-- broker side -->
+<PackageReference Include="SnoopWPF.Agent" Version="6.0.0-*" />            <!-- target side -->
+<PackageReference Include="SnoopWPF.Agent.BrokerHost" Version="6.0.0-*" /> <!-- broker side -->
+<PackageReference Include="SnoopWPF.Agent.Remote" Version="6.0.0-*" />     <!-- broker side -->
 ```

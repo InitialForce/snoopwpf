@@ -30,15 +30,17 @@
         <PackageTags>wpf;mcp;snoop;agent;inspector;claude;ai;debug;visualtree</PackageTags>
         <PackageLicenseFile>License.txt</PackageLicenseFile>
         <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageIcon>snoop.png</PackageIcon>
         <PackageProjectUrl>https://github.com/InitialForce/snoopwpf</PackageProjectUrl>
         <RepositoryUrl>https://github.com/InitialForce/snoopwpf</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
     </PropertyGroup>
 
-    <!-- NuGet pack: include license and readme from repo root -->
+    <!-- NuGet pack: include license, readme, and icon from repo root -->
     <ItemGroup>
         <None Include="../License.txt" Pack="true" PackagePath="/" />
         <None Include="../README.md" Pack="true" PackagePath="/" Condition="Exists('../README.md')" />
+        <None Include="../Artwork/snoop.png" Pack="true" PackagePath="/" />
     </ItemGroup>
 
     <!-- Flatten Engine, Tools, and Contracts DLLs into lib/ instead of listing as deps -->
