@@ -47,6 +47,17 @@
         <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
     </PropertyGroup>
 
+    <!-- Version (FX6-H5): align local builds with v6.2.0-rc1 git tag.
+         UpdateVersionProperties=false prevents GitVersion.MsBuild from overwriting
+         the explicitly declared Version. CI pipelines can re-enable GitVersion by
+         setting UpdateVersionProperties=true on the build agent.
+         The dot-separated suffix (rc.1) follows SemVer 2.0 conventions for NuGet. -->
+    <PropertyGroup>
+        <VersionPrefix>6.2.0</VersionPrefix>
+        <VersionSuffix>rc.1</VersionSuffix>
+        <UpdateVersionProperties>false</UpdateVersionProperties>
+    </PropertyGroup>
+
     <!-- Assembly info -->
     <PropertyGroup>
         <GenerateAssemblyInfo>true</GenerateAssemblyInfo>

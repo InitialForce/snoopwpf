@@ -95,7 +95,7 @@ public sealed class GetPropertiesPerfTests : IDisposable
     public void GetPropertiesAsync_IncludeDefaultsFalse_P95Under20Ms()
     {
         // Warm up (fill JIT, populate cursor snapshot).
-        var rootId = GetRootNodeId();
+        var rootId = this.GetRootNodeId();
         this.inspector.GetPropertiesAsync(rootId, null, null, includeDefaults: false, null, 50, default)
             .GetAwaiter().GetResult();
 
@@ -131,7 +131,7 @@ public sealed class GetPropertiesPerfTests : IDisposable
     public void GetPropertiesAsync_IncludeDefaultsTrue_P95Under50Ms()
     {
         // Warm up.
-        var rootId = GetRootNodeId();
+        var rootId = this.GetRootNodeId();
         this.inspector.GetPropertiesAsync(rootId, null, null, includeDefaults: true, null, 50, default)
             .GetAwaiter().GetResult();
 
@@ -167,7 +167,7 @@ public sealed class GetPropertiesPerfTests : IDisposable
     [Test]
     public void GetPropertiesAsync_ReturnsProperties()
     {
-        var rootId = GetRootNodeId();
+        var rootId = this.GetRootNodeId();
         var page = this.inspector.GetPropertiesAsync(
                 rootId, null, null, includeDefaults: true, null, 50, default)
             .GetAwaiter().GetResult();

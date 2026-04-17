@@ -472,6 +472,7 @@ public sealed class PromptInjectionGuardWiringTests : IDisposable
     /// A <see cref="DependencyObject"/> whose <see cref="ToString"/> returns a fixed string.
     /// Used to inject adversarial content into the visual/logical tree DisplayName path.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1812:Avoid uninstantiated internal classes", Justification = "Instantiated via reflection/test fixture")]
     private sealed class InjectionToStringStub : DependencyObject
     {
         private readonly string toStringValue;
