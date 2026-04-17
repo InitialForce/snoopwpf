@@ -5,6 +5,9 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+#if NET6_0_OR_GREATER
+using System.Buffers.Binary;
+#endif
 
 /// <summary>
 /// Framed JSON protocol helpers: {4-byte LE length}{UTF-8 JSON}.
@@ -26,7 +29,17 @@ internal static class JsonFramedSerializer
             throw new InvalidOperationException($"Frame size {payload.Length} exceeds maximum {MaxFrameSize}.");
         }
 
-        var header = BitConverter.GetBytes(payload.Length); // LE on all .NET platforms
+        var header = new byte[4];
+#if NET6_0_OR_GREATER
+        BinaryPrimitives.WriteInt32LittleEndian(header, payload.Length);
+#else
+        // Explicit little-endian encoding, portable across any endianness.
+        var len = payload.Length;
+        header[0] = (byte)(len & 0xFF);
+        header[1] = (byte)((len >> 8) & 0xFF);
+        header[2] = (byte)((len >> 16) & 0xFF);
+        header[3] = (byte)((len >> 24) & 0xFF);
+#endif
         await stream.WriteAsync(header, 0, 4, ct).ConfigureAwait(false);
         await stream.WriteAsync(payload, 0, payload.Length, ct).ConfigureAwait(false);
         await stream.FlushAsync(ct).ConfigureAwait(false);
@@ -47,7 +60,12 @@ internal static class JsonFramedSerializer
             throw new IOException("Unexpected EOF reading frame header.");
         }
 
-        var length = BitConverter.ToInt32(header, 0);
+#if NET6_0_OR_GREATER
+        var length = BinaryPrimitives.ReadInt32LittleEndian(header);
+#else
+        // Explicit little-endian decoding, portable across any endianness.
+        var length = header[0] | (header[1] << 8) | (header[2] << 16) | (header[3] << 24);
+#endif
         if (length < 0 || length > MaxFrameSize)
         {
             throw new InvalidOperationException($"Frame length {length} is out of range (max {MaxFrameSize}).");
