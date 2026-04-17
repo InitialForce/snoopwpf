@@ -146,7 +146,10 @@ public class CaptureScreenshotToolTests
         var imageBlock = fetchResult.Content[1] as ImageContentBlock;
         Assert.That(imageBlock, Is.Not.Null, "wpf_fetch_blob must return an ImageContentBlock for image/png");
         Assert.That(imageBlock!.MimeType, Is.EqualTo("image/png"));
-        Assert.That(imageBlock.Data.ToArray(), Is.EqualTo(fakePngBytes));
+        // ImageContentBlock.Data is base64-encoded per the MCP SDK contract;
+        // decode before comparing against the raw PNG bytes.
+        var decoded = System.Convert.FromBase64String(System.Text.Encoding.UTF8.GetString(imageBlock.Data.ToArray()));
+        Assert.That(decoded, Is.EqualTo(fakePngBytes));
     }
 
     [Test]

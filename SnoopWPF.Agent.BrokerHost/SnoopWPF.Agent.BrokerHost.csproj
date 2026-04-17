@@ -45,7 +45,12 @@
     <ProjectReference Include="..\SnoopWPF.Agent.Tools\SnoopWPF.Agent.Tools.csproj">
       <PrivateAssets>all</PrivateAssets>
     </ProjectReference>
-    <!-- Tools → Engine: Engine DLL must also ship since Tools types reference it. -->
+    <!-- BrokerHost references Engine.BlobStore for broker-local blob caching
+         (CaptureScreenshot/FetchBlob). Engine.dll ships in lib/ via
+         PackBrokerReferencedProjectOutputs. The architectural invariant is that
+         BrokerHost must never instantiate AuditLogWriter (audit is target-only,
+         M1-13 / B-5); asserted by BrokerHostTests via IL scan, not by forbidding
+         the Engine reference wholesale. -->
     <ProjectReference Include="..\SnoopWPF.Agent.Engine\SnoopWPF.Agent.Engine.csproj">
       <PrivateAssets>all</PrivateAssets>
     </ProjectReference>

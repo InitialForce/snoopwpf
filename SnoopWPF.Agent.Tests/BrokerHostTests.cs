@@ -9,6 +9,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text;
 using NUnit.Framework;
 using SnoopWPF.Agent.BrokerHost;
 
@@ -84,44 +85,26 @@ public sealed class BrokerHostTests
     // -------------------------------------------------------------------------
 
     /// <summary>
-    /// Validates that <c>SnoopWPF.Agent.BrokerHost.dll</c> does NOT reference
-    /// <c>AuditLogWriter</c> anywhere in its compiled IL.
+    /// Validates that <c>SnoopWPF.Agent.BrokerHost.dll</c> does NOT instantiate or
+    /// reference <c>AuditLogWriter</c> anywhere in its compiled IL.
     ///
-    /// Rationale: audit logging is target-only (M1-13 / B-5). The broker must never
-    /// instantiate <c>AuditLogWriter</c> because the broker never directly accesses WPF
-    /// state — it only sees anonymised MCP tool calls.
+    /// Rationale: audit logging is target-only (M1-13 / B-5). The broker never directly
+    /// accesses WPF state — it only sees anonymised MCP tool calls — so it must never
+    /// instantiate <c>AuditLogWriter</c>.
+    ///
+    /// Note: BrokerHost DOES legitimately reference <see cref="BlobStore"/> from Engine
+    /// for broker-local screenshot caching (FX6-B1). We therefore cannot forbid the
+    /// Engine assembly wholesale; instead we scan IL for <c>AuditLogWriter</c> type
+    /// references directly.
     /// </summary>
     [Test]
     public void BrokerHost_DoesNotInstantiate_AuditLogWriter()
     {
-        // Load the BrokerHost assembly and scan all method bodies for references
-        // to AuditLogWriter. We use reflection to enumerate types and methods,
-        // then check the assembly's referenced assemblies for Engine (where
-        // AuditLogWriter lives). If Engine is not even referenced, the invariant is
-        // trivially satisfied.
-
         var brokerHostAssembly = typeof(BrokerHost).Assembly;
-
-        // AuditLogWriter lives in SnoopWPF.Agent.Engine.
-        const string engineAssemblyName = "SnoopWPF.Agent.Engine";
         const string auditLogWriterTypeName = "SnoopWPF.Agent.Engine.Audit.AuditLogWriter";
 
-        // Step 1: BrokerHost must not reference the Engine assembly at all
-        //         (which would be required to call AuditLogWriter).
-        var referencedAssemblyNames = brokerHostAssembly.GetReferencedAssemblies()
-            .Select(r => r.Name)
-            .ToList();
-
-        Assert.That(
-            referencedAssemblyNames,
-            Does.Not.Contain(engineAssemblyName),
-            $"BrokerHost assembly must not reference {engineAssemblyName} " +
-            "(audit is target-only — M1-13 / B-5).");
-
-        // Step 2: None of the types defined in BrokerHost should contain
-        //         a string reference to 'AuditLogWriter' in their names or fields.
-        //         This is a belt-and-suspenders check in case the engine is
-        //         added as a transitive dependency in the future.
+        // Step 1: None of the types defined in BrokerHost should contain
+        //         'AuditLogWriter' in their names or field types.
         foreach (var type in brokerHostAssembly.GetTypes())
         {
             Assert.That(
@@ -138,7 +121,37 @@ public sealed class BrokerHostTests
                     Does.Not.Contain(auditLogWriterTypeName),
                     $"BrokerHost field '{type.FullName}.{field.Name}' must not be of type AuditLogWriter.");
             }
+
+            foreach (var method in type.GetMethods(
+                BindingFlags.Public | BindingFlags.NonPublic |
+                BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly))
+            {
+                // Check method signatures (return type + parameter types) for AuditLogWriter.
+                Assert.That(
+                    method.ReturnType.FullName,
+                    Does.Not.Contain(auditLogWriterTypeName),
+                    $"BrokerHost method '{type.FullName}.{method.Name}' must not return AuditLogWriter.");
+
+                foreach (var parameter in method.GetParameters())
+                {
+                    Assert.That(
+                        parameter.ParameterType.FullName,
+                        Does.Not.Contain(auditLogWriterTypeName),
+                        $"BrokerHost method '{type.FullName}.{method.Name}' must not take AuditLogWriter as parameter.");
+                }
+            }
         }
+
+        // Step 2: Scan raw IL bytes of the BrokerHost assembly for the AuditLogWriter
+        //         type name. Any call site, field ref, or typeof(...) would emit the
+        //         full type name string into the assembly's metadata tables.
+        var assemblyBytes = File.ReadAllBytes(brokerHostAssembly.Location);
+        var assemblyText = Encoding.UTF8.GetString(assemblyBytes);
+        Assert.That(
+            assemblyText,
+            Does.Not.Contain("AuditLogWriter"),
+            "BrokerHost.dll IL must not contain any reference to AuditLogWriter " +
+            "(audit is target-only — M1-13 / B-5).");
     }
 
     // -------------------------------------------------------------------------
