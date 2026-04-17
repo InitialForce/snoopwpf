@@ -181,7 +181,11 @@ public static class DtoProjection
             var dc = fe.DataContext;
             dto.DataContextIsNull = dc is null;
             dto.DataContextType = dc?.GetType().FullName ?? string.Empty;
-            dto.ResolvedValue = dc?.ToString();
+            // ADV-PI: DataContext.ToString() is user-controlled (ViewModel output from the
+            // target application).  Wrap in trust-boundary markers so injected prompt text
+            // in ResolvedValue cannot steer the LLM consuming wpf_get_binding_info responses
+            // (5x5 report #6, ADV-C1/C2).
+            dto.ResolvedValue = dc is null ? null : PromptInjectionGuard.Quote(dc.ToString());
         }
 
         return dto;

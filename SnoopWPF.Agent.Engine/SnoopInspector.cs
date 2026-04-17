@@ -340,7 +340,10 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
                         {
                             NodeId = id,
                             TypeName = obj.GetType().Name,
-                            DisplayName = obj.ToString() ?? obj.GetType().Name,
+                            // ADV-PI: obj.ToString() is user-controlled (target-app WPF objects).
+                            // Wrap in trust-boundary markers so the LLM cannot be steered by
+                            // injected prompt text in element display names (5x5 #6, ADV-C1/C2).
+                            DisplayName = PromptInjectionGuard.Quote(obj.ToString()),
                         });
                     }
 
@@ -416,7 +419,8 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
                         NodeId = id,
                         TypeName = obj.GetType().Name,
                         Name = obj is Window win ? win.Title ?? string.Empty : string.Empty,
-                        DisplayName = obj.ToString() ?? obj.GetType().Name,
+                        // ADV-PI: same trust boundary as visual-tree nodes above.
+                        DisplayName = PromptInjectionGuard.Quote(obj.ToString()),
                     });
                 }
 
