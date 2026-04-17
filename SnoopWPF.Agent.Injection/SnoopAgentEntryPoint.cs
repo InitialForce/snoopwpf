@@ -174,6 +174,22 @@ public static class SnoopAgentEntryPoint
             EnableAutomation = false,
             EnableRedaction = true,
         };
+
+#if !NET6_0_OR_GREATER
+        // FX6-Z1: Option B — refuse EnableMutation=true on net462 targets at session start.
+        // AuditLogWriter depends on System.Threading.Channels which is not available on net462.
+        // A mutation session with no audit trail violates the security contract.
+        // See ARCHITECTURE-CHANGE-2026-04-17-Z1-NET462-MUTATION-REFUSED.md.
+        if (injectionAgentOptions.EnableMutation)
+        {
+            throw new SnoopWPF.Agent.Contracts.SnoopException(
+                SnoopWPF.Agent.Contracts.SnoopErrorCode.UnsupportedOnNet462,
+                "EnableMutation=true is not supported when the agent is injected into a .NET Framework 4.6.2 target. " +
+                "The audit log subsystem requires System.Threading.Channels (net6+). " +
+                "A mutation session with no audit trail is not permitted. " +
+                "Use a .NET 6 or later target application to enable mutation.");
+        }
+#endif
         var injectionPolicy = SnoopWPF.Agent.Contracts.SessionPolicy.Create(
             SnoopWPF.Agent.Contracts.SessionMode.Injection,
             injectionAgentOptions);
