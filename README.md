@@ -37,6 +37,18 @@ Badges above reflect the upstream build. Fork CI runs via GitHub Actions on the 
 
 Add that block to `%APPDATA%\Claude\claude_desktop_config.json`, restart Claude Desktop, and start asking questions about your running WPF app.
 
+## Install
+
+The packages are published to [nuget.org](https://www.nuget.org/packages/InitialForce.SnoopAgent):
+
+```bash
+dotnet add package InitialForce.SnoopAgent --version 1.0.0-rc.1 --prerelease
+```
+
+For the full consumer guide — available packages, MCP config snippets, symbol debugging,
+and upgrade instructions from `SnoopWPF.Agent.*` 6.x — see
+**[docs/consuming-nuget.md](docs/consuming-nuget.md)**.
+
 ## Why this fork exists
 
 Modern software engineering increasingly leans on AI coding agents (Claude Code,
