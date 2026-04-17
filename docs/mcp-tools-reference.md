@@ -1146,3 +1146,17 @@ All tool errors return a structured object:
 | `BLOB_NOT_FOUND` | The blob ref key has expired (default 60 s TTL) or was never issued. | Re-run the originating tool to get a fresh ref. |
 | `LOCATOR_AMBIGUOUS` | The WpfLocator or item identifier matched more than one element. | Use a more specific locator (e.g. `$name:` or an index). |
 | `LOCATOR_INVALID` | The WpfLocator string could not be parsed. | Check locator syntax; valid prefixes are `$name:`, `$type:`, `$id:`. |
+
+### failureReason values (action tools)
+
+Action tools (`wpf_click`, `wpf_execute_command`, `wpf_expand_collapse`, `wpf_toggle`,
+`wpf_set_check_state`, `wpf_select_item`, `wpf_set_text_value`, `wpf_set_slider_value`)
+return a `failureReason` string in their response object rather than a top-level error when
+the call is structurally valid but cannot proceed. The `success` field is `false` and
+`suggestion` contains recovery guidance.
+
+| failureReason | Meaning | Typical cause | Suggestion |
+|---------------|---------|---------------|-----------|
+| `CannotExecuteCommand` | `CanExecute` returned `false` for the bound `ICommand`. | The command is not executable in the current application state (e.g. nothing is selected, form is invalid). | Check application state first; use `wpf_get_properties` to inspect relevant state properties before retrying. |
+| `PatternNotSupported` | The element does not expose the required UI Automation pattern. | Invoking `wpf_click` on a non-invokable element (e.g. plain `TextBlock`, `Image`), or `wpf_expand_collapse` / `wpf_toggle` on an element whose peer does not implement the pattern. | Use `wpf_inspect_element` to confirm the element type; choose the appropriate L0 tool (`wpf_execute_command`, `wpf_set_check_state`) instead. |
+| `ElementDisabled` | The UI Automation pattern is supported but the element is disabled (`IsEnabled=false`). | Attempting to invoke, toggle, or expand/collapse a disabled control. Distinct from `PatternNotSupported` (pattern is present but element is not actionable). | Verify `IsEnabled` with `wpf_inspect_element` before acting; the application may need to be in a different state. |
