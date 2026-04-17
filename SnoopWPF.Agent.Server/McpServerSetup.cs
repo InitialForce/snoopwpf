@@ -27,10 +27,11 @@ using SnoopWPF.Agent.Engine.StateDelta;
 /// </summary>
 internal static class McpServerSetup
 {
+    // FX6-C3: PropertyNameCaseInsensitive = false to match DCJS net462 case-sensitive behaviour.
     private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        PropertyNameCaseInsensitive = true,
+        PropertyNameCaseInsensitive = false,
     };
 
     /// <summary>

@@ -16,11 +16,8 @@ using SnoopWPF.Agent.Contracts.Protocol;
 /// </summary>
 public sealed class FramedJsonTransport : IDisposable
 {
-    private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        PropertyNameCaseInsensitive = true,
-    };
+    // FX6-C3: use AgentJsonOptions.Framed (case-sensitive) to match DCJS net462 behaviour.
+    private static readonly JsonSerializerOptions JsonOptions = AgentJsonOptions.Framed;
 
     private readonly Stream stream;
 

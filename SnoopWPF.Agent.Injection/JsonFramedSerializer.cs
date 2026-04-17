@@ -126,12 +126,13 @@ internal static class JsonFramedSerializer
     public static T Deserialize<T>(byte[] bytes)
     {
 #if NET6_0_OR_GREATER
+        // FX6-C3: PropertyNameCaseInsensitive = false to match DCJS net462 case-sensitive behaviour.
         var result = System.Text.Json.JsonSerializer.Deserialize<T>(
             bytes,
             new System.Text.Json.JsonSerializerOptions
             {
                 PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase,
-                PropertyNameCaseInsensitive = true,
+                PropertyNameCaseInsensitive = false,
             });
         return result ?? throw new InvalidOperationException("Deserialization returned null.");
 #else
