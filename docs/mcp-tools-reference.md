@@ -760,7 +760,8 @@ Select an item in a `ListBox`, `ComboBox`, or any `Selector` control.
    used. If two or more items match, the call fails with `LOCATOR_AMBIGUOUS`.
 
 Mutation must be enabled (`EnableMutation = true` in `SnoopAgentOptions`). Operates at L0 —
-uses `SetValue` on the dependency property; no raw Win32 input.
+uses `DependencyObject.SetCurrentValue` on the dependency property; no raw Win32 input.
+Uses `DependencyObject.SetCurrentValue` so existing TwoWay bindings and triggers remain intact — setting a value does NOT clear the binding chain.
 
 **Limitations:** Virtualized lists (`VirtualizingStackPanel` with many items) are not supported
 — the item container may not be materialized. Multi-selection controls (`ListBox` with
@@ -772,8 +773,9 @@ uses `SetValue` on the dependency property; no raw Win32 input.
 
 ## wpf_set_text_value
 
-Set the text content of a `TextBox`, `PasswordBox`, or `RichTextBox` via `SetValue` on the
+Set the text content of a `TextBox`, `PasswordBox`, or `RichTextBox` via `SetCurrentValue` on the
 text dependency property (L0). No raw Win32 input is used.
+Uses `DependencyObject.SetCurrentValue` so existing TwoWay bindings and triggers remain intact — setting a value does NOT clear the binding chain.
 
 **Parameters:**
 
@@ -812,8 +814,9 @@ notification path.
 
 ## wpf_set_check_state
 
-Set the checked state of a `CheckBox` or `RadioButton` via `SetValue` on
+Set the checked state of a `CheckBox` or `RadioButton` via `SetCurrentValue` on
 `ToggleButton.IsCheckedProperty` (L0). No raw Win32 input is used.
+Uses `DependencyObject.SetCurrentValue` so existing TwoWay bindings and triggers remain intact — setting a value does NOT clear the binding chain.
 
 **Parameters:**
 
