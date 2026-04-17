@@ -194,30 +194,42 @@ public static class BrokerTargetSpawner
         // Drain stdout and stderr on background tasks.
         // These tasks read and discard output so the child pipe never fills and blocks,
         // and so that no target output reaches the broker's stdio.
-        _ = DrainStreamAsync(process.StandardOutput);
-        _ = DrainStreamAsync(process.StandardError);
+        //
+        // FX5-drainstream-ct: use a per-spawn CTS that is cancelled when the child
+        // process exits (via Process.Exited) so the drain threads are not held open
+        // indefinitely if the child hangs before closing its stdout/stderr handles.
+        var drainCts = new CancellationTokenSource();
+        process.EnableRaisingEvents = true;
+        process.Exited += (_, _) => drainCts.Cancel();
+
+        _ = DrainStreamAsync(process.StandardOutput, drainCts.Token);
+        _ = DrainStreamAsync(process.StandardError, drainCts.Token);
 
         return process;
     }
 
-    private static async Task DrainStreamAsync(StreamReader reader)
+    private static async Task DrainStreamAsync(StreamReader reader, CancellationToken ct)
     {
         try
         {
-            // Read and discard all output; loop until EOF.
-            char[] buffer = new char[4096];
+            // Read and discard all output; loop until EOF or cancellation.
+            Memory<char> buffer = new char[4096];
             while (true)
             {
-                int read = await reader.ReadAsync(buffer, 0, buffer.Length).ConfigureAwait(false);
+                int read = await reader.ReadAsync(buffer, ct).ConfigureAwait(false);
                 if (read == 0)
                 {
                     break;
                 }
             }
         }
+        catch (OperationCanceledException)
+        {
+            // Child exited (or drain was cancelled) — exit cleanly without rethrowing.
+        }
         catch
         {
-            // Best-effort drain — ignore all errors (process may have already exited).
+            // Best-effort drain — ignore all other errors (process may have already exited).
         }
     }
 }
