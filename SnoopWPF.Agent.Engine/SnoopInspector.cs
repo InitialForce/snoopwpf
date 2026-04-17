@@ -1248,7 +1248,11 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
             }
 
             // Apply the value.
-            depObj.SetValue(depProp, convertedValue);
+            // FX2-C8: use SetCurrentValue, not SetValue. SetValue writes at Local priority
+            // which permanently shadows any TwoWay binding on depProp. SetCurrentValue
+            // updates at the current effective priority, cooperating with binding
+            // expressions (matching Snoop Classic behaviour).
+            depObj.SetCurrentValue(depProp, convertedValue);
 
             // Log mutation: nodeId + property name only (NOT values — per security rules).
             System.Diagnostics.Trace.WriteLine(
@@ -1733,7 +1737,8 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
                 ? selector.Items[previousIndex]?.ToString()
                 : null;
 
-            selector.SetValue(System.Windows.Controls.Primitives.Selector.SelectedIndexProperty, resolvedIndex);
+            // FX2-C8: SetCurrentValue preserves TwoWay bindings on SelectedIndex.
+            selector.SetCurrentValue(System.Windows.Controls.Primitives.Selector.SelectedIndexProperty, resolvedIndex);
 
             var newIndex = selector.SelectedIndex;
             var newValue = newIndex >= 0 && newIndex < selector.Items.Count
@@ -2071,7 +2076,8 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
             var previousRaw = toggleButton.IsChecked;
             var previousValue = FormatChecked(previousRaw);
 
-            toggleButton.SetValue(System.Windows.Controls.Primitives.ToggleButton.IsCheckedProperty, desiredState);
+            // FX2-C8: SetCurrentValue preserves TwoWay bindings on IsChecked.
+            toggleButton.SetCurrentValue(System.Windows.Controls.Primitives.ToggleButton.IsCheckedProperty, desiredState);
 
             var newRaw = toggleButton.IsChecked;
             var newValue = FormatChecked(newRaw);
@@ -2170,7 +2176,11 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
             if (depObj is System.Windows.Controls.TextBox textBox)
             {
                 var previousValue = textBox.Text;
-                textBox.SetValue(System.Windows.Controls.TextBox.TextProperty, value);
+
+                // FX2-C8: SetCurrentValue preserves TwoWay bindings on TextBox.Text.
+                // SetValue would write at Local priority, silently breaking any binding
+                // from ViewModel → TextBox.Text after the first mutation.
+                textBox.SetCurrentValue(System.Windows.Controls.TextBox.TextProperty, value);
                 var newValue = textBox.Text;
                 var stateChanged = !string.Equals(previousValue, newValue, System.StringComparison.Ordinal);
 
@@ -2344,7 +2354,8 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
                 targetValue = Math.Max(rangeBase.Minimum, Math.Min(rangeBase.Maximum, value));
             }
 
-            rangeBase.SetValue(System.Windows.Controls.Primitives.RangeBase.ValueProperty, targetValue);
+            // FX2-C8: SetCurrentValue preserves TwoWay bindings on RangeBase.Value (Slider etc.).
+            rangeBase.SetCurrentValue(System.Windows.Controls.Primitives.RangeBase.ValueProperty, targetValue);
 
             var newValue = rangeBase.Value;
             var stateChanged = Math.Abs(previousValue - newValue) > double.Epsilon;
