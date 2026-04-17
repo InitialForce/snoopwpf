@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -92,7 +93,20 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
         }
 
         this.nodeRegistry = new NodeRegistry();
-        this.cursorManager = new CursorManager();
+
+        // FX6-A2: generate a per-session random signing key for cursor node-binding.
+        // Each SnoopInspector instance gets its own 32-byte key so that cursors cannot
+        // be replayed across sessions or against different node contexts.
+#if NET6_0_OR_GREATER
+        var cursorSigningKey = RandomNumberGenerator.GetBytes(32);
+#else
+        var cursorSigningKey = new byte[32];
+        using (var rng = RandomNumberGenerator.Create())
+        {
+            rng.GetBytes(cursorSigningKey);
+        }
+#endif
+        this.cursorManager = new CursorManager(signingKey: cursorSigningKey);
         this.locatorResolver = new LocatorResolver(this.nodeRegistry);
     }
 
@@ -329,7 +343,7 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
         // If we have an existing cursor, serve from snapshot (resolve IDs on Dispatcher).
         if (cursor is not null)
         {
-            var existingPage = this.cursorManager.GetPage(cursor, effectiveTake);
+            var existingPage = this.cursorManager.GetPage(cursor, effectiveTake, nodeId);
 
             if (existingPage.Items.Count > 0 || (!existingPage.HasMore && !existingPage.Stale))
             {
@@ -410,8 +424,8 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
                 });
 
                 var allIds = windows.Select(w => this.nodeRegistry.GetOrCreateId(w)).ToList();
-                var newCursor = this.cursorManager.CreateCursor(allIds);
-                var firstPage = this.cursorManager.GetPage(newCursor, effectiveTake);
+                var newCursor = this.cursorManager.CreateCursor(allIds, nodeId: "ROOT");
+                var firstPage = this.cursorManager.GetPage(newCursor, effectiveTake, nodeId: "ROOT");
 
                 var windowDtos = new List<NodeDto>(firstPage.Items.Count);
                 foreach (var id in firstPage.Items)
@@ -458,9 +472,9 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
                 childIds.Add(this.nodeRegistry.GetOrCreateId(child.Target));
             }
 
-            // Build the first page.
-            var snapshotCursor = this.cursorManager.CreateCursor(childIds);
-            var childPage = this.cursorManager.GetPage(snapshotCursor, effectiveTake);
+            // Build the first page.  FX6-A2: bind cursor to parent nodeId.
+            var snapshotCursor = this.cursorManager.CreateCursor(childIds, nodeId: nodeId);
+            var childPage = this.cursorManager.GetPage(snapshotCursor, effectiveTake, nodeId: nodeId);
 
             // Resolve child items to DTOs.
             var childItemMap = new Dictionary<string, TreeItem>();
@@ -660,8 +674,9 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
             // Paginate using index-based cursor snapshot.
             // Honor cursor: re-use existing snapshot when provided; create one only on first call.
             var nodeIds = allDtos.Select((_, i) => i.ToString()).ToList();
-            var cursorToken = !string.IsNullOrEmpty(cursor) ? cursor : this.cursorManager.CreateCursor(nodeIds);
-            var page = this.cursorManager.GetPage(cursorToken, effectiveTake);
+            // FX6-A2: bind cursor to element nodeId to prevent cross-node replay.
+            var cursorToken = !string.IsNullOrEmpty(cursor) ? cursor : this.cursorManager.CreateCursor(nodeIds, nodeId: nodeId);
+            var page = this.cursorManager.GetPage(cursorToken, effectiveTake, nodeId: nodeId);
 
             var pageItems = new List<PropertyDto>(page.Items.Count);
             foreach (var idxStr in page.Items)
@@ -804,9 +819,11 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
             }).ToList();
 
             // Paginate. Honor cursor: re-use existing snapshot when provided; create one only on first call.
+            // FX6-A2: bind cursor to nodeId (or "ROOT" for whole-tree diagnostics).
+            var diagCursorNodeId = nodeId ?? "ROOT";
             var snapIds = dtos.Select((_, i) => i.ToString()).ToList();
-            var cursorToken = !string.IsNullOrEmpty(cursor) ? cursor : this.cursorManager.CreateCursor(snapIds);
-            var page = this.cursorManager.GetPage(cursorToken, effectiveTake);
+            var cursorToken = !string.IsNullOrEmpty(cursor) ? cursor : this.cursorManager.CreateCursor(snapIds, nodeId: diagCursorNodeId);
+            var page = this.cursorManager.GetPage(cursorToken, effectiveTake, nodeId: diagCursorNodeId);
 
             var pageItems = new List<DiagnosticItemDto>(page.Items.Count);
             foreach (var idxStr in page.Items)
@@ -1363,9 +1380,11 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
 
             // Paginate using index-based cursor snapshot.
             // Honor cursor: re-use existing snapshot when provided; create one only on first call.
+            // FX6-A2: bind cursor to nodeId (or "ROOT" for application-level resources).
+            var resCursorNodeId = nodeId ?? "ROOT";
             var snapIds = resources.Select((_, i) => i.ToString()).ToList();
-            var cursorToken = !string.IsNullOrEmpty(cursor) ? cursor : this.cursorManager.CreateCursor(snapIds);
-            var page = this.cursorManager.GetPage(cursorToken, effectiveTake);
+            var cursorToken = !string.IsNullOrEmpty(cursor) ? cursor : this.cursorManager.CreateCursor(snapIds, nodeId: resCursorNodeId);
+            var page = this.cursorManager.GetPage(cursorToken, effectiveTake, nodeId: resCursorNodeId);
 
             var pageItems = new List<ResourceDto>(page.Items.Count);
             foreach (var idxStr in page.Items)

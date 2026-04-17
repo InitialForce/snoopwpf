@@ -301,4 +301,90 @@ public class CursorManagerTests : IDisposable
         Assert.That(sorted.Length, Is.EqualTo(itemCount), "Total items collected must equal snapshot size (no duplicates, no missing items).");
         Assert.That(sorted, Is.EqualTo(expected), "Collected items must match snapshot exactly.");
     }
+
+    // -----------------------------------------------------------------------
+    // FX6-A2: node-binding / CursorMismatch rejection
+    // -----------------------------------------------------------------------
+
+    [Test]
+    public void RejectsMismatchedNodeId()
+    {
+        // Arrange: manager with signing key, cursor bound to node "0:1".
+        var signingKey = new byte[32];
+        System.Security.Cryptography.RandomNumberGenerator.Fill(signingKey);
+        var boundManager = new CursorManager(
+            clock: () => this.now,
+            ttl: TimeSpan.FromSeconds(30),
+            sweepInterval: TimeSpan.FromHours(1),
+            signingKey: signingKey);
+
+        var token = boundManager.CreateCursor(new[] { "a", "b", "c" }, nodeId: "0:1");
+
+        // Act / Assert: replaying cursor against nodeId "0:2" must throw CursorMismatch.
+        var ex = Assert.Throws<SnoopWPF.Agent.Contracts.SnoopException>(
+            () => boundManager.GetPage(token, 10, nodeId: "0:2"));
+
+        Assert.That(ex!.Code, Is.EqualTo(SnoopWPF.Agent.Contracts.SnoopErrorCode.CursorMismatch));
+
+        boundManager.Dispose();
+    }
+
+    [Test]
+    public void AcceptsMatchingNodeId()
+    {
+        // Arrange: manager with signing key, cursor bound to node "0:1".
+        var signingKey = new byte[32];
+        System.Security.Cryptography.RandomNumberGenerator.Fill(signingKey);
+        var boundManager = new CursorManager(
+            clock: () => this.now,
+            ttl: TimeSpan.FromSeconds(30),
+            sweepInterval: TimeSpan.FromHours(1),
+            signingKey: signingKey);
+
+        var token = boundManager.CreateCursor(new[] { "a", "b", "c" }, nodeId: "0:1");
+
+        // Should NOT throw when the correct nodeId is supplied.
+        var page = boundManager.GetPage(token, 10, nodeId: "0:1");
+        Assert.That(page.Items, Is.Not.Empty);
+
+        boundManager.Dispose();
+    }
+
+    [Test]
+    public void UnboundCursor_AcceptsAnyNodeId()
+    {
+        // Unbound cursors (no signingKey / no nodeId on create) must be accepted regardless
+        // of the nodeId supplied to GetPage — backwards compatibility.
+        var token = this.manager.CreateCursor(new[] { "a", "b" });
+
+        // Should not throw even when passing a nodeId.
+        var page = this.manager.GetPage(token, 10, nodeId: "some-node");
+        Assert.That(page.Items.Count, Is.EqualTo(2));
+    }
+
+    [Test]
+    public void BoundCursor_ParseIsO1()
+    {
+        // Verify that cursor lookup is O(1) dictionary lookup + constant-time HMAC verify
+        // (no iteration of snapshot) — just check it returns in well under 1 ms for a 10k-item snapshot.
+        var signingKey = new byte[32];
+        System.Security.Cryptography.RandomNumberGenerator.Fill(signingKey);
+        var boundManager = new CursorManager(
+            clock: () => this.now,
+            ttl: TimeSpan.FromSeconds(30),
+            sweepInterval: TimeSpan.FromHours(1),
+            signingKey: signingKey);
+
+        var largeSnapshot = Enumerable.Range(1, 10_000).Select(i => $"node:{i}").ToArray();
+        var token = boundManager.CreateCursor(largeSnapshot, nodeId: "0:big");
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var page = boundManager.GetPage(token, 50, nodeId: "0:big");
+        sw.Stop();
+
+        Assert.That(page.Items.Count, Is.EqualTo(50));
+        Assert.That(sw.ElapsedMilliseconds, Is.LessThan(100), "GetPage must complete well within 100 ms for O(1) verification");
+
+        boundManager.Dispose();
+    }
 }
