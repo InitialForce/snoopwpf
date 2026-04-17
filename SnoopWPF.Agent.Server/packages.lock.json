@@ -285,6 +285,14 @@
           "SnoopWPF.Agent.Contracts": "[1.0.0, )"
         }
       },
+      "snoopwpf.agent.injection": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.NETFramework.ReferenceAssemblies.net462": "[1.0.3, )",
+          "SnoopWPF.Agent.Contracts": "[1.0.0, )",
+          "SnoopWPF.Agent.Engine": "[1.0.0, )"
+        }
+      },
       "snoopwpf.agent.tools": {
         "type": "Project",
         "dependencies": {

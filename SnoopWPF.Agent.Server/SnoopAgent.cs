@@ -254,6 +254,122 @@ public static class SnoopAgent
         }
     }
 
+    /// <summary>
+    /// Starts the SnoopWPF agent in brokered-client mode: the WPF target connects to a
+    /// <b>broker-owned</b> named pipe as the <see cref="System.IO.Pipes.NamedPipeClientStream"/>
+    /// client, completes the nonce+HMAC handshake, and serves <c>PipeRequest</c> frames against
+    /// a local <c>SnoopInspector</c>. This is the counterpart to
+    /// <c>SnoopWPF.Agent.BrokerHost.BrokerHost.Start</c>, which owns the
+    /// <see cref="System.IO.Pipes.NamedPipeServerStream"/> on the broker side.
+    /// </summary>
+    /// <remarks>
+    /// Use this overload when the target WPF process is spawned by a broker (e.g.
+    /// MotionCatalyst launched by <c>UiMcpHost</c> with <c>--ui-mcp-pipe=&lt;name&gt;</c>)
+    /// and the broker exposes the 18 <c>wpf_*</c> tool proxies on its own MCP surface.
+    /// Use <see cref="StartBrokered"/> instead when the WPF target owns the pipe server and
+    /// runs its own MCP server on the pipe.
+    /// </remarks>
+    /// <param name="app">The WPF application hosting the agent.</param>
+    /// <param name="pipeName">Named-pipe name the broker created (target connects as client).</param>
+    /// <param name="sessionToken">Hex-encoded session token for HMAC-SHA256 handshake.</param>
+    /// <param name="options">Optional configuration. Mutation/automation tiers honored.</param>
+    /// <returns>A <see cref="SnoopAgentHandle"/> that can be disposed to stop the agent.</returns>
+    public static SnoopAgentHandle StartBrokeredClient(
+        System.Windows.Application app,
+        string pipeName,
+        string sessionToken,
+        SnoopAgentOptions? options = null)
+    {
+        if (app is null)
+        {
+            throw new ArgumentNullException(nameof(app));
+        }
+
+        if (string.IsNullOrEmpty(pipeName))
+        {
+            throw new ArgumentException("pipeName must not be null or empty.", nameof(pipeName));
+        }
+
+        if (string.IsNullOrEmpty(sessionToken))
+        {
+            throw new ArgumentException("sessionToken must not be null or empty.", nameof(sessionToken));
+        }
+
+        options ??= new SnoopAgentOptions();
+
+        lock (Lock)
+        {
+            if (activeHandle != null)
+            {
+                throw new InvalidOperationException(
+                    "SnoopAgent is already running. Dispose the existing handle before calling StartBrokeredClient() again.");
+            }
+
+            var dispatcher = app.Dispatcher
+                ?? throw new InvalidOperationException(
+                    "SnoopAgent.StartBrokeredClient() requires a valid WPF Application with a Dispatcher.");
+
+            var policy = SessionPolicy.Create(SessionMode.Brokered, options);
+
+            var inspectorOptions = new SnoopInspectorOptions
+            {
+                TimeoutMs = options.TimeoutMs,
+                EnableMutation = policy.EnableMutation,
+                EnableRedaction = policy.EnableRedaction,
+                AllowSensitiveRetention = policy.AllowSensitiveRetention,
+                EnableAutomation = policy.EnableAutomation,
+            };
+
+            var inspector = new SnoopInspector(
+                dispatcher,
+                rootTarget: app,
+                options: inspectorOptions,
+                sessionPolicy: policy);
+
+            var cts = new CancellationTokenSource();
+            var handle = new SnoopAgentHandle(cts, inspector, policy);
+            handle.PipeName = pipeName;
+            handle.SessionToken = sessionToken;
+            activeHandle = handle;
+
+            if (!string.IsNullOrEmpty(options.AuditLogPath))
+            {
+                handle.AuditWriter = new AuditLogWriter(options.AuditLogPath);
+            }
+
+            app.Exit += (_, _) => handle.Dispose();
+
+            byte[] tokenBytes = Encoding.UTF8.GetBytes(sessionToken);
+            var pipeClient = new SnoopWPF.Agent.Injection.PipeAgentServer(pipeName, tokenBytes, inspector);
+            // PipeAgentServer holds its own copy; zero our buffer as defense-in-depth.
+            Array.Clear(tokenBytes, 0, tokenBytes.Length);
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await pipeClient.RunAsync(cts.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Normal shutdown.
+                }
+                catch (Exception ex)
+                {
+                    Trace.TraceError(
+                        "SnoopWPF.Agent (BrokeredClient) error: {0}: {1}",
+                        ex.GetType().FullName, ex.Message);
+                }
+                finally
+                {
+                    pipeClient.Dispose();
+                }
+            });
+
+            return handle;
+        }
+    }
+
     /// <summary>Called by <see cref="SnoopAgentHandle.Dispose"/> to clear the active handle.</summary>
     internal static void ClearHandle()
     {

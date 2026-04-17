@@ -14,11 +14,21 @@ using SnoopWPF.Agent.Contracts.Protocol;
 using SnoopWPF.Agent.Engine;
 
 /// <summary>
-/// Connects to the host-side named pipe (the host owns the NamedPipeServerStream; the injected agent is the client).
+/// Connects to the host-side named pipe (the host owns the NamedPipeServerStream; the agent is the client).
 /// Performs handshake, then routes incoming <see cref="PipeRequest"/> frames to the local <see cref="SnoopInspector"/>
 /// and sends <see cref="PipeResponse"/> frames back.
 /// </summary>
-internal sealed class PipeAgentServer : IDisposable
+/// <remarks>
+/// Used by two callers:
+/// <list type="bullet">
+///   <item>The CLR-injected agent entry point (<see cref="SnoopAgentEntryPoint"/>), which runs inside a target
+///         after GenericInjector has loaded the assembly.</item>
+///   <item><c>SnoopAgent.StartBrokeredClient</c> in <c>SnoopWPF.Agent.Server</c>, which wires the same pipe-client
+///         dispatch into a non-injected WPF host that was launched by a broker with <c>--ui-mcp-pipe</c>-style args
+///         and wants to expose its local inspector over the pipe as a brokered target.</item>
+/// </list>
+/// </remarks>
+public sealed class PipeAgentServer : IDisposable
 {
     private readonly string pipeName;
     private readonly byte[] sessionTokenBytes;
@@ -42,7 +52,16 @@ internal sealed class PipeAgentServer : IDisposable
     public PipeAgentServer(string pipeName, byte[] sessionTokenBytes, SnoopInspector inspector)
     {
         this.pipeName = pipeName ?? throw new ArgumentNullException(nameof(pipeName));
-        this.sessionTokenBytes = sessionTokenBytes ?? throw new ArgumentNullException(nameof(sessionTokenBytes));
+        if (sessionTokenBytes is null)
+        {
+            throw new ArgumentNullException(nameof(sessionTokenBytes));
+        }
+
+        // Defensive copy: callers typically zero their buffer after construction.
+        // Storing only a reference meant the zero-out corrupted the HMAC key before
+        // the handshake ran. Independent backing array removes that coupling.
+        this.sessionTokenBytes = new byte[sessionTokenBytes.Length];
+        Buffer.BlockCopy(sessionTokenBytes, 0, this.sessionTokenBytes, 0, sessionTokenBytes.Length);
         this.inspector = inspector ?? throw new ArgumentNullException(nameof(inspector));
     }
 

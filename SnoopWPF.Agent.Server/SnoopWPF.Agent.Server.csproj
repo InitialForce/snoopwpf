@@ -59,6 +59,12 @@
         <ProjectReference Include="../SnoopWPF.Agent.Tools/SnoopWPF.Agent.Tools.csproj">
             <PrivateAssets>all</PrivateAssets>
         </ProjectReference>
+        <!-- StartBrokeredClient reuses PipeAgentServer (public) for the target-as-pipe-client
+             dispatch loop. Injection multitargets net462/net6.0-windows/net8.0-windows;
+             MSBuild picks net8.0-windows as the compatible TFM for Server. -->
+        <ProjectReference Include="../SnoopWPF.Agent.Injection/SnoopWPF.Agent.Injection.csproj">
+            <PrivateAssets>all</PrivateAssets>
+        </ProjectReference>
     </ItemGroup>
 
     <ItemGroup>

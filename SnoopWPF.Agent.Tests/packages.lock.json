@@ -370,6 +370,25 @@
           "System.IO.FileSystem.AccessControl": "[5.0.0, )"
         }
       },
+      "SnoopWPF.Agent": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection": "[10.0.5, )",
+          "Microsoft.NETFramework.ReferenceAssemblies.net462": "[1.0.3, )",
+          "ModelContextProtocol": "[1.2.0, )"
+        }
+      },
+      "snoopwpf.agent.brokerhost": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection": "[10.0.5, )",
+          "Microsoft.NETFramework.ReferenceAssemblies.net462": "[1.0.3, )",
+          "ModelContextProtocol": "[1.2.0, )",
+          "SnoopWPF.Agent.Contracts": "[1.0.0, )",
+          "SnoopWPF.Agent.Remote": "[1.0.0, )",
+          "SnoopWPF.Agent.Tools": "[1.0.0, )"
+        }
+      },
       "snoopwpf.agent.contracts": {
         "type": "Project",
         "dependencies": {
@@ -381,13 +400,6 @@
         "dependencies": {
           "Microsoft.NETFramework.ReferenceAssemblies.net462": "[1.0.3, )",
           "Snoop.Core": "[1.0.0, )",
-          "SnoopWPF.Agent.Contracts": "[1.0.0, )"
-        }
-      },
-      "snoopwpf.agent.input.deterministic": {
-        "type": "Project",
-        "dependencies": {
-          "Microsoft.NETFramework.ReferenceAssemblies.net462": "[1.0.3, )",
           "SnoopWPF.Agent.Contracts": "[1.0.0, )"
         }
       },
@@ -412,6 +424,15 @@
         "requested": "[3.11.0, )",
         "resolved": "3.11.0",
         "contentHash": "v/EW3UE8/lbEYHoC2Qq7AR/DnmvpgdtAMndfQNmpuIMx/Mto8L5JnuCfdBYtgvalQOtfNCnxFejxuRrryvUTsg=="
+      },
+      "Microsoft.Extensions.DependencyInjection": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.5, )",
+        "resolved": "10.0.5",
+        "contentHash": "v1SVsowG6YE1YnHVGmLWz57YTRCQRx9pH5ebIESXfm5isI9gA3QaMyg/oMTzPpXYZwSAVDzYItGJKfmV+pqXkQ==",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.5"
+        }
       },
       "Microsoft.Windows.CsWin32": {
         "type": "CentralTransitive",
