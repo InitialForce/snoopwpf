@@ -31,15 +31,46 @@
     <None Include="../Artwork/snoop.png" Pack="true" PackagePath="/" />
   </ItemGroup>
 
+  <!-- Flatten all referenced-project DLLs into lib/ rather than listing them as
+       NuGet dependencies. This mirrors the approach used by SnoopWPF.Agent.Server.
+       Consumers install a single package and get all required DLLs without additional
+       package references. -->
   <ItemGroup>
-    <ProjectReference Include="..\SnoopWPF.Agent.Contracts\SnoopWPF.Agent.Contracts.csproj" />
-    <ProjectReference Include="..\SnoopWPF.Agent.Remote\SnoopWPF.Agent.Remote.csproj" />
-    <ProjectReference Include="..\SnoopWPF.Agent.Tools\SnoopWPF.Agent.Tools.csproj" />
+    <ProjectReference Include="..\SnoopWPF.Agent.Contracts\SnoopWPF.Agent.Contracts.csproj">
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+    <ProjectReference Include="..\SnoopWPF.Agent.Remote\SnoopWPF.Agent.Remote.csproj">
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+    <ProjectReference Include="..\SnoopWPF.Agent.Tools\SnoopWPF.Agent.Tools.csproj">
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+    <!-- Tools → Engine: Engine DLL must also ship since Tools types reference it. -->
+    <ProjectReference Include="..\SnoopWPF.Agent.Engine\SnoopWPF.Agent.Engine.csproj">
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="ModelContextProtocol" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
   </ItemGroup>
+
+  <!--
+      Bundle all PrivateAssets=all referenced-project DLLs into lib/ at pack time.
+      Pattern mirrors SnoopWPF.Agent.Server.csproj (FX6-B2).
+  -->
+  <PropertyGroup>
+    <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);PackBrokerReferencedProjectOutputs</TargetsForTfmSpecificBuildOutput>
+  </PropertyGroup>
+
+  <Target Name="PackBrokerReferencedProjectOutputs">
+    <ItemGroup>
+      <BuildOutputInPackage Include="$(TargetDir)SnoopWPF.Agent.Contracts.dll" />
+      <BuildOutputInPackage Include="$(TargetDir)SnoopWPF.Agent.Remote.dll" />
+      <BuildOutputInPackage Include="$(TargetDir)SnoopWPF.Agent.Tools.dll" />
+      <BuildOutputInPackage Include="$(TargetDir)SnoopWPF.Agent.Engine.dll" />
+    </ItemGroup>
+  </Target>
 
 </Project>
