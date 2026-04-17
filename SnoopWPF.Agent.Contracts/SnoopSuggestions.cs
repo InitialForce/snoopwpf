@@ -55,4 +55,7 @@ public static class SnoopSuggestions
 
     public const string InvalidState =
         "Operation is not valid in the current state; retry after the UI is ready";
+
+    public const string ElementOffscreen =
+        "Element is not connected to a visible window; scroll the element into view or focus its parent window before capturing";
 }

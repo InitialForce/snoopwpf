@@ -190,7 +190,7 @@
         "dependencies": {
           "CommandLineParser": "[2.9.1, )",
           "Microsoft.NETFramework.ReferenceAssemblies.net462": "[1.0.3, )",
-          "Snoop.Core": "[1.0.0, )"
+          "Snoop.Core": "[6.2.0-rc.1, )"
         }
       },
       "Microsoft.CodeAnalysis.Analyzers": {

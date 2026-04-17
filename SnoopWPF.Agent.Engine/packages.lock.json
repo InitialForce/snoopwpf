@@ -203,7 +203,7 @@
         }
       }
     },
-    "net6.0-windows7.0": {
+    "net6.0-windows10.0.19041": {
       "GitVersion.MsBuild": {
         "type": "Direct",
         "requested": "[6.5.1, )",
@@ -426,7 +426,7 @@
         }
       }
     },
-    "net8.0-windows7.0": {
+    "net8.0-windows10.0.19041": {
       "GitVersion.MsBuild": {
         "type": "Direct",
         "requested": "[6.5.1, )",

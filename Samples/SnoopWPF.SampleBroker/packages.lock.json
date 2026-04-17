@@ -1,7 +1,7 @@
 {
   "version": 2,
   "dependencies": {
-    "net8.0-windows7.0": {
+    "net8.0-windows10.0.19041": {
       "GitVersion.MsBuild": {
         "type": "Direct",
         "requested": "[6.5.1, )",
@@ -154,33 +154,10 @@
         "resolved": "10.0.5",
         "contentHash": "/HUHJ0tw/LQvD0DZrz50eQy/3z7PfX7WWEaXnjKTV9/TNdcgFlNTZGo49QhS7PTmhDqMyHRMqAXSBxLh0vso4g=="
       },
-      "Microsoft.NETCore.Platforms": {
-        "type": "Transitive",
-        "resolved": "5.0.0",
-        "contentHash": "VyPlqzH2wavqquTcYpkIIAQ6WdenuKoFN0BdYBbCWsclXacSOHNQn66Gt4z5NBqEYW0FAPm5rlvki9ZiCij5xQ=="
-      },
       "Microsoft.SourceLink.Common": {
         "type": "Transitive",
         "resolved": "8.0.0",
         "contentHash": "dk9JPxTCIevS75HyEQ0E4OVAFhB2N+V9ShCXf8Q6FkUQZDkgLI12y679Nym1YqsiSysuQskT7Z+6nUf3yab6Vw=="
-      },
-      "Microsoft.Windows.SDK.Win32Docs": {
-        "type": "Transitive",
-        "resolved": "0.1.42-alpha",
-        "contentHash": "Z/9po23gUA9aoukirh2ItMU2ZS9++Js9Gdds9fu5yuMojDrmArvY2y+tq9985tR3cxFxpZO1O35Wjfo0khj5HA=="
-      },
-      "Microsoft.Windows.SDK.Win32Metadata": {
-        "type": "Transitive",
-        "resolved": "68.0.4-preview",
-        "contentHash": "66nqCLxvJfCKRpZDaKxbSsrn1R5Y9vHSHwpivnhJbCc38+B9FgE3RoJUQGgGhtXlU4+oJdcexCyat1w0cWnnPg=="
-      },
-      "Microsoft.Windows.WDK.Win32Metadata": {
-        "type": "Transitive",
-        "resolved": "0.13.25-experimental",
-        "contentHash": "IM50tb/+UIwBr9FMr6ZKcZjCMW+Axo6NjGqKxgjUfyCY8dRnYUfrJEXxAaXoWtYP4X8EmASmC1Jtwh4XucseZg==",
-        "dependencies": {
-          "Microsoft.Windows.SDK.Win32Metadata": "63.0.31-preview"
-        }
       },
       "ModelContextProtocol.Core": {
         "type": "Transitive",
@@ -226,20 +203,6 @@
           "System.Collections.Immutable": "9.0.0"
         }
       },
-      "System.Security.AccessControl": {
-        "type": "Transitive",
-        "resolved": "5.0.0",
-        "contentHash": "dagJ1mHZO3Ani8GH0PHpPEe/oYO+rVdbQjvjJkBRNQkX4t0r1iaeGn8+/ybkSLEan3/slM0t59SVdHzuHf2jmw==",
-        "dependencies": {
-          "Microsoft.NETCore.Platforms": "5.0.0",
-          "System.Security.Principal.Windows": "5.0.0"
-        }
-      },
-      "System.Security.Principal.Windows": {
-        "type": "Transitive",
-        "resolved": "5.0.0",
-        "contentHash": "t0MGLukB5WAVU9bO3MGzvlGnyJPgUlcwerXn1kzBRjwLKixT96XV0Uza41W49gVd8zEMFu9vQEFlv0IOrytICA=="
-      },
       "System.Text.Encodings.Web": {
         "type": "Transitive",
         "resolved": "10.0.4",
@@ -254,53 +217,18 @@
           "System.Text.Encodings.Web": "10.0.4"
         }
       },
-      "snoop.core": {
-        "type": "Project",
-        "dependencies": {
-          "Microsoft.NETFramework.ReferenceAssemblies.net462": "[1.0.3, )",
-          "Microsoft.Windows.CsWin32": "[0.3.264, )",
-          "System.IO.FileSystem.AccessControl": "[5.0.0, )"
-        }
-      },
       "snoopwpf.agent.brokerhost": {
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection": "[10.0.5, )",
           "Microsoft.NETFramework.ReferenceAssemblies.net462": "[1.0.3, )",
-          "ModelContextProtocol": "[1.2.0, )",
-          "SnoopWPF.Agent.Contracts": "[1.0.0, )",
-          "SnoopWPF.Agent.Remote": "[1.0.0, )",
-          "SnoopWPF.Agent.Tools": "[1.0.0, )"
+          "ModelContextProtocol": "[1.2.0, )"
         }
       },
       "snoopwpf.agent.contracts": {
         "type": "Project",
         "dependencies": {
           "Microsoft.NETFramework.ReferenceAssemblies.net462": "[1.0.3, )"
-        }
-      },
-      "snoopwpf.agent.engine": {
-        "type": "Project",
-        "dependencies": {
-          "Microsoft.NETFramework.ReferenceAssemblies.net462": "[1.0.3, )",
-          "Snoop.Core": "[1.0.0, )",
-          "SnoopWPF.Agent.Contracts": "[1.0.0, )"
-        }
-      },
-      "snoopwpf.agent.remote": {
-        "type": "Project",
-        "dependencies": {
-          "Microsoft.NETFramework.ReferenceAssemblies.net462": "[1.0.3, )",
-          "SnoopWPF.Agent.Contracts": "[1.0.0, )"
-        }
-      },
-      "snoopwpf.agent.tools": {
-        "type": "Project",
-        "dependencies": {
-          "Microsoft.NETFramework.ReferenceAssemblies.net462": "[1.0.3, )",
-          "ModelContextProtocol": "[1.2.0, )",
-          "SnoopWPF.Agent.Contracts": "[1.0.0, )",
-          "SnoopWPF.Agent.Engine": "[1.0.0, )"
         }
       },
       "Microsoft.CodeAnalysis.Analyzers": {
@@ -318,17 +246,6 @@
           "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.5"
         }
       },
-      "Microsoft.Windows.CsWin32": {
-        "type": "CentralTransitive",
-        "requested": "[0.3.264, )",
-        "resolved": "0.3.264",
-        "contentHash": "vZdu+mekst7MgpRwjE3sDUgVGQOfnl7YelRfeeaZKxA/Zdx8+EDe6GhpQh08Pjzo1Jqx9Dd596GzWMQwAoDYMA==",
-        "dependencies": {
-          "Microsoft.Windows.SDK.Win32Docs": "0.1.42-alpha",
-          "Microsoft.Windows.SDK.Win32Metadata": "68.0.4-preview",
-          "Microsoft.Windows.WDK.Win32Metadata": "0.13.25-experimental"
-        }
-      },
       "ModelContextProtocol": {
         "type": "CentralTransitive",
         "requested": "[1.2.0, )",
@@ -338,16 +255,6 @@
           "Microsoft.Extensions.Caching.Abstractions": "10.0.5",
           "Microsoft.Extensions.Hosting.Abstractions": "10.0.5",
           "ModelContextProtocol.Core": "1.2.0"
-        }
-      },
-      "System.IO.FileSystem.AccessControl": {
-        "type": "CentralTransitive",
-        "requested": "[5.0.0, )",
-        "resolved": "5.0.0",
-        "contentHash": "SxHB3nuNrpptVk+vZ/F+7OHEpoHUIKKMl02bUmYHQr1r+glbZQxs7pRtsf4ENO29TVm2TH3AEeep2fJcy92oYw==",
-        "dependencies": {
-          "System.Security.AccessControl": "5.0.0",
-          "System.Security.Principal.Windows": "5.0.0"
         }
       }
     }

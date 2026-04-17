@@ -1,7 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
 
   <PropertyGroup>
-    <TargetFrameworks>net462;net6.0-windows;net8.0-windows</TargetFrameworks>
+    <!-- net462: injected-agent mode (no WGC).
+         net6/net8: versioned to Windows 10 19H1 (19041) to enable Windows.Graphics.Capture WinRT APIs
+         without extra NuGet packages.  The old unversioned TFMs (net6.0-windows / net8.0-windows)
+         did not surface WinRT types — the Windows API version suffix is required. -->
+    <TargetFrameworks>net462;net6.0-windows10.0.19041.0;net8.0-windows10.0.19041.0</TargetFrameworks>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <UseWpf>true</UseWpf>

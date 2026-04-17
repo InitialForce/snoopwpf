@@ -161,7 +161,7 @@
         "contentHash": "v/EW3UE8/lbEYHoC2Qq7AR/DnmvpgdtAMndfQNmpuIMx/Mto8L5JnuCfdBYtgvalQOtfNCnxFejxuRrryvUTsg=="
       }
     },
-    "net6.0-windows7.0": {
+    "net6.0-windows10.0.19041": {
       "GitVersion.MsBuild": {
         "type": "Direct",
         "requested": "[6.5.1, )",
@@ -312,7 +312,7 @@
         "contentHash": "v/EW3UE8/lbEYHoC2Qq7AR/DnmvpgdtAMndfQNmpuIMx/Mto8L5JnuCfdBYtgvalQOtfNCnxFejxuRrryvUTsg=="
       }
     },
-    "net8.0-windows7.0": {
+    "net8.0-windows10.0.19041": {
       "GitVersion.MsBuild": {
         "type": "Direct",
         "requested": "[6.5.1, )",
