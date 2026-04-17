@@ -129,105 +129,155 @@ public sealed class FakeSnoopInspector : ISnoopInspector
             .Invoke(nodeId, ct);
 
     // ── WpfLocator overloads (M1-06) ──
+    //
+    // FX5-fakesnoop-locator-guards: WpfLocator overloads used to return hardcoded defaults
+    // (e.g. Success=true) regardless of input, silently passing any test that called them.
+    // They now throw InvalidOperationException unless the test has configured a response via
+    // ConfigureLocatorDelegate(). This surfaces test vacuity at call time (fail-loud).
+    //
+    // Usage in tests:
+    //   fake.ConfigureLocatorDelegate<VisualTreeResultDto>(
+    //       (locator, ct) => Task.FromResult(new VisualTreeResultDto { ... }));
+
+    private readonly Dictionary<Type, Delegate> locatorDelegates = new Dictionary<Type, Delegate>();
+
+    /// <summary>
+    /// Configures a per-return-type delegate for WpfLocator overloads.
+    /// When a WpfLocator overload is called, it invokes the matching delegate if one was
+    /// registered; otherwise it throws <see cref="InvalidOperationException"/>.
+    /// </summary>
+    /// <typeparam name="TResult">Return type of the WpfLocator overload to configure.</typeparam>
+    /// <param name="factory">
+    /// Factory delegate receiving (WpfLocator, CancellationToken) and returning Task{TResult}.
+    /// </param>
+    public void ConfigureLocatorDelegate<TResult>(Func<WpfLocator, CancellationToken, Task<TResult>> factory)
+    {
+        if (factory is null)
+        {
+            throw new ArgumentNullException(nameof(factory));
+        }
+
+        this.locatorDelegates[typeof(TResult)] = factory;
+    }
+
+    private Task<TResult> InvokeLocatorDelegate<TResult>(WpfLocator locator, CancellationToken ct)
+    {
+        if (locator is null)
+        {
+            throw new ArgumentNullException(nameof(locator));
+        }
+
+        if (this.locatorDelegates.TryGetValue(typeof(TResult), out var raw) &&
+            raw is Func<WpfLocator, CancellationToken, Task<TResult>> typed)
+        {
+            return typed(locator, ct);
+        }
+
+        throw new InvalidOperationException(
+            $"FakeSnoopInspector: WpfLocator overload returning {typeof(TResult).Name} was called " +
+            "but no response was configured for this test. Configure via " +
+            $"ConfigureLocatorDelegate<{typeof(TResult).Name}>(...) before invoking the method under test. " +
+            "Unconfigured calls fail loudly to surface test vacuity.");
+    }
 
     public Task<VisualTreeResultDto> GetVisualTreeAsync(WpfLocator locator, int maxDepth, string treeType, List<string>? includeProperties, CancellationToken ct)
-        => Task.FromResult(new VisualTreeResultDto());
+        => this.InvokeLocatorDelegate<VisualTreeResultDto>(locator, ct);
 
     public Task<CursorPage<NodeDto>> GetChildrenAsync(WpfLocator locator, string treeType, string? cursor, int take, CancellationToken ct)
-        => Task.FromResult(new CursorPage<NodeDto>());
+        => this.InvokeLocatorDelegate<CursorPage<NodeDto>>(locator, ct);
 
     public Task<List<AncestorDto>> GetAncestorsAsync(WpfLocator locator, int? maxLevels, CancellationToken ct)
-        => Task.FromResult(new List<AncestorDto>());
+        => this.InvokeLocatorDelegate<List<AncestorDto>>(locator, ct);
 
     public Task<InspectElementDto> InspectElementAsync(WpfLocator locator, CancellationToken ct)
-        => Task.FromResult(new InspectElementDto());
+        => this.InvokeLocatorDelegate<InspectElementDto>(locator, ct);
 
     public Task<CursorPage<PropertyDto>> GetPropertiesAsync(WpfLocator locator, string? filter, string? category, bool includeDefaults, string? cursor, int take, CancellationToken ct)
-        => Task.FromResult(new CursorPage<PropertyDto>());
+        => this.InvokeLocatorDelegate<CursorPage<PropertyDto>>(locator, ct);
 
     public Task<StateDeltaDto> SetPropertyAsync(WpfLocator locator, string propertyName, string value, CancellationToken ct)
-        => Task.FromResult(new StateDeltaDto { Success = true });
+        => this.InvokeLocatorDelegate<StateDeltaDto>(locator, ct);
 
     public Task<BindingInfoDto> GetBindingInfoAsync(WpfLocator locator, string propertyName, CancellationToken ct)
-        => Task.FromResult(new BindingInfoDto());
+        => this.InvokeLocatorDelegate<BindingInfoDto>(locator, ct);
 
     public Task<CursorPage<DiagnosticItemDto>> RunDiagnosticsAsync(WpfLocator locator, List<string>? providers, string? minLevel, string? cursor, int take, CancellationToken ct)
-        => Task.FromResult(new CursorPage<DiagnosticItemDto>());
+        => this.InvokeLocatorDelegate<CursorPage<DiagnosticItemDto>>(locator, ct);
 
     public Task<CursorPage<ResourceDto>> GetResourcesAsync(WpfLocator locator, string? resourceKey, string? cursor, int take, CancellationToken ct)
-        => Task.FromResult(new CursorPage<ResourceDto>());
+        => this.InvokeLocatorDelegate<CursorPage<ResourceDto>>(locator, ct);
 
     public Task<ScreenshotResultDto> CaptureScreenshotAsync(WpfLocator locator, CancellationToken ct)
-        => Task.FromResult(new ScreenshotResultDto());
+        => this.InvokeLocatorDelegate<ScreenshotResultDto>(locator, ct);
 
     public Task<List<TriggerDto>> GetTriggersAsync(WpfLocator locator, CancellationToken ct)
-        => Task.FromResult(new List<TriggerDto>());
+        => this.InvokeLocatorDelegate<List<TriggerDto>>(locator, ct);
 
     public Task<List<BehaviorDto>> GetBehaviorsAsync(WpfLocator locator, CancellationToken ct)
-        => Task.FromResult(new List<BehaviorDto>());
+        => this.InvokeLocatorDelegate<List<BehaviorDto>>(locator, ct);
 
     public Task<BindingResolutionDto> ResolveBindingAsync(string nodeId, string propertyName, CancellationToken ct)
         => Task.FromResult(new BindingResolutionDto { Status = "NoBinding" });
 
     public Task<BindingResolutionDto> ResolveBindingAsync(WpfLocator locator, string propertyName, CancellationToken ct)
-        => Task.FromResult(new BindingResolutionDto { Status = "NoBinding" });
+        => this.InvokeLocatorDelegate<BindingResolutionDto>(locator, ct);
 
     public Task<StateDeltaDto> SelectItemAsync(string nodeId, string identifier, CancellationToken ct)
         => (this.OnSelectItem ?? throw new NotImplementedException("OnSelectItem not set"))
             .Invoke(nodeId, identifier, ct);
 
     public Task<StateDeltaDto> SelectItemAsync(WpfLocator locator, string identifier, CancellationToken ct)
-        => Task.FromResult(new StateDeltaDto { Success = true });
+        => this.InvokeLocatorDelegate<StateDeltaDto>(locator, ct);
 
     public Task<StateDeltaDto> SetCheckStateAsync(string nodeId, string state, CancellationToken ct)
         => (this.OnSetCheckState ?? throw new NotImplementedException("OnSetCheckState not set"))
             .Invoke(nodeId, state, ct);
 
     public Task<StateDeltaDto> SetCheckStateAsync(WpfLocator locator, string state, CancellationToken ct)
-        => Task.FromResult(new StateDeltaDto { Success = true });
+        => this.InvokeLocatorDelegate<StateDeltaDto>(locator, ct);
 
     public Task<StateDeltaDto> SetTextValueAsync(string nodeId, string value, CancellationToken ct)
         => (this.OnSetTextValue ?? throw new NotImplementedException("OnSetTextValue not set"))
             .Invoke(nodeId, value, ct);
 
     public Task<StateDeltaDto> SetTextValueAsync(WpfLocator locator, string value, CancellationToken ct)
-        => Task.FromResult(new StateDeltaDto { Success = true });
+        => this.InvokeLocatorDelegate<StateDeltaDto>(locator, ct);
 
     public Task<StateDeltaDto> SetSliderValueAsync(string nodeId, double value, bool normalized, CancellationToken ct)
         => (this.OnSetSliderValue ?? throw new NotImplementedException("OnSetSliderValue not set"))
             .Invoke(nodeId, value, normalized, ct);
 
     public Task<StateDeltaDto> SetSliderValueAsync(WpfLocator locator, double value, bool normalized, CancellationToken ct)
-        => Task.FromResult(new StateDeltaDto { Success = true });
+        => this.InvokeLocatorDelegate<StateDeltaDto>(locator, ct);
 
     public Task<StateDeltaDto> ExecuteCommandAsync(string nodeId, CancellationToken ct)
         => (this.OnExecuteCommand ?? throw new NotImplementedException("OnExecuteCommand not set"))
             .Invoke(nodeId, ct);
 
     public Task<StateDeltaDto> ExecuteCommandAsync(WpfLocator locator, CancellationToken ct)
-        => Task.FromResult(new StateDeltaDto { Success = true });
+        => this.InvokeLocatorDelegate<StateDeltaDto>(locator, ct);
 
     public Task<StateDeltaDto> ClickAsync(string nodeId, CancellationToken ct)
         => Task.FromResult(new StateDeltaDto { Success = true });
 
     public Task<StateDeltaDto> ClickAsync(WpfLocator locator, CancellationToken ct)
-        => Task.FromResult(new StateDeltaDto { Success = true });
+        => this.InvokeLocatorDelegate<StateDeltaDto>(locator, ct);
 
     public Task<StateDeltaDto> ToggleAsync(string nodeId, CancellationToken ct)
         => Task.FromResult(new StateDeltaDto { Success = true });
 
     public Task<StateDeltaDto> ToggleAsync(WpfLocator locator, CancellationToken ct)
-        => Task.FromResult(new StateDeltaDto { Success = true });
+        => this.InvokeLocatorDelegate<StateDeltaDto>(locator, ct);
 
     public Task<StateDeltaDto> ExpandCollapseAsync(string nodeId, string action, CancellationToken ct)
         => Task.FromResult(new StateDeltaDto { Success = true });
 
     public Task<StateDeltaDto> ExpandCollapseAsync(WpfLocator locator, string action, CancellationToken ct)
-        => Task.FromResult(new StateDeltaDto { Success = true });
+        => this.InvokeLocatorDelegate<StateDeltaDto>(locator, ct);
 
     public Task<WaitForPropertyResultDto> WaitForPropertyAsync(
         WpfLocator locator, string propertyName, string? expectedValue, int timeoutMs, string presenceExpected, CancellationToken ct)
-        => Task.FromResult(new WaitForPropertyResultDto { ConditionMet = true });
+        => this.InvokeLocatorDelegate<WaitForPropertyResultDto>(locator, ct);
 
     public Task<PollChangesResultDto> PollChangesAsync(long sinceVersion, WpfLocator? rootLocator, CancellationToken ct)
         => Task.FromResult(new PollChangesResultDto { TreeVersion = sinceVersion, SinceVersion = sinceVersion });
