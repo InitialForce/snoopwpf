@@ -12,6 +12,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using NUnit.Framework;
 using SnoopWPF.Agent.BrokerHost;
+using SnoopWPF.Agent.Contracts;
 
 /// <summary>
 /// Integration tests for <see cref="BrokerHost"/> and <see cref="BrokerTargetSpawner"/>.
@@ -122,10 +123,13 @@ public sealed class BrokerHostIntegrationTests
     ///   1. Start a WPF application (e.g. SnoopWPF.SampleApp).
     ///   2. Set SNOOP_TEST_PID environment variable to the target PID.
     ///   3. Run: dotnet test SnoopWPF.Agent.IntegrationTests --filter FullyQualifiedName~BrokerHost_RoundTrip_AllTools
+    ///
+    /// Automated subset coverage is provided by
+    /// <c>BrokerHostRoundTripWpfTests.BrokerHost_RoundTrip_SessionInfo_Smoke</c>.
     /// </summary>
     [Test]
     [Category("MANUAL_VERIFICATION")]
-    [Ignore("Requires live WPF target — set SNOOP_TEST_PID and run manually (M2-19).")]
+    [Ignore("Requires live WPF target + injection EXE — run manually with SNOOP_TEST_PID set (M2-19). Automated smoke coverage lives in BrokerHostRoundTripWpfTests.")]
     public void BrokerHost_RoundTrip_AllTools_ManualVerification()
     {
         // This test is intentionally left as a stub.
