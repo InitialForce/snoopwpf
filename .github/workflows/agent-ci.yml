@@ -37,7 +37,8 @@ jobs:
         run: dotnet test Snoop.Core.Tests/Snoop.Core.Tests.csproj --configuration Release --framework ${{ matrix.target }} --no-build --logger "trx;LogFileName=Snoop.Core.Tests-${{ matrix.target }}.trx" --results-directory output/test-results
 
       - name: Test SnoopWPF.Agent.Tests
-        run: dotnet test SnoopWPF.Agent.Tests/SnoopWPF.Agent.Tests.csproj --configuration Release --framework ${{ matrix.target }} --no-build --logger "trx;LogFileName=SnoopWPF.Agent.Tests-${{ matrix.target }}.trx" --results-directory output/test-results
+        if: matrix.target == 'net8.0-windows'
+        run: dotnet test SnoopWPF.Agent.Tests/SnoopWPF.Agent.Tests.csproj --configuration Release --framework net8.0-windows --no-build --logger "trx;LogFileName=SnoopWPF.Agent.Tests-${{ matrix.target }}.trx" --results-directory output/test-results
 
       - name: Test SnoopWPF.Agent.IntegrationTests
         if: matrix.target == 'net8.0-windows'
