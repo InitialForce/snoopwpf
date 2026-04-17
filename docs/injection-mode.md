@@ -198,10 +198,14 @@ snoop-cli list --pid 12345 --json
 4. The InjectorLauncher loads the agent DLL into the target process.
 5. The injected agent reads the settings file, deletes it immediately, and zeroes
    the token from memory after reading.
-6. The agent connects to the pipe and the host sends a handshake challenge containing
-   the session token.
-7. The agent responds with its capabilities and echoes the session token.
-8. The host verifies the token and the client PID via `GetNamedPipeClientProcessId()`.
+6. The agent connects to the pipe. The host first verifies the client PID via
+   `GetNamedPipeClientProcessId()`, then sends a `HandshakeChallenge` containing a
+   fresh 16-byte cryptographic nonce and the protocol version. The session token is
+   never transmitted over the pipe.
+7. The agent computes `HMACSHA256(key = UTF8(sessionToken), data = nonce)` and replies
+   with a `HandshakeResponse` containing the HMAC proof and its protocol version.
+8. The host verifies the HMAC proof using `CryptographicOperations.FixedTimeEquals`
+   (constant-time comparison) and confirms the protocol version matches.
 9. All subsequent MCP tool calls are proxied through the pipe.
 
 ---
