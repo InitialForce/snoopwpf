@@ -1,6 +1,6 @@
 # MCP Tools Reference
 
-All 16 tools exposed by SnoopWPF.Agent. Tool names are prefixed with `wpf_`.
+All 27 tools exposed by SnoopWPF.Agent. Tool names are prefixed with `wpf_`.
 
 Error responses follow a common schema — see [Error Codes](#error-codes) at the bottom.
 
@@ -616,6 +616,429 @@ Works with both `System.Windows.Interactivity` (legacy Blend SDK) and
 
 ---
 
+## wpf_click
+
+Invoke the primary click action on a WPF element via the UI Automation InvokePattern (L1).
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `nodeId` | string | *(required)* | Node ID of the element to click. |
+
+**Returns:**
+
+```json
+{
+  "success": true,
+  "stateChanged": true,
+  "treeVersionDelta": 1,
+  "failureReason": null,
+  "suggestion": null
+}
+```
+
+**Guidelines:** Prefer `wpf_execute_command` (L0) over `wpf_click` whenever the element has a
+`Command` binding (`ButtonBase.CommandProperty` is non-null). Use `wpf_get_properties` to check
+for a Command binding before calling this tool. When `wpf_click` succeeds on a command-bound
+element the response includes a `wpf_execute_command` suggestion — use that tool instead on
+the next interaction. Automation must be enabled (`EnableAutomation = true` in `SnoopAgentOptions`).
+
+**Limitations:** Requires the element to expose the `IInvokeProvider` automation pattern.
+Controls that do not support `IInvokeProvider` (e.g. plain TextBlock, Image) will fail with
+`PatternNotSupported`. Does not simulate mouse movement or hover events. Does not check
+`IsEnabled` or `IsVisible` before invoking — verify actionability with `wpf_inspect_element`
+first if the element may be disabled.
+
+**Applies to:** Button, RepeatButton, ToggleButton, RadioButton, CheckBox, MenuItem, Hyperlink,
+and any UIElement whose AutomationPeer supports `IInvokeProvider`.
+
+---
+
+## wpf_execute_command
+
+Execute the `ICommand` bound to a WPF element (e.g. `Button.Command`). Operates at tier L0 —
+uses the WPF command system directly, no raw Win32 input.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `nodeId` | string | *(required)* | Node ID of the element whose Command should be executed. |
+
+**Returns:**
+
+```json
+{
+  "success": true,
+  "stateChanged": true,
+  "treeVersionDelta": 2,
+  "failureReason": null,
+  "suggestion": null
+}
+```
+
+**Guidelines:** Always prefer `wpf_execute_command` over `wpf_click` when a Command is bound
+to the element. Use `wpf_get_properties` to confirm the element has a non-null Command before
+calling. Mutation must be enabled (`EnableMutation = true` in `SnoopAgentOptions`).
+
+**Limitations:** Only resolves the `ButtonBase.CommandProperty` dependency property; custom
+command properties on non-`ButtonBase` elements are not supported by this tool. `CanExecute`
+is checked before `Execute` — if it returns `false` the call fails with `CannotExecuteCommand`.
+`CommandParameter` is forwarded automatically from `ButtonBase.CommandParameterProperty`.
+
+**Applies to:** Button, RepeatButton, ToggleButton, RadioButton, CheckBox, MenuItem, Hyperlink,
+and any other `ButtonBase`-derived control with a Command binding.
+
+---
+
+## wpf_expand_collapse
+
+Expand or collapse a WPF element via the UI Automation ExpandCollapsePattern (L1).
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `nodeId` | string | *(required)* | Node ID of the element to expand or collapse. |
+| `action` | string | *(required)* | Action to perform: `"expand"` or `"collapse"`. |
+
+**Returns:**
+
+```json
+{
+  "success": true,
+  "stateChanged": true,
+  "treeVersionDelta": 5,
+  "failureReason": null,
+  "suggestion": null
+}
+```
+
+**Guidelines:** The action is idempotent — expanding an already-expanded element succeeds
+without error. Automation must be enabled (`EnableAutomation = true` in `SnoopAgentOptions`).
+After expanding a `TreeViewItem`, call `wpf_get_children` to retrieve the newly revealed child
+nodes.
+
+**Limitations:** Elements that do not expose `IExpandCollapseProvider` (e.g. plain Button,
+TextBox) are rejected with `PatternNotSupported`. Virtualized tree nodes may not be in the
+visual tree; scroll or realise them first. Does not check `IsEnabled` or `IsVisible` before
+acting.
+
+**Applies to:** TreeViewItem, Expander, GroupItem (CollectionViewSource groups), and any
+UIElement whose AutomationPeer supports `IExpandCollapseProvider`.
+
+---
+
+## wpf_select_item
+
+Select an item in a `ListBox`, `ComboBox`, or any `Selector` control.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `nodeId` | string | *(required)* | Node ID of the ItemsControl whose selection should be changed. |
+| `identifier` | string | *(required)* | Item identifier: zero-based integer index (`"0"`), exact item text, or unambiguous substring of item text. |
+
+**Returns:**
+
+```json
+{
+  "success": true,
+  "stateChanged": true,
+  "treeVersionDelta": 1,
+  "failureReason": null,
+  "suggestion": null
+}
+```
+
+**Guidelines:** The `identifier` parameter accepts three forms:
+1. Zero-based integer index (e.g. `"0"`, `"2"`) — selects by position.
+2. Exact text — the item's `ToString()` is compared case-insensitively.
+3. Partial text (substring) — when no exact match exists, an unambiguous substring match is
+   used. If two or more items match, the call fails with `LOCATOR_AMBIGUOUS`.
+
+Mutation must be enabled (`EnableMutation = true` in `SnoopAgentOptions`). Operates at L0 —
+uses `SetValue` on the dependency property; no raw Win32 input.
+
+**Limitations:** Virtualized lists (`VirtualizingStackPanel` with many items) are not supported
+— the item container may not be materialized. Multi-selection controls (`ListBox` with
+`SelectionMode=Multiple`) will have their selection replaced (not appended) by this tool.
+
+**Applies to:** ListBox, ListView, ComboBox, and any `Selector` subclass (non-virtualized).
+
+---
+
+## wpf_set_text_value
+
+Set the text content of a `TextBox`, `PasswordBox`, or `RichTextBox` via `SetValue` on the
+text dependency property (L0). No raw Win32 input is used.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `nodeId` | string | *(required)* | Node ID of the element whose text should be set. |
+| `value` | string | *(required)* | The new text value to assign. |
+
+**Returns:**
+
+```json
+{
+  "success": true,
+  "stateChanged": true,
+  "treeVersionDelta": 1,
+  "failureReason": null,
+  "suggestion": null
+}
+```
+
+**Guidelines:** Use this tool instead of simulated keystrokes whenever the target is a
+text-input control. For `PasswordBox`, the value is treated as sensitive (`S3`) and is redacted
+from all log output; `previousValue` in the response is always `"[REDACTED]"`. Mutation must
+be enabled (`EnableMutation = true` in `SnoopAgentOptions`). For `RichTextBox`, this tool
+replaces the entire flow document with a single paragraph containing the supplied plain text;
+existing formatting is discarded.
+
+**Limitations:** Does not support multi-paragraph rich text or inline formatting. For
+`PasswordBox`, `Password.SecurePassword` is not accessible from the agent layer. If the `Text`
+property has a two-way binding, the bound source will be updated via the normal DP change
+notification path.
+
+**Applies to:** TextBox, PasswordBox, RichTextBox.
+
+---
+
+## wpf_set_check_state
+
+Set the checked state of a `CheckBox` or `RadioButton` via `SetValue` on
+`ToggleButton.IsCheckedProperty` (L0). No raw Win32 input is used.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `nodeId` | string | *(required)* | Node ID of the element whose check state should be set. |
+| `state` | string | *(required)* | Target check state: `"checked"`, `"unchecked"`, or `"indeterminate"`. |
+
+**Returns:**
+
+```json
+{
+  "success": true,
+  "stateChanged": true,
+  "treeVersionDelta": 1,
+  "failureReason": null,
+  "suggestion": null
+}
+```
+
+**Guidelines:** Use this tool instead of simulated clicks whenever the target is a `CheckBox`
+or `RadioButton` and you need a deterministic final state. For `CheckBox`, all three states
+are supported; `"indeterminate"` requires `IsThreeState = true` on the `CheckBox`. For
+`RadioButton`, only `"checked"` is meaningful — programmatic unchecking from outside the group
+is not supported by WPF. Mutation must be enabled (`EnableMutation = true` in
+`SnoopAgentOptions`).
+
+**Limitations:** Bare `ToggleButton` (not `CheckBox` or `RadioButton`) is rejected with
+`PatternNotSupported` — use `wpf_toggle` instead.
+
+**Applies to:** CheckBox, RadioButton.
+
+---
+
+## wpf_toggle
+
+Flip the toggle state of a WPF element via the UI Automation TogglePattern (L1).
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `nodeId` | string | *(required)* | Node ID of the element to toggle. |
+
+**Returns:**
+
+```json
+{
+  "success": true,
+  "stateChanged": true,
+  "treeVersionDelta": 1,
+  "failureReason": null,
+  "suggestion": null
+}
+```
+
+**Guidelines:** Use `wpf_toggle` when the target state is unknown and you simply want to flip
+the current `IsChecked` state. When a specific final state (checked/unchecked/indeterminate) is
+required, prefer `wpf_set_check_state` (L0) over `wpf_toggle` — `wpf_toggle` is
+non-deterministic. Automation must be enabled (`EnableAutomation = true` in `SnoopAgentOptions`).
+
+**Limitations:** `CheckBox` and `RadioButton` are rejected with `PatternNotSupported` — use
+the deterministic L0 tool `wpf_set_check_state` for those controls. Two successive calls
+return the element to its original state.
+
+**Applies to:** ToggleButton (bare, not CheckBox or RadioButton), MenuItem with
+`IsCheckable = true`, and any UIElement whose AutomationPeer supports `IToggleProvider`.
+
+---
+
+## wpf_poll_changes
+
+Non-blocking structural-change detection — returns a changeset of added/removed node IDs and
+the current `treeVersion` to use as the baseline for the next call.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `sinceVersion` | integer (long) | `0` | Tree version from a previous call. Pass `0` on the first call to receive all currently registered nodes as `"added"`. |
+| `rootLocator` | string | *(none)* | Optional WpfLocator string to scope the poll to a subtree (e.g. `"$type:MainWindow"`). Omit for the full application tree. |
+
+**Returns:**
+
+```json
+{
+  "added": ["0:55", "0:56"],
+  "removed": ["0:40"],
+  "treeVersion": 12,
+  "scannedNodeCount": 320
+}
+```
+
+**Usage pattern:**
+1. Call with `sinceVersion=0` to get the initial `treeVersion`.
+2. Perform mutations (`wpf_set_property`, `wpf_execute_command`, etc.).
+3. Call again with the previously returned `treeVersion` to receive the delta.
+
+**Guidelines:** This tool does not wait for mutations to settle. Use `wpf_pump_until_idle`
+before polling when you need deterministic results after a UI-triggered async operation.
+
+**Limitations:** Hard cap of 5000 nodes per poll to protect against unbounded traversal.
+Change kinds: `"added"` (node appeared after `sinceVersion`) and `"removed"` (node was present
+at `sinceVersion` but is no longer in the tree).
+
+**Applies to:** Full application visual tree, or any subtree scoped via `rootLocator`.
+
+---
+
+## wpf_pump_until_idle
+
+Wait until the WPF Dispatcher queue AND composition rendering pipeline are simultaneously idle
+(AND-gate). Returns immediately when idle; throws `DISPATCHER_BUSY` if the 5-second
+animation-runaway ceiling is reached.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `timeoutMs` | integer | `5000` | Maximum wait time in milliseconds. Capped at 5000. |
+| `resources` | string[] | *(all)* | Optional array of resource names to monitor (e.g. `["Dispatcher", "CompositionRendering"]`). Omit or `null` to monitor all built-in resources. |
+
+**Returns:**
+
+```json
+{
+  "idledAfterMs": 142,
+  "resourcesPolled": ["Dispatcher", "CompositionRendering"]
+}
+```
+
+**Guidelines:** Use before `wpf_poll_changes` or `wpf_wait_for_property` when you need
+deterministic results after a UI mutation.
+
+**Limitations:** Nested-pump guard: calling this tool from within an active pump on the same
+thread is rejected with `DISPATCHER_BUSY` immediately. Does not guarantee that async
+`Task`-based operations (not marshalled back to the Dispatcher) have completed.
+
+**Applies to:** WPF Dispatcher and composition rendering pipeline.
+
+---
+
+## wpf_resolve_binding
+
+Resolve the full data-binding chain for a dependency property on a WPF element.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `nodeId` | string | *(required)* | Node ID of the element. |
+| `propertyName` | string | *(required)* | Dependency property name to resolve the binding for (e.g. `"Text"`, `"IsEnabled"`). |
+
+**Returns:**
+
+```json
+{
+  "path": "SelectedSession.User.Name",
+  "sourceTypeName": "MyApp.ViewModel.SessionViewModel",
+  "sourceValue": "Alice",
+  "pathSteps": [
+    { "segment": "SelectedSession", "value": "SessionDto{...}" },
+    { "segment": "User", "value": "UserDto{...}" },
+    { "segment": "Name", "value": "Alice" }
+  ],
+  "converterTypeName": null,
+  "converterParameter": null,
+  "mode": "TwoWay",
+  "validationErrors": [],
+  "status": "OK"
+}
+```
+
+`status` values: `"OK"`, `"PathError"`, `"ValidationError"`, `"MissingDataContext"`,
+`"ConverterError"`, `"NoBinding"`.
+
+**Guidelines:** Use `wpf_get_binding_info` for a lighter-weight summary, or this tool when
+you need full chain diagnostics including per-step values and validation errors.
+
+**Limitations:** Resolution is read-only and point-in-time. Converter implementations are
+not invoked; only the converter type name is reported. Multi-bindings report child binding
+chains individually.
+
+**Applies to:** Any DependencyProperty with a data binding expression on any FrameworkElement.
+
+---
+
+## wpf_wait_for_property
+
+Poll a WPF element property until its value equals `expectedValue` (presence check), or until
+the element disappears (absence check).
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `locator` | string | *(required)* | WpfLocator string identifying the element (e.g. `"$name:myButton"` or `"$type:Button"`). |
+| `propertyName` | string | *(required)* | Property name to observe (e.g. `"IsEnabled"`, `"Text"`, `"Visibility"`). |
+| `expectedValue` | string | *(none)* | Expected property value as a string. Required when `presenceExpected=present`; ignored when `presenceExpected=absent`. |
+| `timeoutMs` | integer | `5000` | Timeout in milliseconds before the call fails with `DISPATCHER_BUSY`. |
+| `presenceExpected` | string | `"present"` | `"present"`: wait until `propertyName` equals `expectedValue`. `"absent"`: wait until the element disappears. |
+
+**Returns:**
+
+```json
+{
+  "conditionMet": true,
+  "actualValue": "True",
+  "elapsedMs": 340,
+  "pollCount": 4
+}
+```
+
+**Guidelines:** Use `presenceExpected=absent` to detect modal dismissal or element removal.
+Call `wpf_pump_until_idle` first when the property change is triggered by a UI mutation, to
+avoid polling before the change propagates.
+
+**Limitations:** On timeout, throws `DISPATCHER_BUSY` with a suggestion to call
+`wpf_pump_until_idle` first. Polls on a background timer; the poll interval is approximately
+80 ms.
+
+**Applies to:** Any DependencyProperty on any element locatable by a WpfLocator expression.
+
+---
+
 ## wpf_fetch_blob
 
 Retrieve a large binary payload (e.g. screenshot PNG) from the in-process blob store by reference key.
@@ -670,3 +1093,6 @@ All tool errors return a structured object:
 | `SESSION_NOT_FOUND` | No active session (target process likely exited). | Re-attach with a new `snoop-mcp` invocation. |
 | `PROTOCOL_MISMATCH` | Agent and host protocol versions differ. | Update to matching versions. |
 | `ELEMENT_NOT_RENDERABLE` | Element has zero size or is not visible. | Try `wpf_get_windows` for a full window screenshot. |
+| `BLOB_NOT_FOUND` | The blob ref key has expired (5-minute TTL) or was never issued. | Re-run the originating tool to get a fresh ref. |
+| `LOCATOR_AMBIGUOUS` | The WpfLocator or item identifier matched more than one element. | Use a more specific locator (e.g. `$name:` or an index). |
+| `LOCATOR_INVALID` | The WpfLocator string could not be parsed. | Check locator syntax; valid prefixes are `$name:`, `$type:`, `$id:`. |
