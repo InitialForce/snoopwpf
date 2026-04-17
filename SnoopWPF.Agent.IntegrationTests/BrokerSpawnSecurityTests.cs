@@ -184,8 +184,10 @@ public sealed class BrokerSpawnSecurityTests
 
     /// <summary>
     /// Calls <see cref="BrokerTargetSpawner.Spawn"/> for real (which launches a child process),
-    /// then immediately kills the child and returns the <see cref="ProcessStartInfo.Arguments"/>
-    /// string that was built, as captured via the spawned process object.
+    /// then immediately kills the child and returns a joined view of both
+    /// <see cref="ProcessStartInfo.Arguments"/> and <see cref="ProcessStartInfo.ArgumentList"/>
+    /// so assertions against the full command-line surface work regardless of which
+    /// mechanism the spawner used (FX2-C6: spawner now prefers ArgumentList).
     /// </summary>
     private static string CaptureSpawnArguments(
         string exe, string extraArgs, string pipeName, string tokenHex)
@@ -195,9 +197,10 @@ public sealed class BrokerSpawnSecurityTests
         {
             process = BrokerTargetSpawner.Spawn(exe, extraArgs, pipeName, tokenHex);
 
-            // The Arguments we want to inspect are on the StartInfo of the live process.
-            // ProcessStartInfo.Arguments reflects what was passed to Process.Start.
-            return process.StartInfo.Arguments;
+            // FX2-C6: the spawner now uses ArgumentList for argv-shaped safety.
+            // Join both sources so the test verifies the full command-line surface.
+            var si = process.StartInfo;
+            return si.Arguments + " " + string.Join(" ", si.ArgumentList);
         }
         finally
         {

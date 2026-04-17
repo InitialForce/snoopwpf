@@ -1,6 +1,7 @@
 namespace SnoopWPF.Agent.BrokerHost;
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
@@ -16,35 +17,51 @@ public static class BrokerTargetSpawner
 {
     /// <summary>
     /// Starts the target executable with the given arguments and named-pipe handshake parameters.
+    /// Prefer the <see cref="IReadOnlyList{String}"/> overload for safety; the string overload
+    /// is retained for backward compatibility.
+    /// </summary>
+    public static Process Spawn(string exe, string args, string pipeName, string tokenHex)
+    {
+        // FX2-C6 (ADV-C3): the string-concatenation path is a shell-arg injection vector
+        // when callers forward attacker-controlled text. Route through the safe overload
+        // by splitting into argv-shaped tokens. Callers that already produce an argv list
+        // should migrate to the overload below.
+        var argv = new List<string>();
+        if (!string.IsNullOrWhiteSpace(args))
+        {
+            // Single opaque string — delegate quoting behaviour to the OS loader by
+            // passing it as one argument. Individual tokens with spaces would need to
+            // use the argv overload; this string form is best-effort only.
+            argv.Add(args);
+        }
+
+        return Spawn(exe, argv, pipeName, tokenHex);
+    }
+
+    /// <summary>
+    /// Starts the target executable using an argv-shaped list. Each element of
+    /// <paramref name="args"/> becomes a single argument without any shell or command-line
+    /// parsing — this eliminates the injection surface of string concatenation.
     /// </summary>
     /// <param name="exe">Full path to the target executable.</param>
-    /// <param name="args">Additional command-line arguments to pass to the target.</param>
+    /// <param name="args">Additional command-line arguments (one per list entry).</param>
     /// <param name="pipeName">The named-pipe name the target should connect to.</param>
     /// <param name="tokenHex">The hex-encoded session token for the handshake.</param>
     /// <returns>The started <see cref="Process"/>.</returns>
     /// <remarks>
-    /// <list type="bullet">
-    ///   <item><see cref="ProcessStartInfo.UseShellExecute"/> is set to <see langword="false"/>.</item>
-    ///   <item><see cref="ProcessStartInfo.CreateNoWindow"/> is set to <see langword="true"/>.</item>
-    ///   <item><see cref="ProcessStartInfo.RedirectStandardInput"/> is set to <see langword="true"/>.</item>
-    ///   <item><see cref="ProcessStartInfo.RedirectStandardOutput"/> is set to <see langword="true"/>.</item>
-    ///   <item><see cref="ProcessStartInfo.RedirectStandardError"/> is set to <see langword="true"/>.</item>
-    /// </list>
-    /// The session token is passed to the child via a single-line JSON payload written to the
-    /// child's stdin immediately after launch (see <see cref="BrokerHandshakePayload"/>), then
-    /// the broker closes the stdin stream.  The token therefore never appears on the command line
-    /// where it would be visible to other same-user processes via <c>GetCommandLine()</c> or
-    /// <c>WMI Win32_Process.CommandLine</c>.
-    ///
-    /// Background drain tasks are started immediately after the process is launched.
-    /// They read and discard all target stdout/stderr so the child pipe never fills and
-    /// blocks, and so that no target output leaks onto the broker's stdio.
+    /// The session token is passed via a single-line JSON payload on stdin (see
+    /// <see cref="BrokerHandshakePayload"/>) and never appears on the command line.
     /// </remarks>
-    public static Process Spawn(string exe, string args, string pipeName, string tokenHex)
+    public static Process Spawn(string exe, IReadOnlyList<string> args, string pipeName, string tokenHex)
     {
         if (exe is null)
         {
             throw new ArgumentNullException(nameof(exe));
+        }
+
+        if (args is null)
+        {
+            throw new ArgumentNullException(nameof(args));
         }
 
         if (pipeName is null)
@@ -57,20 +74,32 @@ public static class BrokerTargetSpawner
             throw new ArgumentNullException(nameof(tokenHex));
         }
 
-        // Pass --snoop-pipe (not secret) on the command line.
-        // The token is NOT included here; it is delivered via stdin below.
-        string fullArgs = $"{args} --snoop-pipe={pipeName}".Trim();
-
+        // FX2-C6: use ArgumentList so each arg is escaped individually by the CLR.
+        // CommandLineToArgvW-based string parsing is bypassed; an attacker-controlled
+        // arg cannot inject additional flags.
         var psi = new ProcessStartInfo
         {
             FileName = exe,
-            Arguments = fullArgs,
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
+
+        foreach (var a in args)
+        {
+            if (a is null)
+            {
+                continue;
+            }
+
+            psi.ArgumentList.Add(a);
+        }
+
+        // The only broker-controlled flag. Pipe name is validated upstream
+        // (BrokerHost.Start throws on empty) and consists of filesystem-safe characters.
+        psi.ArgumentList.Add("--snoop-pipe=" + pipeName);
 
         var process = Process.Start(psi)
             ?? throw new InvalidOperationException($"Process.Start returned null for '{exe}'.");
