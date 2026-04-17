@@ -57,7 +57,8 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
     // Instance-level so it is safe across thread-pool continuation migrations.
     private int pumpInProgress;
 
-    private volatile bool disposed;
+    // Use int so Interlocked.Exchange can guarantee atomicity (volatile bool has no atomic swap).
+    private int disposed;
 
     /// <summary>
     /// Initializes a new SnoopInspector.
@@ -126,12 +127,12 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
     /// <inheritdoc/>
     public void Dispose()
     {
-        if (this.disposed)
+        // Interlocked.Exchange ensures at most one caller performs disposal (double-dispose safe).
+        if (Interlocked.Exchange(ref this.disposed, 1) != 0)
         {
             return;
         }
 
-        this.disposed = true;
         this.disposeCts.Cancel();
         this.disposeCts.Dispose();
         this.nodeRegistry.Dispose();
@@ -3507,7 +3508,19 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
 
         // FX-C1: link caller CT with dispose CTS so WaitAsync throws OperationCanceledException
         // (not ObjectDisposedException) if Dispose() races with this call.
-        using var semWaitCts = CancellationTokenSource.CreateLinkedTokenSource(ct, this.disposeCts.Token);
+        // TOCTOU guard: Dispose() may fire between ThrowIfDisposed and here, causing
+        // CreateLinkedTokenSource to throw ODE. Translate to OCE — callers tolerate cancellation.
+        CancellationTokenSource semWaitCts;
+        try
+        {
+            semWaitCts = CancellationTokenSource.CreateLinkedTokenSource(ct, this.disposeCts.Token);
+        }
+        catch (ObjectDisposedException)
+        {
+            throw new OperationCanceledException("SnoopInspector was disposed.", ct);
+        }
+
+        using var semWaitCtsDispose = semWaitCts;
         await this.concurrencySemaphore.WaitAsync(semWaitCts.Token).ConfigureAwait(false);
 
         try
@@ -3581,7 +3594,7 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
 
     private void ThrowIfDisposed()
     {
-        if (this.disposed)
+        if (Volatile.Read(ref this.disposed) != 0)
         {
             throw new ObjectDisposedException(nameof(SnoopInspector));
         }
