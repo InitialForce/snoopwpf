@@ -6,7 +6,8 @@ using System.Threading;
 
 /// <summary>
 /// In-memory blob store that keeps large payloads (screenshots, property dumps) by reference key.
-/// Each blob has a TTL (default 5 minutes); a background sweep removes expired entries.
+/// Each blob has a configurable TTL (session default 60 seconds via <see cref="SnoopWPF.Agent.Contracts.SnoopAgentOptions.BlobTtl"/>);
+/// a background sweep removes expired entries.
 /// </summary>
 /// <remarks>
 /// Tool handlers (e.g. <c>CaptureScreenshotTool</c>) that produce large binary payloads
@@ -32,7 +33,7 @@ public sealed class BlobStore : IDisposable
     private volatile bool disposed;
 
     /// <summary>
-    /// Initializes a new <see cref="BlobStore"/> with the default 5-minute sweep interval.
+    /// Initializes a new <see cref="BlobStore"/> with the default sweep interval (matches <see cref="DefaultTtl"/>).
     /// </summary>
     public BlobStore()
         : this(DefaultTtl)

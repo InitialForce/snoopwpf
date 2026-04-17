@@ -19,7 +19,7 @@ using SnoopWPF.Agent.Engine.Blob;
 /// Blob references (<c>blobRef</c>) are returned by tools that produce large binary payloads
 /// (e.g. <c>wpf_capture_screenshot</c>) when the payload would exceed the 64 KB inline limit.
 /// The caller invokes this tool with the ref to retrieve the actual bytes.
-/// Blobs expire after 5 minutes; a new capture is required after that.
+/// Blobs expire after the session-configured TTL (default 60 seconds; configurable via <see cref="SnoopWPF.Agent.Contracts.SnoopAgentOptions.BlobTtl"/>).
 /// </remarks>
 [McpServerToolType]
 public sealed class FetchBlobTool(BlobStore blobStore)
@@ -28,7 +28,7 @@ public sealed class FetchBlobTool(BlobStore blobStore)
     [Description(
         "Fetch a large payload (screenshot, property dump) by its blobRef key. " +
         "blobRef values are returned by other wpf_* tools whose response would exceed 64 KB. " +
-        "Blobs expire after 5 minutes; re-run the originating tool to refresh. " +
+        "Blobs expire after the session TTL (default 60 seconds; configurable via SnoopAgentOptions.BlobTtl); re-run the originating tool to refresh. " +
         "Returns two content blocks: a JSON text block with metadata (key, mimeType, sizeBytes) " +
         "and an inline content block carrying the raw bytes. " +
         "Fails with BLOB_NOT_FOUND if the key is unknown or has expired.")]

@@ -39,7 +39,7 @@ public static class SnoopSuggestions
         "Element has zero size or is not visible; try wpf_get_windows for a full window screenshot instead";
 
     public const string BlobNotFound =
-        "Blob has expired (5-minute TTL) or the key is invalid; re-run the originating tool to get a fresh blobRef";
+        "Blob has expired (default 60 s TTL; configurable via SnoopAgentOptions.BlobTtl) or the key is invalid; re-run the originating tool to get a fresh blobRef";
 
     public const string WaitForPropertyTimeout =
         "Call wpf_pump_until_idle before wpf_wait_for_property to ensure animations and bindings have settled";
