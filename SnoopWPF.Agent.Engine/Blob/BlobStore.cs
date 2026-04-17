@@ -136,16 +136,13 @@ public sealed class BlobStore : IDisposable
             return;
         }
 
-        // Stop the timer and wait for any in-flight Sweep callback to complete
-        // before clearing entries.  Timer.Dispose(WaitHandle) blocks until the
-        // callback has returned, eliminating the race between Sweep and Dispose.
-        using var timerStopped = new ManualResetEventSlim(false);
-        this.sweepTimer.Dispose(timerStopped.WaitHandle);
-        timerStopped.Wait();
-
-        // Mark disposed AFTER the timer has fully stopped so Sweep cannot observe
-        // a partially-cleared entries dictionary.
+        // Set disposed FIRST. Any in-flight Sweep will hit the early-return guard at the
+        // top of Sweep() before touching this.entries. Timer.Dispose() then prevents future
+        // callbacks from being queued. This avoids the ManualResetEventSlim + Timer.Dispose
+        // (WaitHandle) pattern which can deadlock the testhost when the kernel event is not
+        // signaled synchronously (observed on net8.0-windows testhost).
         this.disposed = true;
+        this.sweepTimer.Dispose();
         this.entries.Clear();
     }
 

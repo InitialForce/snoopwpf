@@ -1,5 +1,6 @@
 namespace SnoopWPF.Agent.Tests.Tools;
 
+using System;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
@@ -77,7 +78,7 @@ public class SetSliderValueToolTests
                 Success = false,
                 ElementVisible = false,
                 StateChanged = false,
-                FailureReason = FailureReason.NodeNotFound,
+                FailureReason = FailureReason.ElementNotFound,
                 Suggestion = new SuggestionDto
                 {
                     Tool = "wpf_find_elements",
@@ -93,7 +94,7 @@ public class SetSliderValueToolTests
         var doc = JsonNode.Parse(json)!;
         Assert.That(doc["success"]!.GetValue<bool>(), Is.False);
         Assert.That(doc["stateChanged"]!.GetValue<bool>(), Is.False);
-        Assert.That(doc["failureReason"]!.GetValue<string>(), Is.EqualTo("NODE_NOT_FOUND"));
+        Assert.That(doc["failureReason"]!.GetValue<string>(), Is.EqualTo("ELEMENT_NOT_FOUND"));
         Assert.That(doc["suggestion"]!["tool"]!.GetValue<string>(), Is.EqualTo("wpf_find_elements"));
     }
 
