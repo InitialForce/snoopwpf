@@ -293,6 +293,157 @@ public sealed class HandshakeSecurityTests
     }
 
     /// <summary>
+    /// Verifies that each handshake issues a fresh nonce — no two connections share the same
+    /// nonce byte sequence. This is a proxy for the nonce-replay property: since nonces are
+    /// random and unique per connection, replaying a nonce from a previous session against a
+    /// new server invocation produces an HMAC that was not derived from the new nonce, so the
+    /// server rejects it.
+    ///
+    /// Two parallel handshakes are performed and the nonce observed by each client is compared.
+    /// The probability of a false pass (two independently drawn 16-byte random values colliding)
+    /// is 1/(2^128), which is negligible.
+    /// </summary>
+    [Test]
+    public async Task HandshakeAsync_NonceFreshness_EachConnectionGetsUniqueNonce()
+    {
+        const string sessionToken = "nonce-freshness-test-token";
+
+        byte[]? nonce1 = null;
+        byte[]? nonce2 = null;
+
+        // Run two independent handshake exchanges and capture the nonce from each.
+        async Task RunExchangeAsync(Action<byte[]> captureNonce)
+        {
+            await using var pipes = new InProcessPipePair();
+
+            var clientTask = Task.Run(async () =>
+            {
+                var challenge = await ReceiveFramedAsync<HandshakeChallenge>(
+                    pipes.ClientStream, CancellationToken.None).ConfigureAwait(false);
+
+                Assert.That(challenge?.Nonce, Is.Not.Null.And.Length.EqualTo(16),
+                    "Nonce must be 16 bytes.");
+
+                captureNonce(challenge!.Nonce);
+
+                byte[] proof = ComputeHmacProof(sessionToken, challenge.Nonce);
+                var response = new HandshakeResponse
+                {
+                    ProtocolVersion = ProtocolConstants.ProtocolVersion,
+                    AgentVersion = "1.0.0",
+                    TargetRuntime = "net8.0",
+                    ProofHmac = proof,
+                };
+                await SendFramedAsync(pipes.ClientStream, response, CancellationToken.None)
+                    .ConfigureAwait(false);
+            });
+
+            var serverTask = McpServerSetup.PerformPipeHandshakeAsync(
+                pipes.ServerStream, sessionToken, CancellationToken.None);
+
+            await clientTask.ConfigureAwait(false);
+            bool ok = await serverTask.ConfigureAwait(false);
+            Assert.That(ok, Is.True, "Handshake must succeed so we can capture the nonce.");
+        }
+
+        await RunExchangeAsync(n => nonce1 = n).ConfigureAwait(false);
+        await RunExchangeAsync(n => nonce2 = n).ConfigureAwait(false);
+
+        Assert.That(nonce1, Is.Not.Null, "Nonce from first handshake must be captured.");
+        Assert.That(nonce2, Is.Not.Null, "Nonce from second handshake must be captured.");
+        Assert.That(nonce1, Is.Not.EqualTo(nonce2),
+            "Nonces from two distinct connections must differ (nonce-freshness invariant). " +
+            "A server that reuses nonces is vulnerable to replay attacks.");
+    }
+
+    /// <summary>
+    /// Verifies that replaying a captured nonce+HMAC from one handshake against a new server
+    /// connection is rejected. The server generates a fresh nonce; a client that replays an
+    /// old HMAC proof (computed against the previous nonce) will not match the new expected
+    /// HMAC, so the server returns false.
+    /// </summary>
+    [Test]
+    public async Task HandshakeAsync_ReplayedNonce_IsRejected()
+    {
+        const string sessionToken = "replay-attack-test-token";
+
+        // Step 1: Perform a legitimate handshake and capture the challenge nonce.
+        byte[]? capturedNonce = null;
+        byte[]? capturedProof = null;
+
+        {
+            await using var pipes = new InProcessPipePair();
+
+            var clientTask = Task.Run(async () =>
+            {
+                var challenge = await ReceiveFramedAsync<HandshakeChallenge>(
+                    pipes.ClientStream, CancellationToken.None).ConfigureAwait(false);
+
+                capturedNonce = challenge!.Nonce;
+                capturedProof = ComputeHmacProof(sessionToken, capturedNonce);
+
+                var response = new HandshakeResponse
+                {
+                    ProtocolVersion = ProtocolConstants.ProtocolVersion,
+                    AgentVersion = "1.0.0",
+                    TargetRuntime = "net8.0",
+                    ProofHmac = capturedProof,
+                };
+                await SendFramedAsync(pipes.ClientStream, response, CancellationToken.None)
+                    .ConfigureAwait(false);
+            });
+
+            var serverTask = McpServerSetup.PerformPipeHandshakeAsync(
+                pipes.ServerStream, sessionToken, CancellationToken.None);
+
+            await clientTask.ConfigureAwait(false);
+            bool firstOk = await serverTask.ConfigureAwait(false);
+
+            Assert.That(firstOk, Is.True, "First handshake must succeed to capture the nonce.");
+        }
+
+        Assert.That(capturedNonce, Is.Not.Null);
+        Assert.That(capturedProof, Is.Not.Null);
+
+        // Step 2: Open a new connection. The server will issue a NEW random nonce.
+        // The attacker replays the old HMAC proof (computed against the previous nonce).
+        // Since the new nonce differs, HMAC(key, newNonce) != oldProof, so the server rejects it.
+        await using var replayPipes = new InProcessPipePair();
+
+        var replayClientTask = Task.Run(async () =>
+        {
+            // Read (and discard) the new challenge's nonce — the attacker ignores it and
+            // replays the old proof computed against capturedNonce.
+            var newChallenge = await ReceiveFramedAsync<HandshakeChallenge>(
+                replayPipes.ClientStream, CancellationToken.None).ConfigureAwait(false);
+
+            Assert.That(newChallenge?.Nonce, Is.Not.Null, "Server must still issue a challenge.");
+
+            // Replay: send the HMAC that was valid against the OLD nonce.
+            var replayResponse = new HandshakeResponse
+            {
+                ProtocolVersion = ProtocolConstants.ProtocolVersion,
+                AgentVersion = "1.0.0",
+                TargetRuntime = "net8.0",
+                ProofHmac = capturedProof, // This was HMAC(key, oldNonce), NOT HMAC(key, newNonce).
+            };
+            await SendFramedAsync(replayPipes.ClientStream, replayResponse, CancellationToken.None)
+                .ConfigureAwait(false);
+        });
+
+        var replayServerTask = McpServerSetup.PerformPipeHandshakeAsync(
+            replayPipes.ServerStream, sessionToken, CancellationToken.None);
+
+        await replayClientTask.ConfigureAwait(false);
+        bool replayResult = await replayServerTask.ConfigureAwait(false);
+
+        Assert.That(replayResult, Is.False,
+            "Replayed HMAC proof (computed against old nonce) must be rejected by the server. " +
+            "The server generates a fresh nonce per connection, so an attacker who replays a " +
+            "previously-captured proof will not match the new expected HMAC.");
+    }
+
+    /// <summary>
     /// Verifies the challenge frame does NOT contain the session token.
     /// The token must never traverse the pipe.
     /// </summary>
