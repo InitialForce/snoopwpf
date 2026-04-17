@@ -17,17 +17,15 @@ using System.Threading;
 /// </remarks>
 public sealed class BlobStore : IDisposable
 {
-    /// <summary>Default TTL applied to blobs when no expiry is specified.</summary>
-    public static readonly TimeSpan DefaultTtl = TimeSpan.FromMinutes(5);
+    /// <summary>
+    /// Default TTL applied to blobs when no expiry is specified. Matches
+    /// <see cref="SnoopWPF.Agent.Contracts.SnoopAgentOptions.BlobTtl"/> so the
+    /// documented session default and the library fallback do not diverge.
+    /// </summary>
+    public static readonly TimeSpan DefaultTtl = TimeSpan.FromSeconds(60);
 
     private readonly ConcurrentDictionary<string, BlobEntry> entries = new(StringComparer.Ordinal);
 
-    // CA2213 suppressed: Timer is disposed via the Timer.Dispose(WaitHandle) overload,
-    // which the CA analyzer does not recognise as a Dispose call.
-    [System.Diagnostics.CodeAnalysis.SuppressMessage(
-        "Usage",
-        "CA2213:Disposable fields should be disposed",
-        Justification = "Disposed via Timer.Dispose(WaitHandle) in Dispose() — CA2213 cannot detect the WaitHandle overload.")]
     private readonly Timer sweepTimer;
 
     private volatile bool disposed;

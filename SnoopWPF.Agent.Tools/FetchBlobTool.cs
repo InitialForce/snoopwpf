@@ -55,11 +55,7 @@ public sealed class FetchBlobTool(BlobStore blobStore)
         var textBlock = new TextContentBlock { Text = metadataJson };
 
         ContentBlock dataBlock = entry.MimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
-            ? new ImageContentBlock
-            {
-                Data = new ReadOnlyMemory<byte>(entry.Data),
-                MimeType = entry.MimeType,
-            }
+            ? ImageContentBlock.FromBytes(entry.Data, entry.MimeType)
             : new TextContentBlock
             {
                 Text = Encoding.UTF8.GetString(entry.Data),
