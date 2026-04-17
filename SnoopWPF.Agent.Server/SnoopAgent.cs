@@ -47,25 +47,8 @@ public static class SnoopAgent
         // NOTE: StartBrokered does NOT take over stdout — the broker owns its own stdio.
         Console.SetOut(TextWriter.Null);
 
-        // FX2-C5 (I18N-C1): force UTF-8 on stdio when running stdio transport. On non-UTF-8
-        // Windows locales the default OEM code page corrupts non-ASCII WPF element names /
-        // property values when serialized through the StdioServerTransport JSON-RPC framing.
-        //
-        // Guard: GUI WPF apps are typically launched without a console, so Console.In/Out
-        // handles may be invalid — setting encoding then throws IOException. We only force
-        // UTF-8 for stdio transport and swallow the "no console attached" failure.
-        if ((options ?? new SnoopAgentOptions()).Transport == TransportMode.Stdio)
-        {
-            try
-            {
-                Console.OutputEncoding = Encoding.UTF8;
-                Console.InputEncoding = Encoding.UTF8;
-            }
-            catch (IOException)
-            {
-                // No usable console attached — encoding is irrelevant in that case.
-            }
-        }
+        // FX4-C2-retry: delegate to shared helper (see bottom of class).
+        SetStdioEncodingIfApplicable(options);
 
         options ??= new SnoopAgentOptions();
 
@@ -184,6 +167,10 @@ public static class SnoopAgent
             throw new ArgumentException("sessionToken must not be null or empty.", nameof(sessionToken));
         }
 
+        // FX4-C2-retry: apply UTF-8 encoding for any stdio transport path (no-op for Pipe here,
+        // but called unconditionally so future transport changes are automatically guarded).
+        SetStdioEncodingIfApplicable(options);
+
         options ??= new SnoopAgentOptions();
 
         // In brokered mode, pipe name and session token are supplied by the caller.
@@ -294,6 +281,9 @@ public static class SnoopAgent
         {
             throw new ArgumentException("sessionToken must not be null or empty.", nameof(sessionToken));
         }
+
+        // FX4-C2-retry: apply UTF-8 encoding for any stdio transport path.
+        SetStdioEncodingIfApplicable(options);
 
         options ??= new SnoopAgentOptions();
 
@@ -431,6 +421,31 @@ public static class SnoopAgent
         catch (Exception ex)
         {
             Trace.TraceError("SnoopWPF.Agent MCP server (Brokered) error: {0}", ex.Message);
+        }
+    }
+
+    // FX4-C2-retry: shared UTF-8 stdio setup, called as the first statement of every
+    // public Start* entry point that may drive a stdio MCP transport.
+    //
+    // Set UTF-8 on stdin/stdout for stdio MCP transport so non-ASCII element names
+    // (Cyrillic, CJK, emoji) don't get corrupted on legacy Windows locales.
+    // Guarded by IOException for detached GUI hosts where Console is not attached.
+    private static void SetStdioEncodingIfApplicable(SnoopAgentOptions? options)
+    {
+        var transport = (options ?? new SnoopAgentOptions()).Transport;
+        if (transport != TransportMode.Stdio)
+        {
+            return;
+        }
+
+        try
+        {
+            Console.OutputEncoding = Encoding.UTF8;
+            Console.InputEncoding = Encoding.UTF8;
+        }
+        catch (IOException)
+        {
+            // Detached GUI host — no console handle. Non-fatal.
         }
     }
 }
