@@ -182,7 +182,7 @@ The broker:
 3. Writes the `BrokerHandshakePayload` to the injected agent's stdin substitute.
 4. Starts the MCP stdio server — ready for Claude Code or Cursor to connect.
 
-Connect your MCP client to the broker's stdio. All 27 `wpf_*` tools are available. When the
+Connect your MCP client to the broker's stdio. All 28 `wpf_*` tools are available. When the
 broker exits, the injected agent is unloaded automatically.
 
 > **Note:** Injection requires the same Windows user and is subject to DEP/CFG constraints.

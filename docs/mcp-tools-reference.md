@@ -1,6 +1,6 @@
 # MCP Tools Reference
 
-All 27 tools exposed by SnoopWPF.Agent. Tool names are prefixed with `wpf_`.
+All 28 tools exposed by SnoopWPF.Agent. Tool names are prefixed with `wpf_`.
 
 Error responses follow a common schema — see [Error Codes](#error-codes) at the bottom.
 
