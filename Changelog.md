@@ -6,7 +6,7 @@ This release introduces the MCP agent surface and a wave of review-driven fixes.
 
 ### New features
 
-- **MCP agent surface (27 tools, two modes).** `SnoopWPF.Agent` exposes
+- **MCP agent surface (29 tools, two modes).** `SnoopWPF.Agent` exposes
   WPF inspection and mutation via the Model Context Protocol in two modes:
   - **Injection mode** (`snoop-mcp`): out-of-process, injected DLL, named-pipe
     transport, current-user ACL, 256-bit session token handshake.

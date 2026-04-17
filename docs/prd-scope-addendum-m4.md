@@ -1,19 +1,22 @@
-# PRD Scope Addendum — M4 (27-tool surface)
+# PRD Scope Addendum — M4 (29-tool surface)
 
 > **Relates to**: `PRD-v5-MVP.md` §5 (tool surface, scope-frozen at 22).
-> **Reason**: The implementation ships 27 tools. Five tools present in the
+> **Reason**: The implementation ships 29 tools. Seven tools present in the
 > v3 PRD and `docs/mcp-tools-reference.md` were not carried forward into the
 > PRD-v5-MVP scope table. They were implemented as part of the v3 foundation
-> work and are retained in the shipped surface. This addendum records their
-> Guidelines / Limitations / Applies-to per the W3-E1 format used in §5.2.
+> work and are retained in the shipped surface. Two additional tools were added
+> post-v5: `wpf_set_slider_value` (FX5) and `wpf_diagnostics` (FX6-D3).
+> This addendum records their Guidelines / Limitations / Applies-to per the
+> W3-E1 format used in §5.2.
 
 ---
 
-## The 5 additional tools (v3 carry-forward)
+## The 7 additional tools (v3 carry-forward + post-v5 additions)
 
-These tools appear in `docs/mcp-tools-reference.md` but are not listed in
-PRD-v5-MVP.md §5.1–5.3. They are not new scope — they are shipped as part of
-the v3 inspect toolset that v5-MVP inherited.
+Five tools appear in `docs/mcp-tools-reference.md` but are not listed in
+PRD-v5-MVP.md §5.1–5.3. They are v3 carry-forward — shipped as part of the
+v3 inspect toolset that v5-MVP inherited.  Two tools were added post-v5:
+`wpf_set_slider_value` (FX5) and `wpf_diagnostics` (FX6-D3).
 
 | # | Tool | Category | Purpose |
 |---|------|----------|---------|
@@ -22,6 +25,8 @@ the v3 inspect toolset that v5-MVP inherited.
 | 25 | `wpf_get_resources` | Observe | Walk the resource-dictionary hierarchy with precedence ordering. |
 | 26 | `wpf_get_triggers` | Observe | All triggers on an element (Style, ControlTemplate, DataTemplate, direct). |
 | 27 | `wpf_get_behaviors` | Observe | Attached Blend behaviors and actions (both Interactivity and Microsoft.Xaml.Behaviors). |
+| 28 | `wpf_set_slider_value` | Act L0 | Set a Slider's value directly (absolute or normalized 0–1). Added in FX5. |
+| 29 | `wpf_diagnostics` | Utility | Self-health diagnostics for the SnoopWPF Agent (sessions, tools, resources). Added in FX6-D3. |
 
 ---
 
@@ -91,18 +96,19 @@ the v3 inspect toolset that v5-MVP inherited.
 
 ---
 
-## Revised total: 27 tools
+## Revised total: 29 tools
 
 | Group | Count | Tools |
 |-------|-------|-------|
 | Observe (v3 core) | 9 | `wpf_get_session_info`, `wpf_get_windows`, `wpf_get_visual_tree`, `wpf_get_children`, `wpf_get_ancestors`, `wpf_find_elements`, `wpf_inspect_element`, `wpf_get_properties`, `wpf_capture_screenshot` |
 | Observe (v3 carry-forward) | 5 | `wpf_get_binding_info`, `wpf_run_diagnostics`, `wpf_get_resources`, `wpf_get_triggers`, `wpf_get_behaviors` |
-| Act L0 | 5 | `wpf_execute_command`, `wpf_set_text_value`, `wpf_set_check_state`, `wpf_select_item`, `wpf_set_property` |
+| Act L0 | 6 | `wpf_execute_command`, `wpf_set_text_value`, `wpf_set_check_state`, `wpf_select_item`, `wpf_set_property`, `wpf_set_slider_value` |
 | Act L1 | 3 | `wpf_click`, `wpf_toggle`, `wpf_expand_collapse` |
 | Extract | 1 | `wpf_resolve_binding` |
-| Utility | 4 | `wpf_pump_until_idle`, `wpf_wait_for_property`, `wpf_poll_changes`, `wpf_fetch_blob` |
-| **Total** | **27** | |
+| Utility | 5 | `wpf_pump_until_idle`, `wpf_wait_for_property`, `wpf_poll_changes`, `wpf_fetch_blob`, `wpf_diagnostics` |
+| **Total** | **29** | |
 
-The 5 v3 carry-forward tools are agent-visible (they appear in `tools/list`)
+The 5 v3 carry-forward tools, plus `wpf_set_slider_value` (FX5) and
+`wpf_diagnostics` (FX6-D3), are agent-visible (they appear in `tools/list`)
 and count toward the surface, bringing the total from the PRD-v5-MVP baseline
-of 22 to 27.
+of 22 to 29.

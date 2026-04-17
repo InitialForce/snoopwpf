@@ -29,7 +29,7 @@ using SnoopWPF.Agent.Remote;
 /// </para>
 /// <para>
 /// Downstream consumers (e.g. MC's <c>UiMcpHost</c>) add their own lifecycle tools
-/// (e.g. <c>mc_launch</c>) on top of the 27-tool surface registered here. Pass a
+/// (e.g. <c>mc_launch</c>) on top of the 29-tool surface registered here. Pass a
 /// callback to <see cref="BrokerOptions.OnTargetDisconnected"/> to hook disconnection events.
 /// </para>
 /// </remarks>

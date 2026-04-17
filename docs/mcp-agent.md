@@ -8,7 +8,7 @@ debug, and interact with running WPF applications programmatically.
 
 ## Overview
 
-The agent exposes Snoop's inspection engine as 28 MCP tools. An AI agent can navigate
+The agent exposes Snoop's inspection engine as 29 MCP tools. An AI agent can navigate
 the visual tree, read property values, diagnose binding errors, capture screenshots,
 interact with UI elements, and (optionally) mutate property values — all without a
 human operating Snoop's GUI.
@@ -236,5 +236,5 @@ See [Security](security.md) for the full security model.
 
 - [NuGet Mode](nuget-mode.md) — embedding the agent in your WPF app
 - [Injection Mode](injection-mode.md) — external agent injection
-- [MCP Tools Reference](mcp-tools-reference.md) — all 28 tools with examples
+- [MCP Tools Reference](mcp-tools-reference.md) — all 29 tools with examples
 - [Security](security.md) — security model and threat mitigations

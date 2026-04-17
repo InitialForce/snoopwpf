@@ -23,7 +23,7 @@ using SnoopWPF.Agent.Engine.Blob;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The broker + target round-trip over all 28 tools (M2-21 acceptance criterion) requires
+/// The broker + target round-trip over all 29 tools (M2-21 acceptance criterion) requires
 /// a live WPF application and is marked <see cref="CategoryAttribute"/> MANUAL_VERIFICATION
 /// because the full-round-trip path depends on M2-19 (brokered-mode consumer deliverables)
 /// and the injection EXE being available on the CI agent.
@@ -120,7 +120,7 @@ public sealed class BrokerHostIntegrationTests
     /// <summary>
     /// MANUAL VERIFICATION — requires a live WPF application target.
     ///
-    /// Full broker + target round-trip over all 28 MCP tools. Each tool call must
+    /// Full broker + target round-trip over all 29 MCP tools. Each tool call must
     /// succeed (non-error MCP response) when a target WPF process is connected.
     ///
     /// To run manually:
@@ -141,7 +141,7 @@ public sealed class BrokerHostIntegrationTests
         // When M2-19 is implemented, this test should be updated to:
         //   1. Spawn BrokerTargetSpawner.Spawn(snoop-mcp.exe, ...) against the target PID.
         //   2. Start BrokerHost.Start(StdioServerTransport, opts) in a background task.
-        //   3. Call all 28 MCP tools via the McpTestClient.
+        //   3. Call all 29 MCP tools via the McpTestClient.
         //   4. Assert each tool returns a non-error response.
         Assert.Ignore("MANUAL_VERIFICATION: see test summary for instructions.");
     }
