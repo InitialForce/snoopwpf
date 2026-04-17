@@ -41,7 +41,7 @@ public sealed class BrokerHostTests
         {
             process = BrokerTargetSpawner.Spawn(
                 exe: dotnetExe,
-                args: "--version",
+                args: new[] { "--version" },
                 pipeName: "test-pipe-" + Guid.NewGuid().ToString("N"),
                 tokenHex: "aabbcc");
 

@@ -66,7 +66,7 @@ internal static class Program
             // -----------------------------------------------------------------------
             targetProcess = BrokerTargetSpawner.Spawn(
                 exe: targetExe,
-                args: string.Empty,
+                args: Array.Empty<string>(),
                 pipeName: pipeName,
                 tokenHex: tokenHex);
 
@@ -149,7 +149,7 @@ internal static class Program
             // 2. BrokerTargetSpawner null-guard.
             try
             {
-                BrokerTargetSpawner.Spawn(exe: null!, args: string.Empty, pipeName: "x", tokenHex: "y");
+                BrokerTargetSpawner.Spawn(exe: null!, args: Array.Empty<string>(), pipeName: "x", tokenHex: "y");
                 Console.Error.WriteLine("[smoke] FAIL: BrokerTargetSpawner.Spawn should have thrown for null exe.");
                 return 1;
             }

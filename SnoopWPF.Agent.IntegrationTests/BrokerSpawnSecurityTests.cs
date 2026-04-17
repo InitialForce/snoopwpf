@@ -161,8 +161,23 @@ public sealed class BrokerSpawnSecurityTests
         {
             if (process is not null)
             {
-                try { process.Kill(); } catch { /* best-effort */ }
-                try { process.Dispose(); } catch { /* best-effort */ }
+                try
+                {
+                    process.Kill();
+                }
+                catch
+                {
+                    // best-effort
+                }
+
+                try
+                {
+                    process.Dispose();
+                }
+                catch
+                {
+                    // best-effort
+                }
             }
         }
 

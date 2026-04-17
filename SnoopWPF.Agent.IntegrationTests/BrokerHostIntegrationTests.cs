@@ -62,7 +62,7 @@ public sealed class BrokerHostIntegrationTests
             {
                 process = BrokerTargetSpawner.Spawn(
                     exe: dotnetExe,
-                    args: "--version",
+                    args: new[] { "--version" },
                     pipeName: "broker-integ-test-" + Guid.NewGuid().ToString("N"),
                     tokenHex: "deadbeef");
 
