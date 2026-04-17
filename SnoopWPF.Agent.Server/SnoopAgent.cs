@@ -345,7 +345,9 @@ public static class SnoopAgent
             {
                 try
                 {
+                    // FX6-D3: record StartedAt for uptime computation in wpf_diagnostics.
                     handle.IsStarted = true;
+                    handle.StartedAt = DateTimeOffset.UtcNow;
                     await pipeClient.RunAsync(cts.Token).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
@@ -397,7 +399,9 @@ public static class SnoopAgent
             SelfTest.HwndSourcePresent();
 
             // FX6-D1: mark the handle as started before entering the MCP loop.
+            // FX6-D3: record StartedAt for uptime computation in wpf_diagnostics.
             handle.IsStarted = true;
+            handle.StartedAt = DateTimeOffset.UtcNow;
             await McpServerSetup.RunServerAsync(inspector, options, policy, handle, ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -431,7 +435,9 @@ public static class SnoopAgent
             SelfTest.HwndSourcePresent();
 
             // FX6-D1: mark the handle as started before entering the brokered loop.
+            // FX6-D3: record StartedAt for uptime computation in wpf_diagnostics.
             handle.IsStarted = true;
+            handle.StartedAt = DateTimeOffset.UtcNow;
             await McpServerSetup.RunBrokeredPipeAsync(inspector, policy, pipeName, sessionTokenHex, ct, auditWriter, options)
                 .ConfigureAwait(false);
         }

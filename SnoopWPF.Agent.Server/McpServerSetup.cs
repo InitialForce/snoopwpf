@@ -476,10 +476,18 @@ internal static class McpServerSetup
 
         // Register AuditLogWriter if audit logging is enabled (N1).
         // Tools that want to emit audit entries can inject AuditLogWriter? from DI.
+        // FX6-D3: also register as IAuditDepthProvider so wpf_diagnostics can read queue depth
+        // without requiring a direct reference to the internal AuditLogWriter type.
         if (auditWriter is not null)
         {
             services.AddSingleton<AuditLogWriter>(auditWriter);
+            services.AddSingleton<SnoopWPF.Agent.Contracts.IAuditDepthProvider>(auditWriter);
         }
+
+        // FX6-D3: register AgentStartInfo so wpf_diagnostics can compute uptime.
+        // Using UtcNow at service-collection build time is a close-enough approximation
+        // of when McpServer.RunAsync starts accepting requests.
+        services.AddSingleton(new SnoopWPF.Agent.Contracts.AgentStartInfo(DateTimeOffset.UtcNow));
 
         // Register every tool class from the Tools assembly via the MCP builder.
         var toolsAssembly = typeof(SnoopWPF.Agent.Tools.SessionInfoTool).Assembly;

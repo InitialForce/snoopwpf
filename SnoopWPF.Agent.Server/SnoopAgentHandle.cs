@@ -74,6 +74,13 @@ public sealed class SnoopAgentHandle : IDisposable, IStartupFailureSink
     public bool IsStarted { get; internal set; }
 
     /// <summary>
+    /// UTC timestamp recorded when <see cref="IsStarted"/> was first set to
+    /// <see langword="true"/>. Used by <c>wpf_diagnostics</c> to compute uptime (FX6-D3).
+    /// <see langword="null"/> until the server loop starts.
+    /// </summary>
+    public DateTimeOffset? StartedAt { get; internal set; }
+
+    /// <summary>
     /// The exception that caused startup to fail, or <see langword="null"/> if startup
     /// succeeded or has not yet completed. Set by <see cref="IStartupFailureSink.OnStartupFailed"/>
     /// (FX6-D1).
