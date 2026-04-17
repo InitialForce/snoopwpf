@@ -403,6 +403,13 @@ These are sync/transport primitives; tools 1–18 are the agent surface.
 Total shipped: 22. The 20-cap applies to agent-visible primary tools per
 SOTA research; we ship under it.
 
+> **Scope delta (M4)**: The implementation ships 27 tools. Five tools from
+> the v3 PRD (`wpf_get_binding_info`, `wpf_run_diagnostics`,
+> `wpf_get_resources`, `wpf_get_triggers`, `wpf_get_behaviors`) were
+> retained in the shipped surface alongside the 22 listed here. Guidelines,
+> Limitations, and Applies-to for those 5 tools are in
+> [`docs/prd-scope-addendum-m4.md`](docs/prd-scope-addendum-m4.md).
+
 ---
 
 ## 6. The `WpfLocator` type
