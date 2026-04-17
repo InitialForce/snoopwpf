@@ -9,8 +9,8 @@ on:
       - develop
 
 concurrency:
-  group: agent-ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/develop' }}
 
 jobs:
   snoop-suite:

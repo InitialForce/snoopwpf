@@ -45,4 +45,11 @@ public enum FailureReason
 
     /// <summary>The target process is not running or is unreachable.</summary>
     TargetNotRunning = 12,
+
+    /// <summary>
+    /// The UI Automation pattern is supported but the element is disabled (IsEnabled=false).
+    /// Returned when <c>ElementNotEnabledException</c> is thrown by Invoke/Toggle/Expand/Collapse.
+    /// Distinct from <see cref="PatternNotSupported"/> which means the pattern is absent.
+    /// </summary>
+    ElementDisabled = 13,
 }
