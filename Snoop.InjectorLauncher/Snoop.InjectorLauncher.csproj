@@ -3,6 +3,13 @@
     <OutputType>exe</OutputType>
     <TargetFramework Condition="'$(TargetFramework)' == ''">$(MinTargetFramework)</TargetFramework>
     <PlatformTarget Condition="'$(PlatformTarget)' == '' or '$(PlatformTarget)' == 'AnyCPU'">x86</PlatformTarget>
+    <!-- InjectorLauncher runs Restore three times in sequence (net462+x86, net462+x64,
+         net6.0+ARM64) via the CompileOtherArches after-build target. Each restore
+         overwrites packages.lock.json with its own TFM/RID, so locked-mode restore
+         in CI is incompatible with this multi-invocation build pattern. Skip the
+         lock file for this project only; reproducibility is preserved via the
+         solution-level lock files on the packages this project depends on. -->
+    <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
     <ApplicationIcon>..\Artwork\Snoop.ico</ApplicationIcon>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
 
