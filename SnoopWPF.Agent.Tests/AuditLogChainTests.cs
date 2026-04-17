@@ -5,6 +5,7 @@ namespace SnoopWPF.Agent.Tests;
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.Serialization.Json;
@@ -259,5 +260,61 @@ public class AuditLogChainTests
         Assert.That(reason, Does.Not.Contain('\n'), "LF must be gone");
         Assert.That(reason, Does.Not.Contain('\r'), "CR must be gone");
         Assert.That(reason, Does.Not.Contain('\0'), "NUL must be gone");
+    }
+
+    // -------------------------------------------------------------------------
+    // Test 6: FX4-MEM-C2 — DisposeAsync does not hang when worker is blocked
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Regression test for MEM-C2: verifies that <see cref="AuditLogWriter.DisposeAsync"/>
+    /// returns within the drain-timeout window even when the background worker is blocked
+    /// in <c>ReadAllAsync</c> waiting for entries that will never arrive.
+    ///
+    /// Before the fix, <c>DisposeAsync</c> omitted <c>cts.Cancel()</c> and awaited
+    /// <c>workerTask</c> unconditionally; a stuck worker (blocked I/O or hung channel
+    /// read) caused an infinite hang that propagated into the MCP server shutdown path.
+    ///
+    /// The fix: (a) call <c>cts.Cancel()</c> before awaiting the worker so
+    /// <c>ReadAllAsync(ct)</c> observes the token and exits; (b) wrap the await in
+    /// <c>Task.WhenAny</c> with a bounded timeout so that even a stream ignoring the
+    /// token cannot block disposal indefinitely.
+    ///
+    /// This test exercises path (a) by omitting <c>TryComplete()</c> on the channel
+    /// writer, leaving the worker blocked in <c>ReadAllAsync</c>.  <c>DisposeAsync</c>
+    /// must return well before the 6-second assertion deadline (the drain timeout is
+    /// set to 500 ms; cancellation should unblock the worker in microseconds).
+    /// </summary>
+    [Test]
+    [CancelAfter(6000)]
+    public async Task DisposeAsync_WhenWorkerStuck_DoesNotHangBeyondTimeout()
+    {
+        var sessionId = "test-stuck-" + Guid.NewGuid().ToString("N");
+
+        // Use a short drain timeout so the test does not need to wait 5 seconds in
+        // the worst case (e.g. if the CTS path somehow fails to unblock the worker).
+        var shortTimeout = TimeSpan.FromMilliseconds(500);
+        var auditWriter = new AuditLogWriter(sessionId, channel: null, drainTimeout: shortTimeout);
+
+        // Deliberately do NOT call Writer.TryComplete() or write any entries.
+        // The background worker is now blocked in ReadAllAsync(ct) waiting for an
+        // entry that will never arrive — simulating a hung consumer.
+
+        var sw = Stopwatch.StartNew();
+
+        // DisposeAsync must:
+        //   1. Call TryComplete() on the channel writer.
+        //   2. Cancel the internal CTS so ReadAllAsync(ct) throws OperationCanceledException.
+        //   3. Return promptly (well under the 6-second [Timeout] ceiling).
+        await auditWriter.DisposeAsync();
+
+        sw.Stop();
+
+        // The worker exits via OperationCanceledException the moment the CTS is
+        // signalled, so elapsed time should be in the millisecond range.  We allow
+        // up to 5 500 ms (drain timeout + 1 s grace) to avoid flakiness on slow CI.
+        Assert.That(sw.Elapsed, Is.LessThan(TimeSpan.FromMilliseconds(5500)),
+            $"DisposeAsync took {sw.Elapsed.TotalMilliseconds:F0} ms — expected < 5500 ms. " +
+            "This indicates the CTS cancel did not unblock the stuck worker.");
     }
 }

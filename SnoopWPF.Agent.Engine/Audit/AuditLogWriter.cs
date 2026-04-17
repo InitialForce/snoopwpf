@@ -2,6 +2,8 @@
 // AuditLogWriter requires Channel<T>, IAsyncDisposable, and ValueTask — all unavailable
 // on net462. The type is compiled only for net6+ targets.
 #if NET6_0_OR_GREATER
+// FX4-MEM-C2: DisposeAsync now cancels CTS before awaiting the worker, and uses a
+// bounded 5-second drain timeout so a stuck disk cannot hang the MCP server shutdown path.
 //
 // Brokered-mode audit log scope (B-5):
 //   In Brokered mode the audit log is TARGET-ONLY. The broker process must NOT
@@ -12,6 +14,7 @@
 namespace SnoopWPF.Agent.Engine.Audit;
 
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.Serialization.Json;
 using System.Security.AccessControl;
@@ -49,6 +52,7 @@ internal sealed class AuditLogWriter : IAsyncDisposable
     private readonly string filePath;
     private readonly Task workerTask;
     private readonly CancellationTokenSource cts = new CancellationTokenSource();
+    private readonly TimeSpan drainTimeout;
 
     /// <summary>
     /// Constructs a new <see cref="AuditLogWriter"/> for the given <paramref name="sessionId"/>
@@ -59,13 +63,18 @@ internal sealed class AuditLogWriter : IAsyncDisposable
     ///   The channel to read from. Pass <c>null</c> to have the writer create its own
     ///   unbounded channel (convenient for tests and simple callers).
     /// </param>
-    public AuditLogWriter(string sessionId, Channel<AuditEntry>? channel = null)
+    /// <param name="drainTimeout">
+    ///   Maximum time to wait for the background worker to exit during <see cref="DisposeAsync"/>.
+    ///   Defaults to 5 seconds. Pass a shorter value in unit tests.
+    /// </param>
+    public AuditLogWriter(string sessionId, Channel<AuditEntry>? channel = null, TimeSpan drainTimeout = default)
     {
         if (string.IsNullOrWhiteSpace(sessionId))
         {
             throw new ArgumentException("sessionId must not be empty.", nameof(sessionId));
         }
 
+        this.drainTimeout = drainTimeout == default ? TimeSpan.FromSeconds(5) : drainTimeout;
         this.sessionKey = RandomNumberGenerator.GetBytes(32);
         this.channel = channel ?? Channel.CreateUnbounded<AuditEntry>(new UnboundedChannelOptions
         {
@@ -262,21 +271,52 @@ internal sealed class AuditLogWriter : IAsyncDisposable
     /// <inheritdoc/>
     public async ValueTask DisposeAsync()
     {
-        // Signal the channel that no more entries will be written.
-        // The background worker drains remaining items then exits naturally.
+        // 1. Signal the channel that no more entries will be written so ReadAllAsync
+        //    sees the completion and exits once the queue is drained.
         this.channel.Writer.TryComplete();
+
+        // 2. Cancel the internal CTS BEFORE awaiting the worker.  This unblocks
+        //    the worker if it is stuck inside a slow or hung disk write, because
+        //    the CancellationToken is threaded through WriteLineAsync / FlushAsync
+        //    on net8+ and through ReadAllAsync on all targets.  Without this call
+        //    DisposeAsync hangs indefinitely whenever the filesystem stalls, which
+        //    bubbles up into the MCP server shutdown path and leaves zombie processes.
+        this.cts.Cancel();
 
         try
         {
-            await this.workerTask;
+            // 3. Await the worker with a bounded timeout so that even a completely
+            //    unresponsive sink (e.g. a network-mapped path that stops responding)
+            //    cannot prevent the process from shutting down cleanly.
+            var drainTimeoutTask = Task.Delay(this.drainTimeout);
+            var winner = await Task.WhenAny(this.workerTask, drainTimeoutTask).ConfigureAwait(false);
+
+            if (winner == drainTimeoutTask)
+            {
+                // The worker did not drain within 5 seconds.  Log to Trace (not
+                // Console) so the message is visible in debug listeners without
+                // polluting stdout in production.
+                Trace.WriteLine(
+                    $"[AuditLogWriter] Background audit worker did not drain within {this.drainTimeout.TotalSeconds:F0} s — " +
+                    "continuing disposal.  Some in-flight audit entries may have been lost.");
+            }
+            else
+            {
+                // Propagate the worker's result to surface any non-cancellation
+                // faults via the try/catch below, preserving original exception
+                // handling behaviour.
+                await this.workerTask.ConfigureAwait(false);
+            }
         }
         catch (OperationCanceledException)
         {
-            // Expected if CancellationToken was triggered externally.
+            // Expected: the CTS.Cancel() above will cause ReadAllAsync / WriteLineAsync
+            // / FlushAsync to throw OperationCanceledException inside the worker.
         }
         catch (Exception)
         {
-            // Swallow other worker faults on shutdown.
+            // Swallow other worker faults on shutdown to avoid triggering
+            // TaskScheduler.UnobservedTaskException and crashing the host.
         }
         finally
         {
