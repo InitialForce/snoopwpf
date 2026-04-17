@@ -41,6 +41,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Ensure PowerShell 7.4.x LTS is in use (7.2 hit EOL 2024-11-08).
+      - name: Assert PowerShell 7.4.x
+        shell: pwsh
+        run: |
+          $v = $PSVersionTable.PSVersion
+          Write-Host "PowerShell $v"
+          if ($v.Major -lt 7 -or ($v.Major -eq 7 -and $v.Minor -lt 4)) {
+            throw "PowerShell 7.4.x required (found $v). Update the runner image or add a setup-powershell step."
+          }
+
       - name: Setup .NET (global.json)
         uses: actions/setup-dotnet@v4
         with:
