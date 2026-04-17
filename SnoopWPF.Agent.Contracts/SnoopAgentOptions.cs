@@ -80,15 +80,38 @@ public sealed class SnoopAgentOptions
     public bool AllowSensitiveRetention { get; init; } = false;
 
     /// <summary>
-    /// Optional session identifier for the HMAC-chained audit log.
-    /// When set, every tool invocation produces an <see cref="SnoopWPF.Agent.Contracts.Audit.AuditEntry"/>
-    /// appended to <c>%LOCALAPPDATA%\SnoopWPF\audit\{AuditLogPath}.jsonl</c>.
-    /// When <see langword="null"/> (default) audit logging is disabled.
+    /// Opt-in session identifier that enables the per-session HMAC-chained audit log.
+    /// When non-null, every tool call produces an <see cref="SnoopWPF.Agent.Contracts.Audit.AuditEntry"/>
+    /// appended as JSONL to <c>%LOCALAPPDATA%\SnoopWPF\audit\{AuditLogPath}.jsonl</c>.
+    /// When <see langword="null"/> (the default) audit logging is fully disabled.
     /// </summary>
     /// <remarks>
-    /// The value is used as the log session ID. Only alphanumeric characters, hyphens,
-    /// and underscores are valid; other characters are replaced with underscores by
-    /// <c>AuditLogWriter</c>. A stable per-session identifier (e.g. a GUID string) is recommended.
+    /// <para><b>Purpose:</b> provides a tamper-evident record of every MCP tool invocation
+    /// for compliance, debugging, and security review. Each entry carries an HMAC-SHA256
+    /// chain tag so that gaps or tampering can be detected offline. See PRD §9.4 for the
+    /// chain format specification.</para>
+    ///
+    /// <para><b>Value semantics:</b> the string is used verbatim as the log file stem — it is
+    /// NOT interpreted as a file-system path. Only alphanumeric characters, hyphens (<c>-</c>),
+    /// and underscores (<c>_</c>) are preserved; any other character is replaced with an
+    /// underscore by <c>AuditLogWriter</c>. Use a stable, unique per-session value such as a
+    /// GUID string (e.g. <c>Guid.NewGuid().ToString()</c>).</para>
+    ///
+    /// <para><b>File location:</b> always written to
+    /// <c>%LOCALAPPDATA%\SnoopWPF\audit\{sanitised-value}.jsonl</c> on the target machine.
+    /// The directory is created automatically. Do not pass a rooted path or directory
+    /// separator characters — the writer will sanitise them but the result will be a flat
+    /// file name, not a nested directory.</para>
+    ///
+    /// <para><b>Security:</b> the log file is created with an OWNER_ONLY ACL (Windows,
+    /// net8+) so that other local user accounts cannot read or tamper with the log.
+    /// The per-session HMAC key is a cryptographically random 32-byte value held only
+    /// in memory; it is not persisted anywhere, so the chain cannot be forged after the
+    /// session ends.</para>
+    ///
+    /// <para><b>Brokered mode:</b> in brokered mode the audit log runs TARGET-SIDE only.
+    /// The broker process must not construct its own <c>AuditLogWriter</c>; doing so would
+    /// cause two writers to race on the same <c>.jsonl</c> file and corrupt the HMAC chain.</para>
     /// </remarks>
     public string? AuditLogPath { get; init; }
 }
