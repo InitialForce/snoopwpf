@@ -57,6 +57,36 @@ jobs:
       - name: Build Snoop.sln
         run: dotnet build Snoop.sln --configuration Release --framework ${{ matrix.target }} --no-incremental
 
+      # Informational: check whether the native injector DLL carries an Authenticode
+      # signature.  CI builds are not signed, so this step is allowed to fail.
+      # It catches accidental stripping of signatures in signed artifacts.
+      - name: Verify Snoop.GenericInjector.dll signature (informational)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $signtool = (Get-ChildItem -Recurse "C:\Program Files (x86)\Windows Kits" -Filter signtool.exe -ErrorAction SilentlyContinue |
+                       Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
+          if (-not $signtool) { $signtool = "signtool.exe" }
+          $dlls = @(
+            "bin\Release\Snoop.GenericInjector.x86.dll",
+            "bin\Release\Snoop.GenericInjector.x64.dll",
+            "bin\Release\Snoop.GenericInjector.ARM64.dll"
+          ) | Where-Object { Test-Path $_ }
+          if ($dlls.Count -eq 0) {
+            Write-Host "No GenericInjector DLLs found in bin\Release — skipping signature check."
+            exit 0
+          }
+          $unsigned = @()
+          foreach ($dll in $dlls) {
+            $result = & "$signtool" verify /pa "$dll" 2>&1
+            if ($LASTEXITCODE -ne 0) { $unsigned += $dll }
+          }
+          if ($unsigned.Count -gt 0) {
+            Write-Warning "Unsigned DLLs (expected on CI builds without a cert): $($unsigned -join ', ')"
+          } else {
+            Write-Host "All GenericInjector DLLs are Authenticode-signed."
+          }
+
       - name: Test Snoop.Core.Tests
         run: dotnet test Snoop.Core.Tests/Snoop.Core.Tests.csproj --configuration Release --framework ${{ matrix.target }} --no-build --logger "trx;LogFileName=Snoop.Core.Tests-${{ matrix.target }}.trx" --results-directory output/test-results
 

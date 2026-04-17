@@ -1,0 +1,38 @@
+<!--
+  CodeSigning.targets — Authenticode post-build signing for Snoop.GenericInjector.dll
+
+  To enable local signing, set the environment variable SNOOP_CODESIGN_PFX to the path
+  of your PFX file (and SNOOP_CODESIGN_PFX_PASSWORD for the password) before building.
+
+  If the variable is not set this target is a no-op — developer builds work without a cert.
+
+  See docs/codesigning.md for full instructions.
+-->
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <!--
+    SignInjectorDll runs after the native DLL is produced (AfterLink).
+    It is gated on SNOOP_CODESIGN_PFX being non-empty so unsigned local builds continue to work.
+  -->
+  <Target Name="SignInjectorDll"
+          AfterTargets="Link"
+          Condition="'$(Configuration)' == 'Release' AND '$(SNOOP_CODESIGN_PFX)' != ''">
+
+    <PropertyGroup>
+      <_SignToolExe Condition="'$(_SignToolExe)' == ''">signtool.exe</_SignToolExe>
+      <_DllToSign>$(OutDir)$(TargetName)$(TargetExt)</_DllToSign>
+      <_PfxPassword Condition="'$(SNOOP_CODESIGN_PFX_PASSWORD)' != ''">/p "$(SNOOP_CODESIGN_PFX_PASSWORD)"</_PfxPassword>
+    </PropertyGroup>
+
+    <Message Importance="high" Text="[CodeSigning] Signing $(_DllToSign) with cert $(SNOOP_CODESIGN_PFX)" />
+
+    <Exec Command="&quot;$(_SignToolExe)&quot; sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /f &quot;$(SNOOP_CODESIGN_PFX)&quot; $(_PfxPassword) &quot;$(_DllToSign)&quot;"
+          ConsoleToMSBuild="true" />
+
+    <Message Importance="high" Text="[CodeSigning] Verifying $(_DllToSign)" />
+    <Exec Command="&quot;$(_SignToolExe)&quot; verify /pa &quot;$(_DllToSign)&quot;"
+          ConsoleToMSBuild="true" />
+
+  </Target>
+
+</Project>

@@ -146,6 +146,8 @@
     </ResourceCompile>
   </ItemGroup>
   <Import Condition="Exists('$(VCTargetsPath)\Microsoft.Cpp.targets')" Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <!-- Authenticode codesign (no-op when SNOOP_CODESIGN_PFX is unset) -->
+  <Import Project="CodeSigning.targets" />
   <Target Name="AfterBuild" Condition="'$(RootBuild)' == 'True'">
     <MSBuild Projects="$(MSBuildProjectFile)" Properties="RootBuild=False;Configuration=$(Configuration);Platform=x64;PlatFormTarget=x64" />
     <MSBuild Projects="$(MSBuildProjectFile)" Properties="RootBuild=False;Configuration=$(Configuration);Platform=ARM64;PlatFormTarget=ARM64" Condition="Exists('$(VC_ExecutablePath_x86_ARM64)')" />

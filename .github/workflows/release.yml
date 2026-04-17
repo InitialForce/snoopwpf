@@ -52,6 +52,77 @@ jobs:
       - name: Build Release
         run: dotnet build Snoop.sln --configuration Release --no-incremental -p:Version=${{ steps.version.outputs.VERSION }}
 
+      # ---------------------------------------------------------------------------
+      # Authenticode codesign for Snoop.GenericInjector.dll
+      #
+      # This step imports a PFX from the repository secret CODESIGN_PFX_BASE64 and
+      # signs all three architecture variants of the native injector DLL.
+      # It is skipped silently when the secret is absent so that forks / PRs without
+      # a cert still produce a build.
+      #
+      # One-time setup for repo owners:
+      #   1. Obtain an EV code-signing certificate (PFX) from DigiCert / Sectigo etc.
+      #   2. base64-encode the PFX:
+      #        certutil -encode cert.pfx cert.b64 && type cert.b64
+      #   3. Add two repository secrets:
+      #        CODESIGN_PFX_BASE64   – base64 content of the PFX
+      #        CODESIGN_PFX_PASSWORD – passphrase of the PFX
+      # ---------------------------------------------------------------------------
+      - name: Import code-signing certificate
+        id: import-cert
+        if: ${{ secrets.CODESIGN_PFX_BASE64 != '' }}
+        shell: pwsh
+        run: |
+          $pfxBytes = [Convert]::FromBase64String("${{ secrets.CODESIGN_PFX_BASE64 }}")
+          $pfxPath  = Join-Path $env:RUNNER_TEMP "codesign.pfx"
+          [IO.File]::WriteAllBytes($pfxPath, $pfxBytes)
+          Write-Output "PFX_PATH=$pfxPath" >> $env:GITHUB_OUTPUT
+
+      - name: Sign Snoop.GenericInjector.dll (all architectures)
+        if: ${{ secrets.CODESIGN_PFX_BASE64 != '' }}
+        shell: pwsh
+        run: |
+          $signtool = (Get-ChildItem -Recurse "C:\Program Files (x86)\Windows Kits" -Filter signtool.exe -ErrorAction SilentlyContinue |
+                       Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
+          if (-not $signtool) { $signtool = "signtool.exe" }
+          $pfxPath = "${{ steps.import-cert.outputs.PFX_PATH }}"
+          $dlls = @(
+            "bin\Release\Snoop.GenericInjector.x86.dll",
+            "bin\Release\Snoop.GenericInjector.x64.dll",
+            "bin\Release\Snoop.GenericInjector.ARM64.dll"
+          ) | Where-Object { Test-Path $_ }
+          foreach ($dll in $dlls) {
+            Write-Host "Signing $dll"
+            & "$signtool" sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 `
+              /f "$pfxPath" /p "${{ secrets.CODESIGN_PFX_PASSWORD }}" "$dll"
+            if ($LASTEXITCODE -ne 0) { throw "signtool sign failed for $dll" }
+          }
+
+      - name: Verify Snoop.GenericInjector.dll signatures
+        if: ${{ secrets.CODESIGN_PFX_BASE64 != '' }}
+        shell: pwsh
+        run: |
+          $signtool = (Get-ChildItem -Recurse "C:\Program Files (x86)\Windows Kits" -Filter signtool.exe -ErrorAction SilentlyContinue |
+                       Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
+          if (-not $signtool) { $signtool = "signtool.exe" }
+          $dlls = @(
+            "bin\Release\Snoop.GenericInjector.x86.dll",
+            "bin\Release\Snoop.GenericInjector.x64.dll",
+            "bin\Release\Snoop.GenericInjector.ARM64.dll"
+          ) | Where-Object { Test-Path $_ }
+          foreach ($dll in $dlls) {
+            Write-Host "Verifying $dll"
+            & "$signtool" verify /pa "$dll"
+            if ($LASTEXITCODE -ne 0) { throw "signtool verify failed for $dll" }
+          }
+
+      - name: Clean up PFX
+        if: ${{ always() && secrets.CODESIGN_PFX_BASE64 != '' }}
+        shell: pwsh
+        run: |
+          $pfxPath = "${{ steps.import-cert.outputs.PFX_PATH }}"
+          if (Test-Path $pfxPath) { Remove-Item $pfxPath -Force }
+
       - name: Test Snoop.Core.Tests
         run: dotnet test Snoop.Core.Tests/Snoop.Core.Tests.csproj --configuration Release --framework net8.0-windows --no-build --logger "trx;LogFileName=Snoop.Core.Tests-release.trx" --results-directory output/test-results
 
