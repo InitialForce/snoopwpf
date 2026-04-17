@@ -151,6 +151,33 @@ MC's `UiMcpHost` registers additional lifecycle tools on top of the 18-tool core
 These are **not** part of `SnoopWPF.Agent.BrokerHost` — they are consumer-specific and
 live in the consuming application (`UiMcpHost`, `SnoopWPF.SampleBroker`, etc.).
 
+## Injection-mode brokered quickstart
+
+Use this path to inspect a third-party WPF app you cannot modify. The `snoop-mcp.exe` broker
+injects the agent DLL into the target process automatically.
+
+```bash
+# 1. Launch your WPF target app normally (or it may already be running).
+#    Note its PID, e.g. 5432.
+
+# 2. Start the broker in injection mode, pointing at the running PID.
+snoop-mcp.exe --attach-pid 5432
+```
+
+The broker:
+1. Generates a pipe name and session token.
+2. Injects `SnoopWPF.Agent.dll` into the target process via `snoop-mcp.exe --inject`.
+3. Writes the `BrokerHandshakePayload` to the injected agent's stdin substitute.
+4. Starts the MCP stdio server — ready for Claude Code or Cursor to connect.
+
+Connect your MCP client to the broker's stdio. All 27 `wpf_*` tools are available. When the
+broker exits, the injected agent is unloaded automatically.
+
+> **Note:** Injection requires the same Windows user and is subject to DEP/CFG constraints.
+> For best results, prefer the target-side integration (compile-time) when you own the source.
+
+---
+
 ## Pipe security
 
 - Pipe ACL: `PipeOptions.CurrentUserOnly` — only the same Windows user can connect.
