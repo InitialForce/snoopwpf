@@ -535,17 +535,22 @@ Capture a PNG screenshot of an element or window.
 |-----------|------|---------|-------------|
 | `nodeId` | string | *(first visible window)* | Element or window to capture. |
 
-**Returns:** A multi-content MCP response:
+**Returns:** A single JSON text block containing metadata and a `blobRef` key:
 
-- Content block 0: JSON text with metadata:
+```json
+{
+  "width": 800,
+  "height": 600,
+  "nodeId": "0:1",
+  "blobRef": "blob:screenshot:0:1:a1b2c3d4",
+  "sizeBytes": 45678,
+  "mimeType": "image/png"
+}
+```
 
-  ```json
-  { "width": 800, "height": 600, "nodeId": "0:1" }
-  ```
-
-- Content block 1: PNG image as MCP `ImageContent`.
-
-No temp files are written. The PNG bytes are embedded directly in the MCP response.
+The PNG bytes are stored in the in-process BlobStore under the `blobRef` key.
+Pass the key to `wpf_fetch_blob` to retrieve the actual image bytes.
+Blobs expire after the session-configured TTL (default 60 seconds); re-run the tool to get a fresh reference.
 
 **Fallback order:** If `nodeId` is not provided, the tool captures the main window.
 If the main window is not visible, it falls back to the first visible window.
@@ -1066,8 +1071,9 @@ inlining the bytes. Use this tool to retrieve the actual content.
 - Content block 1: The raw payload — PNG `ImageContent` for images, UTF-8 `TextContent`
   for everything else.
 
-**Blob lifetime:** 5 minutes. After expiry the `key` is invalid and `BLOB_NOT_FOUND` is
-returned. Re-run the originating tool to get a fresh ref.
+**Blob lifetime:** Configured per session via `SnoopAgentOptions.BlobTtl`; default is 60 seconds.
+After expiry the `key` is invalid and `BLOB_NOT_FOUND` is returned.
+Re-run the originating tool to get a fresh ref.
 
 ---
 
@@ -1096,6 +1102,6 @@ All tool errors return a structured object:
 | `SESSION_NOT_FOUND` | No active session (target process likely exited). | Re-attach with a new `snoop-mcp` invocation. |
 | `PROTOCOL_MISMATCH` | Agent and host protocol versions differ. | Update to matching versions. |
 | `ELEMENT_NOT_RENDERABLE` | Element has zero size or is not visible. | Try `wpf_get_windows` for a full window screenshot. |
-| `BLOB_NOT_FOUND` | The blob ref key has expired (5-minute TTL) or was never issued. | Re-run the originating tool to get a fresh ref. |
+| `BLOB_NOT_FOUND` | The blob ref key has expired (default 60 s TTL) or was never issued. | Re-run the originating tool to get a fresh ref. |
 | `LOCATOR_AMBIGUOUS` | The WpfLocator or item identifier matched more than one element. | Use a more specific locator (e.g. `$name:` or an index). |
 | `LOCATOR_INVALID` | The WpfLocator string could not be parsed. | Check locator syntax; valid prefixes are `$name:`, `$type:`, `$id:`. |
