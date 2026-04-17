@@ -20,6 +20,12 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
 
+    # Promote the codesign secret to a job-level env var so step-level `if:`
+    # conditions can reference it. The `secrets` context is not allowed inside
+    # step-level `if:` expressions (workflow schema rejects it at parse time).
+    env:
+      HAS_CODESIGN_CERT: ${{ secrets.CODESIGN_PFX_BASE64 != '' && 'true' || 'false' }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -80,7 +86,7 @@ jobs:
       # ---------------------------------------------------------------------------
       - name: Import code-signing certificate
         id: import-cert
-        if: ${{ secrets.CODESIGN_PFX_BASE64 != '' }}
+        if: env.HAS_CODESIGN_CERT == 'true'
         shell: pwsh
         run: |
           $pfxBytes = [Convert]::FromBase64String("${{ secrets.CODESIGN_PFX_BASE64 }}")
@@ -89,7 +95,7 @@ jobs:
           Write-Output "PFX_PATH=$pfxPath" >> $env:GITHUB_OUTPUT
 
       - name: Sign Snoop.GenericInjector.dll (all architectures)
-        if: ${{ secrets.CODESIGN_PFX_BASE64 != '' }}
+        if: env.HAS_CODESIGN_CERT == 'true'
         shell: pwsh
         run: |
           $signtool = (Get-ChildItem -Recurse "C:\Program Files (x86)\Windows Kits" -Filter signtool.exe -ErrorAction SilentlyContinue |
@@ -109,7 +115,7 @@ jobs:
           }
 
       - name: Verify Snoop.GenericInjector.dll signatures
-        if: ${{ secrets.CODESIGN_PFX_BASE64 != '' }}
+        if: env.HAS_CODESIGN_CERT == 'true'
         shell: pwsh
         run: |
           $signtool = (Get-ChildItem -Recurse "C:\Program Files (x86)\Windows Kits" -Filter signtool.exe -ErrorAction SilentlyContinue |
@@ -127,7 +133,7 @@ jobs:
           }
 
       - name: Clean up PFX
-        if: ${{ always() && secrets.CODESIGN_PFX_BASE64 != '' }}
+        if: ${{ always() && env.HAS_CODESIGN_CERT == 'true' }}
         shell: pwsh
         run: |
           $pfxPath = "${{ steps.import-cert.outputs.PFX_PATH }}"
