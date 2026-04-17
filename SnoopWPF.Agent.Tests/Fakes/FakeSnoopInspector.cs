@@ -51,6 +51,8 @@ public sealed class FakeSnoopInspector : ISnoopInspector
 
     public Func<string, string, CancellationToken, Task<StateDeltaDto>>? OnSetTextValue { get; set; }
 
+    public Func<string, double, bool, CancellationToken, Task<StateDeltaDto>>? OnSetSliderValue { get; set; }
+
     public Func<string, CancellationToken, Task<StateDeltaDto>>? OnExecuteCommand { get; set; }
 
     public Func<string, string, CancellationToken, Task<StateDeltaDto>>? OnSelectItem { get; set; }
@@ -192,7 +194,8 @@ public sealed class FakeSnoopInspector : ISnoopInspector
         => Task.FromResult(new StateDeltaDto { Success = true });
 
     public Task<StateDeltaDto> SetSliderValueAsync(string nodeId, double value, bool normalized, CancellationToken ct)
-        => Task.FromResult(new StateDeltaDto { Success = true });
+        => (this.OnSetSliderValue ?? throw new NotImplementedException("OnSetSliderValue not set"))
+            .Invoke(nodeId, value, normalized, ct);
 
     public Task<StateDeltaDto> SetSliderValueAsync(WpfLocator locator, double value, bool normalized, CancellationToken ct)
         => Task.FromResult(new StateDeltaDto { Success = true });
