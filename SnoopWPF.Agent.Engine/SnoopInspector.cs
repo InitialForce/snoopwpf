@@ -175,7 +175,8 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
                             windowSummaries.Add(new WindowSummaryDto
                             {
                                 NodeId = nodeId,
-                                Title = w.Title ?? string.Empty,
+                                // ADV-PI: Window.Title is app-controlled; guard trust-boundary parity with DisplayName sites.
+                                Title = PromptInjectionGuard.Quote(w.Title ?? string.Empty),
                                 Width = w.ActualWidth,
                                 Height = w.ActualHeight,
                                 Locator = $"$type:{typeName}",
@@ -256,7 +257,8 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
                 result.Add(new WindowDto
                 {
                     NodeId = this.nodeRegistry.GetOrCreateId(w),
-                    Title = w.Title ?? string.Empty,
+                    // ADV-PI: Window.Title is app-controlled; guard trust-boundary parity with DisplayName sites.
+                    Title = PromptInjectionGuard.Quote(w.Title ?? string.Empty),
                     TypeName = w.GetType().Name,
                     Width = w.ActualWidth,
                     Height = w.ActualHeight,
