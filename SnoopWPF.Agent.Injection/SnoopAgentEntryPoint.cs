@@ -205,6 +205,9 @@ public static class SnoopAgentEntryPoint
         AppDomain.CurrentDomain.ProcessExit += (_, _) =>
         {
             cts.Cancel();
+            // FX4-MEM-C1: dispose the CTS so the kernel WaitHandle is released promptly.
+            // Must come after Cancel() so the token is observed before the handle closes.
+            cts.Dispose();
             inspector.Dispose();
             server.Dispose();
             // Unregister the AssemblyResolve handler so it doesn't outlive the agent.
