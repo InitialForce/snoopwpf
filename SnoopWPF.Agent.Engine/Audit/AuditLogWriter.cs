@@ -2,8 +2,10 @@
 // AuditLogWriter requires Channel<T>, IAsyncDisposable, and ValueTask — all unavailable
 // on net462. The type is compiled only for net6+ targets.
 #if NET6_0_OR_GREATER
-// FX4-MEM-C2: DisposeAsync now cancels CTS before awaiting the worker, and uses a
-// bounded 5-second drain timeout so a stuck disk cannot hang the MCP server shutdown path.
+// FX4-MEM-C2: DisposeAsync drains the channel with a bounded timeout; on timeout it
+// cancels the internal CTS to unblock a stuck worker, so a hung disk cannot keep the
+// MCP server shutdown path waiting forever.  Pending entries are always drained on the
+// happy path; only entries in flight when the timeout fires can be lost.
 //
 // Brokered-mode audit log scope (B-5):
 //   In Brokered mode the audit log is TARGET-ONLY. The broker process must NOT
@@ -271,47 +273,58 @@ internal sealed class AuditLogWriter : IAsyncDisposable
     /// <inheritdoc/>
     public async ValueTask DisposeAsync()
     {
-        // 1. Signal the channel that no more entries will be written so ReadAllAsync
-        //    sees the completion and exits once the queue is drained.
+        // 1. Signal the channel that no more entries will be written.  ReadAllAsync
+        //    will observe the completion, drain the remaining queued entries, then
+        //    exit naturally — this is the happy-path shutdown and preserves every
+        //    entry the caller has already enqueued.
         this.channel.Writer.TryComplete();
-
-        // 2. Cancel the internal CTS BEFORE awaiting the worker.  This unblocks
-        //    the worker if it is stuck inside a slow or hung disk write, because
-        //    the CancellationToken is threaded through WriteLineAsync / FlushAsync
-        //    on net8+ and through ReadAllAsync on all targets.  Without this call
-        //    DisposeAsync hangs indefinitely whenever the filesystem stalls, which
-        //    bubbles up into the MCP server shutdown path and leaves zombie processes.
-        this.cts.Cancel();
 
         try
         {
-            // 3. Await the worker with a bounded timeout so that even a completely
-            //    unresponsive sink (e.g. a network-mapped path that stops responding)
-            //    cannot prevent the process from shutting down cleanly.
+            // 2. Await the worker with a bounded timeout.  If the worker is healthy
+            //    it will return as soon as the channel is drained, typically within
+            //    microseconds.  If it is stuck (e.g. a hung disk or a wedged network
+            //    share), the timeout wins and we escalate to cancellation below.
             var drainTimeoutTask = Task.Delay(this.drainTimeout);
             var winner = await Task.WhenAny(this.workerTask, drainTimeoutTask).ConfigureAwait(false);
 
             if (winner == drainTimeoutTask)
             {
-                // The worker did not drain within 5 seconds.  Log to Trace (not
-                // Console) so the message is visible in debug listeners without
-                // polluting stdout in production.
+                // 3. Timeout expired — the worker is not draining.  Cancel the CTS to
+                //    unblock it and abandon any remaining in-flight entries.  This is
+                //    the FX4-MEM-C2 path: without this escalation DisposeAsync would
+                //    hang forever if the sink became unresponsive.
+                this.cts.Cancel();
+
                 Trace.WriteLine(
                     $"[AuditLogWriter] Background audit worker did not drain within {this.drainTimeout.TotalSeconds:F0} s — " +
                     "continuing disposal.  Some in-flight audit entries may have been lost.");
+
+                // Give the cancellation a brief chance to unwind the worker so the
+                // finally block disposes the CTS with no active token consumers.
+                try
+                {
+                    await this.workerTask.ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Expected after the cancellation above.
+                }
+                catch (Exception)
+                {
+                    // Swallow other faults — shutdown must not crash the host.
+                }
             }
             else
             {
-                // Propagate the worker's result to surface any non-cancellation
-                // faults via the try/catch below, preserving original exception
-                // handling behaviour.
+                // Worker finished naturally.  Re-await so any non-cancellation fault
+                // surfaces to the catch below (which logs and swallows on shutdown).
                 await this.workerTask.ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException)
         {
-            // Expected: the CTS.Cancel() above will cause ReadAllAsync / WriteLineAsync
-            // / FlushAsync to throw OperationCanceledException inside the worker.
+            // Worker observed a previously-cancelled token; nothing to do.
         }
         catch (Exception)
         {
