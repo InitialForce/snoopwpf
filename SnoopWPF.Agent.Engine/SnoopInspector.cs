@@ -1202,7 +1202,7 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
             // ONE synchronous block: get properties, find named one, capture type, teardown.
             DependencyProperty? depProp = null;
             Type? propertyType = null;
-            string previousValue = string.Empty;
+            string previousValueRaw = string.Empty;
 
             var props = PropertyInformation.GetProperties(target);
             try
@@ -1233,7 +1233,7 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
                 propertyType = (Type?)match.PropertyType;
 
                 // Capture previous value (use StringValue — never TypeDescriptor).
-                previousValue = match.StringValue ?? string.Empty;
+                previousValueRaw = match.StringValue ?? string.Empty;
             }
             finally
             {
@@ -1293,10 +1293,12 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
             // value NOW, after any re-entrant PropertyChangedCallback has settled.  This closes
             // the false-positive where a reverting callback resets the value but the old code
             // compared previousValue to the *requested* convertedValue string (PRD §7.3 W3-C1).
-            var stateChanged = StateDeltaSerializationHook.ComputeStateChanged(depObj, depProp, previousValue);
+            var stateChanged = StateDeltaSerializationHook.ComputeStateChanged(depObj, depProp, previousValueRaw);
 
             // newValue reflects the actual settled observable state (not the requested string).
-            var newValue = depObj.GetValue(depProp)?.ToString() ?? string.Empty;
+            // ADV-PI: GetValue result + StringValue are ViewModel data — guard injection boundary at DTO emit.
+            var previousValue = PromptInjectionGuard.Quote(previousValueRaw);
+            var newValue = PromptInjectionGuard.Quote(depObj.GetValue(depProp)?.ToString() ?? string.Empty);
 
             if (!stateChanged)
             {
@@ -1767,16 +1769,18 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
             }
 
             var previousIndex = selector.SelectedIndex;
+            // ADV-PI: Items[idx].ToString() is ViewModel data — guard injection boundary.
             var previousValue = previousIndex >= 0 && previousIndex < selector.Items.Count
-                ? selector.Items[previousIndex]?.ToString()
+                ? PromptInjectionGuard.Quote(selector.Items[previousIndex]?.ToString())
                 : null;
 
             // FX2-C8: SetCurrentValue preserves TwoWay bindings on SelectedIndex.
             selector.SetCurrentValue(System.Windows.Controls.Primitives.Selector.SelectedIndexProperty, resolvedIndex);
 
             var newIndex = selector.SelectedIndex;
+            // ADV-PI: Items[idx].ToString() is ViewModel data — guard injection boundary.
             var newValue = newIndex >= 0 && newIndex < selector.Items.Count
-                ? selector.Items[newIndex]?.ToString()
+                ? PromptInjectionGuard.Quote(selector.Items[newIndex]?.ToString())
                 : null;
             var stateChanged = previousIndex != newIndex;
 
