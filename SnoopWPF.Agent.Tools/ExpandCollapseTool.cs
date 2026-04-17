@@ -36,19 +36,15 @@ public sealed class ExpandCollapseTool(ISnoopInspector inspector)
         "Expander, " +
         "GroupItem (CollectionViewSource groups), " +
         "and any UIElement whose AutomationPeer supports IExpandCollapseProvider.")]
-    public async Task<string> ExpandCollapseAsync(
+    public Task<string> ExpandCollapseAsync(
         [Description("Node ID of the element to expand or collapse.")] string nodeId,
         [Description("Action to perform: \"expand\" or \"collapse\".")] string action,
         CancellationToken ct = default)
     {
-        try
+        return ToolExceptionMapper.Wrap(async () =>
         {
             var result = await inspector.ExpandCollapseAsync(nodeId, action, ct).ConfigureAwait(false);
             return JsonSerializer.Serialize(result, ToolSerializerOptions.Default);
-        }
-        catch (SnoopException ex)
-        {
-            throw ErrorMapping.ToMcpException(ex);
-        }
+        });
     }
 }

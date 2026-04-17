@@ -32,18 +32,14 @@ public sealed class ExecuteCommandTool(ISnoopInspector inspector)
         "\n\nApplies to: " +
         "Button, RepeatButton, ToggleButton, RadioButton, CheckBox, MenuItem, Hyperlink, " +
         "and any other ButtonBase-derived control with a Command binding.")]
-    public async Task<string> ExecuteCommandAsync(
+    public Task<string> ExecuteCommandAsync(
         [Description("Node ID of the element whose Command should be executed.")] string nodeId,
         CancellationToken ct = default)
     {
-        try
+        return ToolExceptionMapper.Wrap(async () =>
         {
             var result = await inspector.ExecuteCommandAsync(nodeId, ct).ConfigureAwait(false);
             return JsonSerializer.Serialize(result, ToolSerializerOptions.Default);
-        }
-        catch (SnoopException ex)
-        {
-            throw ErrorMapping.ToMcpException(ex);
-        }
+        });
     }
 }

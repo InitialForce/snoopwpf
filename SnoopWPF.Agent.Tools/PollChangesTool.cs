@@ -33,12 +33,12 @@ public sealed class PollChangesTool(ISnoopInspector inspector)
         "Use wpf_pump_until_idle (M2-11) before polling when you need deterministic results " +
         "after a UI-triggered async operation. " +
         "Hard cap: 5000 nodes per poll to protect against unbounded traversal.")]
-    public async Task<string> PollChangesAsync(
+    public Task<string> PollChangesAsync(
         [Description("Tree version returned by a previous call. Pass 0 on the first call to receive all currently registered nodes as 'added'.")] long sinceVersion = 0,
         [Description("Optional WpfLocator string to scope the poll to a subtree (e.g. \"$type:MainWindow\"). Omit or null for the full application tree.")] string? rootLocator = null,
         CancellationToken ct = default)
     {
-        try
+        return ToolExceptionMapper.Wrap(async () =>
         {
             WpfLocator? locator = null;
             if (!string.IsNullOrEmpty(rootLocator))
@@ -48,10 +48,6 @@ public sealed class PollChangesTool(ISnoopInspector inspector)
 
             var result = await inspector.PollChangesAsync(sinceVersion, locator, ct).ConfigureAwait(false);
             return JsonSerializer.Serialize(result, ToolSerializerOptions.Default);
-        }
-        catch (SnoopException ex)
-        {
-            throw ErrorMapping.ToMcpException(ex);
-        }
+        });
     }
 }

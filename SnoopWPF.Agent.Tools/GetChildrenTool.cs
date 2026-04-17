@@ -18,21 +18,17 @@ public sealed class GetChildrenTool(ISnoopInspector inspector)
                  "gaps/duplicates when the visual tree changes between pages. " +
                  "When nodeId is omitted, returns the application root windows (main window first). " +
                  "Pass nextCursor from the previous response to get the next page.")]
-    public async Task<string> GetChildrenAsync(
+    public Task<string> GetChildrenAsync(
         [Description("Parent node ID (omit for app roots).")] string? nodeId = null,
         [Description("Tree type: \"visual\" (default), \"logical\", or \"automation\".")] string treeType = "visual",
         [Description("Cursor from previous response for pagination (omit for first page).")] string? cursor = null,
         [Description("Number of children to return. Default: 50, max: 200.")] int take = 50,
         CancellationToken ct = default)
     {
-        try
+        return ToolExceptionMapper.Wrap(async () =>
         {
             var result = await inspector.GetChildrenAsync(nodeId, treeType, cursor, take, ct).ConfigureAwait(false);
             return JsonSerializer.Serialize(result, ToolSerializerOptions.Default);
-        }
-        catch (SnoopException ex)
-        {
-            throw ErrorMapping.ToMcpException(ex);
-        }
+        });
     }
 }

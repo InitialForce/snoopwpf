@@ -34,19 +34,15 @@ public sealed class SetTextValueTool(ISnoopInspector inspector)
         "updated via the normal DP change notification path. " +
         "\n\nApplies to: " +
         "TextBox, PasswordBox, RichTextBox.")]
-    public async Task<string> SetTextValueAsync(
+    public Task<string> SetTextValueAsync(
         [Description("Node ID of the element whose text should be set.")] string nodeId,
         [Description("The new text value to assign.")] string value,
         CancellationToken ct = default)
     {
-        try
+        return ToolExceptionMapper.Wrap(async () =>
         {
             var result = await inspector.SetTextValueAsync(nodeId, value, ct).ConfigureAwait(false);
             return JsonSerializer.Serialize(result, ToolSerializerOptions.Default);
-        }
-        catch (SnoopException ex)
-        {
-            throw ErrorMapping.ToMcpException(ex);
-        }
+        });
     }
 }

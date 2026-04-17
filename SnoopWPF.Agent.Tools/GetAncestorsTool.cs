@@ -18,19 +18,15 @@ public sealed class GetAncestorsTool(ISnoopInspector inspector)
                  "Returns a list of AncestorDto objects ordered from immediate parent to root. " +
                  "Each entry includes nodeId, typeName, name, and dataContextType. " +
                  "Use this to understand where an element sits in the visual tree hierarchy.")]
-    public async Task<string> GetAncestorsAsync(
+    public Task<string> GetAncestorsAsync(
         [Description("Node ID of the element whose ancestors to retrieve.")] string nodeId,
         [Description("Maximum number of ancestor levels to return. Omit for all ancestors up to root.")] int? maxLevels = null,
         CancellationToken ct = default)
     {
-        try
+        return ToolExceptionMapper.Wrap(async () =>
         {
             var result = await inspector.GetAncestorsAsync(nodeId, maxLevels, ct).ConfigureAwait(false);
             return JsonSerializer.Serialize(result, ToolSerializerOptions.Default);
-        }
-        catch (SnoopException ex)
-        {
-            throw ErrorMapping.ToMcpException(ex);
-        }
+        });
     }
 }

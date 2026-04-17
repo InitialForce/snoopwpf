@@ -18,21 +18,17 @@ public sealed class GetVisualTreeTool(ISnoopInspector inspector)
     [Description("Get the visual tree starting from a node. Returns a depth-limited tree with truncation metadata. " +
                  "Nodes at the cut boundary have childrenTruncated: true. Hard cap: 5000 nodes. " +
                  "Use wpf_get_children for cursor-paginated access to large subtrees.")]
-    public async Task<string> GetVisualTreeAsync(
+    public Task<string> GetVisualTreeAsync(
         [Description("Node ID to use as root (omit or null to start from app root).")] string? rootNodeId = null,
         [Description("Maximum tree depth to traverse. Default: 3, max: 10.")] int maxDepth = 3,
         [Description("Tree type: \"visual\" (default), \"logical\", or \"automation\".")] string treeType = "visual",
         [Description("Optional list of DependencyProperty names (case-insensitive, max 10) to include inline on each node.")] List<string>? includeProperties = null,
         CancellationToken ct = default)
     {
-        try
+        return ToolExceptionMapper.Wrap(async () =>
         {
             var result = await inspector.GetVisualTreeAsync(rootNodeId, maxDepth, treeType, includeProperties, ct).ConfigureAwait(false);
             return JsonSerializer.Serialize(result, ToolSerializerOptions.Default);
-        }
-        catch (SnoopException ex)
-        {
-            throw ErrorMapping.ToMcpException(ex);
-        }
+        });
     }
 }

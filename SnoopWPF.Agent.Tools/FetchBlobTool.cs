@@ -36,34 +36,37 @@ public sealed class FetchBlobTool(BlobStore blobStore)
         [Description("The blobRef key returned by a previous tool call.")] string key,
         CancellationToken ct = default)
     {
-        var entry = blobStore.TryGet(key);
-
-        if (entry is null)
+        return ToolExceptionMapper.WrapCallToolResult(() =>
         {
-            throw ErrorMapping.ToMcpException(
-                new SnoopException(SnoopErrorCode.BlobNotFound, $"Blob '{key}' not found or has expired."));
-        }
+            var entry = blobStore.TryGet(key);
 
-        var metadata = new
-        {
-            key,
-            mimeType = entry.MimeType,
-            sizeBytes = entry.Data.Length,
-        };
-
-        var metadataJson = JsonSerializer.Serialize(metadata, ToolSerializerOptions.Default);
-        var textBlock = new TextContentBlock { Text = metadataJson };
-
-        ContentBlock dataBlock = entry.MimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
-            ? ImageContentBlock.FromBytes(entry.Data, entry.MimeType)
-            : new TextContentBlock
+            if (entry is null)
             {
-                Text = Encoding.UTF8.GetString(entry.Data),
+                throw ErrorMapping.ToMcpException(
+                    new SnoopException(SnoopErrorCode.BlobNotFound, $"Blob '{key}' not found or has expired."));
+            }
+
+            var metadata = new
+            {
+                key,
+                mimeType = entry.MimeType,
+                sizeBytes = entry.Data.Length,
             };
 
-        return Task.FromResult(new CallToolResult
-        {
-            Content = new List<ContentBlock> { textBlock, dataBlock },
+            var metadataJson = JsonSerializer.Serialize(metadata, ToolSerializerOptions.Default);
+            var textBlock = new TextContentBlock { Text = metadataJson };
+
+            ContentBlock dataBlock = entry.MimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
+                ? ImageContentBlock.FromBytes(entry.Data, entry.MimeType)
+                : new TextContentBlock
+                {
+                    Text = Encoding.UTF8.GetString(entry.Data),
+                };
+
+            return Task.FromResult(new CallToolResult
+            {
+                Content = new List<ContentBlock> { textBlock, dataBlock },
+            });
         });
     }
 }

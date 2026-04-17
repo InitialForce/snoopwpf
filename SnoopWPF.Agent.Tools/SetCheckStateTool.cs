@@ -34,19 +34,15 @@ public sealed class SetCheckStateTool(ISnoopInspector inspector)
         "updated via the normal DP change notification path. " +
         "\n\nApplies to: " +
         "CheckBox, RadioButton.")]
-    public async Task<string> SetCheckStateAsync(
+    public Task<string> SetCheckStateAsync(
         [Description("Node ID of the element whose check state should be set.")] string nodeId,
         [Description("Target check state: \"checked\", \"unchecked\", or \"indeterminate\".")] string state,
         CancellationToken ct = default)
     {
-        try
+        return ToolExceptionMapper.Wrap(async () =>
         {
             var result = await inspector.SetCheckStateAsync(nodeId, state, ct).ConfigureAwait(false);
             return JsonSerializer.Serialize(result, ToolSerializerOptions.Default);
-        }
-        catch (SnoopException ex)
-        {
-            throw ErrorMapping.ToMcpException(ex);
-        }
+        });
     }
 }

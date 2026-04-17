@@ -38,21 +38,17 @@ public sealed class SelectItemTool(ISnoopInspector inspector)
         "selection replaced (not appended) by this tool. " +
         "\n\nApplies to: " +
         "ListBox, ListView, ComboBox, and any Selector subclass (non-virtualized).")]
-    public async Task<string> SelectItemAsync(
+    public Task<string> SelectItemAsync(
         [Description("Node ID of the ItemsControl whose selection should be changed.")] string nodeId,
         [Description(
             "Item identifier: zero-based integer index (\"0\"), exact item text, " +
             "or unambiguous substring of item text.")] string identifier,
         CancellationToken ct = default)
     {
-        try
+        return ToolExceptionMapper.Wrap(async () =>
         {
             var result = await inspector.SelectItemAsync(nodeId, identifier, ct).ConfigureAwait(false);
             return JsonSerializer.Serialize(result, ToolSerializerOptions.Default);
-        }
-        catch (SnoopException ex)
-        {
-            throw ErrorMapping.ToMcpException(ex);
-        }
+        });
     }
 }

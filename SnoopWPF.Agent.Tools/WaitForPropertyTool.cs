@@ -20,7 +20,7 @@ public sealed class WaitForPropertyTool(ISnoopInspector inspector, SnoopAgentOpt
         "Returns WaitForPropertyResultDto with conditionMet, actualValue, elapsedMs, pollCount. " +
         "On timeout throws DISPATCHER_BUSY with suggestion to call wpf_pump_until_idle first. " +
         "Use presenceExpected=absent to detect modal dismissal or element removal.")]
-    public async Task<string> WaitForPropertyAsync(
+    public Task<string> WaitForPropertyAsync(
         [Description("WpfLocator string identifying the element (e.g. \"$name:myButton\" or \"$type:Button\").")] string locator,
         [Description("Property name to observe (e.g. \"IsEnabled\", \"Text\", \"Visibility\").")] string propertyName,
         [Description("Expected property value as a string. Required when presenceExpected=present; ignored when presenceExpected=absent.")] string? expectedValue = null,
@@ -41,15 +41,11 @@ public sealed class WaitForPropertyTool(ISnoopInspector inspector, SnoopAgentOpt
                 suggestions: new[] { SnoopSuggestions.InvalidArgument }));
         }
 
-        try
+        return ToolExceptionMapper.Wrap(async () =>
         {
             var wpfLocator = WpfLocatorParser.Parse(locator);
             var result = await inspector.WaitForPropertyAsync(wpfLocator, propertyName, expectedValue, timeoutMs, presenceExpected, ct).ConfigureAwait(false);
             return JsonSerializer.Serialize(result, ToolSerializerOptions.Default);
-        }
-        catch (SnoopException ex)
-        {
-            throw ErrorMapping.ToMcpException(ex);
-        }
+        });
     }
 }

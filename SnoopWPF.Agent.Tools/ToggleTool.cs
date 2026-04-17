@@ -35,18 +35,14 @@ public sealed class ToggleTool(ISnoopInspector inspector)
         "ToggleButton (bare, not CheckBox or RadioButton), " +
         "MenuItem with IsCheckable=true, " +
         "and any UIElement whose AutomationPeer supports IToggleProvider.")]
-    public async Task<string> ToggleAsync(
+    public Task<string> ToggleAsync(
         [Description("Node ID of the element to toggle.")] string nodeId,
         CancellationToken ct = default)
     {
-        try
+        return ToolExceptionMapper.Wrap(async () =>
         {
             var result = await inspector.ToggleAsync(nodeId, ct).ConfigureAwait(false);
             return JsonSerializer.Serialize(result, ToolSerializerOptions.Default);
-        }
-        catch (SnoopException ex)
-        {
-            throw ErrorMapping.ToMcpException(ex);
-        }
+        });
     }
 }

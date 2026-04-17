@@ -27,19 +27,15 @@ public sealed class PumpUntilIdleTool(ISnoopInspector inspector)
         "\n\nresources filter: pass an array of resource names to monitor only a subset " +
         "(e.g. [\"Dispatcher\"] to skip CompositionRendering). " +
         "Omit or pass null to monitor all built-in resources (Dispatcher + CompositionRendering).")]
-    public async Task<string> PumpUntilIdleAsync(
+    public Task<string> PumpUntilIdleAsync(
         [Description("Maximum wait time in milliseconds. Capped at 5000 (animation-runaway ceiling). Default: 5000.")] int timeoutMs = 5000,
         [Description("Optional array of resource names to monitor (e.g. [\"Dispatcher\", \"CompositionRendering\"]). Omit or null to monitor all.")] IReadOnlyList<string>? resources = null,
         CancellationToken ct = default)
     {
-        try
+        return ToolExceptionMapper.Wrap(async () =>
         {
             var result = await inspector.PumpUntilIdleAsync(timeoutMs, resources, ct).ConfigureAwait(false);
             return JsonSerializer.Serialize(result, ToolSerializerOptions.Default);
-        }
-        catch (SnoopException ex)
-        {
-            throw ErrorMapping.ToMcpException(ex);
-        }
+        });
     }
 }

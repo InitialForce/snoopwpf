@@ -36,18 +36,14 @@ public sealed class ClickTool(ISnoopInspector inspector)
         "\n\nApplies to: " +
         "Button, RepeatButton, ToggleButton, RadioButton, CheckBox, MenuItem, Hyperlink, " +
         "and any UIElement whose AutomationPeer supports IInvokeProvider.")]
-    public async Task<string> ClickAsync(
+    public Task<string> ClickAsync(
         [Description("Node ID of the element to click.")] string nodeId,
         CancellationToken ct = default)
     {
-        try
+        return ToolExceptionMapper.Wrap(async () =>
         {
             var result = await inspector.ClickAsync(nodeId, ct).ConfigureAwait(false);
             return JsonSerializer.Serialize(result, ToolSerializerOptions.Default);
-        }
-        catch (SnoopException ex)
-        {
-            throw ErrorMapping.ToMcpException(ex);
-        }
+        });
     }
 }

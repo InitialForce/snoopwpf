@@ -19,19 +19,15 @@ public sealed class GetBindingInfoTool(ISnoopInspector inspector)
                  "converterTypeName, sourceType, status (Active/PathError/UpdateTargetError/etc.), " +
                  "error, dataContextIsNull, dataContextType, resolvedValue, and childBindings for MultiBindings. " +
                  "Use wpf_get_properties first to identify which properties are data-bound (isDataBound: true).")]
-    public async Task<string> GetBindingInfoAsync(
+    public Task<string> GetBindingInfoAsync(
         [Description("Node ID of the element.")] string nodeId,
         [Description("Property name to inspect the binding for (e.g. \"Text\", \"IsEnabled\").")] string propertyName,
         CancellationToken ct = default)
     {
-        try
+        return ToolExceptionMapper.Wrap(async () =>
         {
             var result = await inspector.GetBindingInfoAsync(nodeId, propertyName, ct).ConfigureAwait(false);
             return JsonSerializer.Serialize(result, ToolSerializerOptions.Default);
-        }
-        catch (SnoopException ex)
-        {
-            throw ErrorMapping.ToMcpException(ex);
-        }
+        });
     }
 }

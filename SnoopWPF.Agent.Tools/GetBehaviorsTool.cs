@@ -18,18 +18,14 @@ public sealed class GetBehaviorsTool(ISnoopInspector inspector)
                  "Each BehaviorDto includes typeName, assemblyName, and a list of properties (name/value pairs). " +
                  "Returns an empty list if no behaviors are attached. " +
                  "Use wpf_inspect_element first to check behaviorCount before calling this tool.")]
-    public async Task<string> GetBehaviorsAsync(
+    public Task<string> GetBehaviorsAsync(
         [Description("Node ID of the element whose behaviors to retrieve.")] string nodeId,
         CancellationToken ct = default)
     {
-        try
+        return ToolExceptionMapper.Wrap(async () =>
         {
             var result = await inspector.GetBehaviorsAsync(nodeId, ct).ConfigureAwait(false);
             return JsonSerializer.Serialize(result, ToolSerializerOptions.Default);
-        }
-        catch (SnoopException ex)
-        {
-            throw ErrorMapping.ToMcpException(ex);
-        }
+        });
     }
 }

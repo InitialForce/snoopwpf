@@ -17,7 +17,7 @@ public sealed class GetPropertiesTool(ISnoopInspector inspector)
     [Description("Get cursor-paginated properties of a WPF element. Each property includes name, typeName, value, " +
                  "valueSource, isLocallySet, isDataBound, hasBindingError, bindingError, isReadOnly, hasTypeConverter, isRedacted. " +
                  "Properties are sorted by name for stable pagination. Redacted properties show \"[REDACTED]\" as value.")]
-    public async Task<string> GetPropertiesAsync(
+    public Task<string> GetPropertiesAsync(
         [Description("Node ID of the element.")] string nodeId,
         [Description("Case-insensitive substring filter on property name (optional).")] string? filter = null,
         [Description("Property category filter: \"layout\", \"color\", \"font\", \"grid\", or \"all\" (default).")] string? category = null,
@@ -26,14 +26,10 @@ public sealed class GetPropertiesTool(ISnoopInspector inspector)
         [Description("Number of properties to return. Default: 100, max: 200.")] int take = 100,
         CancellationToken ct = default)
     {
-        try
+        return ToolExceptionMapper.Wrap(async () =>
         {
             var result = await inspector.GetPropertiesAsync(nodeId, filter, category, includeDefaults, cursor, take, ct).ConfigureAwait(false);
             return JsonSerializer.Serialize(result, ToolSerializerOptions.Default);
-        }
-        catch (SnoopException ex)
-        {
-            throw ErrorMapping.ToMcpException(ex);
-        }
+        });
     }
 }

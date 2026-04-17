@@ -28,11 +28,11 @@ public sealed class CaptureScreenshotTool(ISnoopInspector inspector, BlobStore b
                  "The blob expires after the session-configured TTL (default 60 s); re-capture if needed. " +
                  "Fails with ELEMENT_NOT_RENDERABLE if the element has zero size or is not visible; " +
                  "use wpf_get_windows to get a window nodeId for a full window screenshot instead.")]
-    public async Task<CallToolResult> CaptureScreenshotAsync(
+    public Task<CallToolResult> CaptureScreenshotAsync(
         [Description("Node ID of the element or window to capture. Omit to capture the first visible window.")] string? nodeId = null,
         CancellationToken ct = default)
     {
-        try
+        return ToolExceptionMapper.WrapCallToolResult(async () =>
         {
             var result = await inspector.CaptureScreenshotAsync(nodeId, ct).ConfigureAwait(false);
 
@@ -61,10 +61,6 @@ public sealed class CaptureScreenshotTool(ISnoopInspector inspector, BlobStore b
             {
                 Content = new List<ContentBlock> { textBlock },
             };
-        }
-        catch (SnoopException ex)
-        {
-            throw ErrorMapping.ToMcpException(ex);
-        }
+        });
     }
 }

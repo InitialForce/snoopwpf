@@ -15,16 +15,12 @@ public sealed class SessionInfoTool(ISnoopInspector inspector)
 {
     [McpServerTool(Name = "wpf_get_session_info")]
     [Description("Get session info: process name, PID, .NET version, dispatchers (with window nodeIds), capabilities, and whether mutation is enabled.")]
-    public async Task<string> GetSessionInfoAsync(CancellationToken ct)
+    public Task<string> GetSessionInfoAsync(CancellationToken ct)
     {
-        try
+        return ToolExceptionMapper.Wrap(async () =>
         {
             var result = await inspector.GetSessionInfoAsync(ct).ConfigureAwait(false);
             return JsonSerializer.Serialize(result, ToolSerializerOptions.Default);
-        }
-        catch (SnoopException ex)
-        {
-            throw ErrorMapping.ToMcpException(ex);
-        }
+        });
     }
 }

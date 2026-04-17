@@ -37,7 +37,7 @@ public sealed class SetSliderValueTool(ISnoopInspector inspector)
         "updated via the normal DP change notification path. " +
         "\n\nApplies to: " +
         "Slider, ProgressBar, ScrollBar, and any other RangeBase subclass.")]
-    public async Task<string> SetSliderValueAsync(
+    public Task<string> SetSliderValueAsync(
         [Description("Node ID of the Slider element whose value should be set.")] string nodeId,
         [Description("Target value. Clamped to Slider.Minimum..Maximum by WPF unless normalized=true.")] double value,
         [Description(
@@ -45,14 +45,10 @@ public sealed class SetSliderValueTool(ISnoopInspector inspector)
             "When true, value is a fraction in [0.0, 1.0] mapped to Minimum..Maximum.")] bool normalized = false,
         CancellationToken ct = default)
     {
-        try
+        return ToolExceptionMapper.Wrap(async () =>
         {
             var result = await inspector.SetSliderValueAsync(nodeId, value, normalized, ct).ConfigureAwait(false);
             return JsonSerializer.Serialize(result, ToolSerializerOptions.Default);
-        }
-        catch (SnoopException ex)
-        {
-            throw ErrorMapping.ToMcpException(ex);
-        }
+        });
     }
 }
