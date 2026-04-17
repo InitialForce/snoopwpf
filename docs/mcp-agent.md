@@ -8,9 +8,10 @@ debug, and interact with running WPF applications programmatically.
 
 ## Overview
 
-The agent exposes Snoop's inspection engine as 16 MCP tools. An AI agent can navigate
+The agent exposes Snoop's inspection engine as 27 MCP tools. An AI agent can navigate
 the visual tree, read property values, diagnose binding errors, capture screenshots,
-and (optionally) mutate property values — all without a human operating Snoop's GUI.
+interact with UI elements, and (optionally) mutate property values — all without a
+human operating Snoop's GUI.
 
 Both modes can run simultaneously with the full Snoop UI window.
 
@@ -57,7 +58,7 @@ protected override void OnStartup(StartupEventArgs e)
 }
 ```
 
-The server is ready as soon as `Start()` returns. Dispose the handle to stop it early:
+The server is ready as soon as `StartCoLocated()` returns. Dispose the handle to stop it early:
 
 ```csharp
 var handle = SnoopAgent.StartCoLocated();
@@ -163,7 +164,7 @@ Create `.mcp.json` in your project root:
 
 ---
 
-## Available Tools (16)
+## Available Tools (27)
 
 All tools return structured JSON. Errors include an error code, a human-readable
 message, and a `suggestion` field to help the agent recover.
@@ -182,9 +183,20 @@ message, and a `suggestion` field to help the agent recover.
 | `wpf_get_binding_info` | Detailed binding debug info for one property |
 | `wpf_run_diagnostics` | Binding errors, non-virtualized lists, and more |
 | `wpf_get_resources` | Resource dictionary with precedence ordering |
-| `wpf_capture_screenshot` | PNG screenshot as MCP ImageContent |
+| `wpf_capture_screenshot` | PNG screenshot stored as a blob; retrieve via `wpf_fetch_blob` |
 | `wpf_get_triggers` | Style/Template/Element triggers on an element |
 | `wpf_get_behaviors` | Attached behaviors (Interactivity + Microsoft.Xaml.Behaviors) |
+| `wpf_click` | Invoke the primary click action via UI Automation InvokePattern (L1) |
+| `wpf_execute_command` | Execute the `ICommand` bound to a WPF element — L0, no Win32 input (preferred over `wpf_click`) |
+| `wpf_expand_collapse` | Expand or collapse an element via UI Automation ExpandCollapsePattern (L1) |
+| `wpf_select_item` | Select an item in a `ListBox`, `ComboBox`, or any `Selector` control (L0) |
+| `wpf_set_text_value` | Set text content of a `TextBox`, `PasswordBox`, or `RichTextBox` via `SetCurrentValue` (L0) |
+| `wpf_set_check_state` | Set checked/unchecked/indeterminate state of a `CheckBox` or `RadioButton` (L0) |
+| `wpf_toggle` | Flip the toggle state via UI Automation TogglePattern (L1) |
+| `wpf_poll_changes` | Non-blocking structural-change detection; returns added/removed node IDs and current tree version |
+| `wpf_pump_until_idle` | Wait until the WPF Dispatcher and composition pipeline are simultaneously idle |
+| `wpf_resolve_binding` | Resolve the full data-binding chain for a dependency property, including per-step values |
+| `wpf_wait_for_property` | Poll an element property until it equals an expected value or the element disappears |
 | `wpf_fetch_blob` | Retrieve a large binary payload (e.g. screenshot PNG) from the in-process blob store by ref |
 
 See the [MCP Tools Reference](mcp-tools-reference.md) for full parameter lists and
@@ -224,5 +236,5 @@ See [Security](security.md) for the full security model.
 
 - [NuGet Mode](nuget-mode.md) — embedding the agent in your WPF app
 - [Injection Mode](injection-mode.md) — external agent injection
-- [MCP Tools Reference](mcp-tools-reference.md) — all 16 tools with examples
+- [MCP Tools Reference](mcp-tools-reference.md) — all 27 tools with examples
 - [Security](security.md) — security model and threat mitigations
