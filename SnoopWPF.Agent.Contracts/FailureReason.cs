@@ -52,4 +52,10 @@ public enum FailureReason
     /// Distinct from <see cref="PatternNotSupported"/> which means the pattern is absent.
     /// </summary>
     ElementDisabled = 13,
+
+    /// <summary>
+    /// The requested blob reference key was not found in the BlobStore, or its TTL has expired.
+    /// Re-run the originating tool to get a fresh reference.
+    /// </summary>
+    BlobNotFound = 14,
 }

@@ -1,5 +1,7 @@
 namespace SnoopWPF.Agent.Contracts;
 
+using System;
+
 /// <summary>
 /// Transport mode for the MCP server.
 /// </summary>
@@ -78,6 +80,17 @@ public sealed class SnoopAgentOptions
     /// Default false (safe by default).
     /// </summary>
     public bool AllowSensitiveRetention { get; init; } = false;
+
+    /// <summary>
+    /// TTL applied to blobs stored in the in-process <c>BlobStore</c>
+    /// (e.g. screenshot PNG data). Default is 60 seconds.
+    /// </summary>
+    /// <remarks>
+    /// Agents should call <c>wpf_fetch_blob</c> within this window after receiving a
+    /// <c>blobRef</c> from <c>wpf_capture_screenshot</c>. Re-run the originating tool
+    /// to obtain a fresh reference after expiry.
+    /// </remarks>
+    public TimeSpan BlobTtl { get; init; } = TimeSpan.FromSeconds(60);
 
     /// <summary>
     /// Opt-in session identifier that enables the per-session HMAC-chained audit log.
