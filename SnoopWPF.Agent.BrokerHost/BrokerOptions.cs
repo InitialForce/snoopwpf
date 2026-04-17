@@ -14,6 +14,13 @@ public sealed class BrokerOptions
     public string PipeName { get; set; } = string.Empty;
 
     /// <summary>
+    /// Gets or sets the hex-encoded session token used for the handshake with the target process.
+    /// Must match the token delivered to the target (e.g. via <see cref="BrokerTargetSpawner"/>).
+    /// Required for a successful brokered handshake (FX2-C3).
+    /// </summary>
+    public string SessionToken { get; set; } = string.Empty;
+
+    /// <summary>
     /// Gets or sets the callback invoked when the target process disconnects from the broker pipe.
     /// External lifecycle code (e.g. MC's <c>UiMcpHost</c>) uses this hook to surface
     /// <c>TARGET_NOT_RUNNING</c> failures to the MCP caller.

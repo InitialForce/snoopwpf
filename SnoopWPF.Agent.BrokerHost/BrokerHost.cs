@@ -83,6 +83,16 @@ public static class BrokerHost
             throw new ArgumentException("BrokerOptions.PipeName must not be empty.", nameof(opts));
         }
 
+        // FX2-C3 (WC-C1): SessionToken is required for the nonce+HMAC handshake.
+        // Without it the pump reads handshake bytes as PipeResponse frames, hits
+        // JsonException, and silently fails every brokered call at wire level.
+        if (string.IsNullOrEmpty(opts.SessionToken))
+        {
+            throw new ArgumentException(
+                "BrokerOptions.SessionToken must not be empty. Pass the same hex-encoded token delivered to the target process.",
+                nameof(opts));
+        }
+
         var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
 
         var serverOptions = new McpServerOptions
@@ -102,6 +112,12 @@ public static class BrokerHost
         // before the target connects).
         // -----------------------------------------------------------------------
         using var pipeConnection = new PipeConnection(opts.PipeName, expectedClientPid: -1);
+
+        // FX2-C3: wait for the target to connect AND complete the nonce+HMAC handshake
+        // BEFORE the proxy pump starts consuming frames. Without these two awaits the
+        // pump reads handshake bytes as PipeResponse frames and kills itself silently.
+        await pipeConnection.WaitForConnectionAsync(ct).ConfigureAwait(false);
+        await pipeConnection.HandshakeAsync(opts.SessionToken, ct).ConfigureAwait(false);
 
         await using var proxy = new PipeSnoopInspectorProxy(pipeConnection);
 
