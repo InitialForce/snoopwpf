@@ -80,7 +80,7 @@ internal static class McpServerSetup
         CancellationToken ct)
     {
         var services = BuildServiceCollection(inspector, agentOptions, policy, auditWriter);
-        var sp = services.BuildServiceProvider();
+        await using var sp = services.BuildServiceProvider();
 
         await EmitSessionStartEntryAsync(auditWriter, ct).ConfigureAwait(false);
 
@@ -101,7 +101,7 @@ internal static class McpServerSetup
         CancellationToken ct)
     {
         var services = BuildServiceCollection(inspector, agentOptions, policy, auditWriter);
-        var sp = services.BuildServiceProvider();
+        await using var sp = services.BuildServiceProvider();
 
         // PipeOptions.CurrentUserOnly restricts the pipe ACL to the current Windows user,
         // preventing other local accounts from connecting.
@@ -317,7 +317,7 @@ internal static class McpServerSetup
         };
 
         var services = BuildServiceCollection(inspector, agentOptions ?? new SnoopAgentOptions(), policy, auditWriter);
-        var sp = services.BuildServiceProvider();
+        await using var sp = services.BuildServiceProvider();
 
         // Reconnect loop: re-create the pipe after each client disconnect.
         // This supports broker crash-and-restart without requiring a target restart.
