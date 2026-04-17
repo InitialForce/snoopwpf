@@ -54,7 +54,7 @@
          The dot-separated suffix (rc.1) follows SemVer 2.0 conventions for NuGet. -->
     <PropertyGroup>
         <VersionPrefix>1.0.0</VersionPrefix>
-        <VersionSuffix>rc.1</VersionSuffix>
+        <VersionSuffix>rc.2</VersionSuffix>
         <UpdateVersionProperties>false</UpdateVersionProperties>
     </PropertyGroup>
 
