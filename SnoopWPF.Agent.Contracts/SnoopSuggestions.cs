@@ -43,4 +43,16 @@ public static class SnoopSuggestions
 
     public const string WaitForPropertyTimeout =
         "Call wpf_pump_until_idle before wpf_wait_for_property to ensure animations and bindings have settled";
+
+    public const string InvalidArgument =
+        "Check the parameter value; reduce timeoutMs to at most MaxWaitForPropertyMs (default 30000)";
+
+    public const string CursorMismatch =
+        "Cursor was issued for a different nodeId; re-fetch the first page without a cursor token";
+
+    public const string AgentDisposed =
+        "The SnoopInspector has been disposed; reconnect or restart the agent session";
+
+    public const string InvalidState =
+        "Operation is not valid in the current state; retry after the UI is ready";
 }

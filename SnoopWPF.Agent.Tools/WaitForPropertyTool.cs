@@ -11,7 +11,7 @@ using SnoopWPF.Agent.Contracts;
 /// MCP tool: wpf_wait_for_property — poll a WPF element property until an expected condition is met.
 /// </summary>
 [McpServerToolType]
-public sealed class WaitForPropertyTool(ISnoopInspector inspector)
+public sealed class WaitForPropertyTool(ISnoopInspector inspector, SnoopAgentOptions agentOptions)
 {
     [McpServerTool(Name = "wpf_wait_for_property")]
     [Description(
@@ -24,10 +24,23 @@ public sealed class WaitForPropertyTool(ISnoopInspector inspector)
         [Description("WpfLocator string identifying the element (e.g. \"$name:myButton\" or \"$type:Button\").")] string locator,
         [Description("Property name to observe (e.g. \"IsEnabled\", \"Text\", \"Visibility\").")] string propertyName,
         [Description("Expected property value as a string. Required when presenceExpected=present; ignored when presenceExpected=absent.")] string? expectedValue = null,
-        [Description("Timeout in milliseconds before the call fails with DISPATCHER_BUSY. Default: 5000.")] int timeoutMs = 5000,
+        [Description("Timeout in milliseconds before the call fails with DISPATCHER_BUSY. Default: 5000. Maximum: MaxWaitForPropertyMs (default 30000).")] int timeoutMs = 5000,
         [Description("\"present\" (default): wait until propertyName equals expectedValue. \"absent\": wait until the element disappears.")] string presenceExpected = "present",
         CancellationToken ct = default)
     {
+        // FX6-A1: clamp timeoutMs to configurable ceiling (default 30 000 ms).
+        // An unbounded value would hold the concurrency semaphore for the full duration,
+        // starving all other tool calls (semaphore starvation DoS).
+        var maxMs = agentOptions.MaxWaitForPropertyMs;
+        if (timeoutMs > maxMs)
+        {
+            throw ErrorMapping.ToMcpException(new SnoopException(
+                SnoopErrorCode.InvalidArgument,
+                $"timeoutMs={timeoutMs} exceeds the session ceiling of {maxMs} ms. " +
+                $"Reduce timeoutMs to at most {maxMs}.",
+                suggestions: new[] { SnoopSuggestions.InvalidArgument }));
+        }
+
         try
         {
             var wpfLocator = WpfLocatorParser.Parse(locator);

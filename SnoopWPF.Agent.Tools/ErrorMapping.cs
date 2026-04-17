@@ -51,6 +51,10 @@ public static class ErrorMapping
         SnoopErrorCode.ProtocolMismatch => SnoopSuggestions.ProtocolMismatch,
         SnoopErrorCode.ElementNotRenderable => SnoopSuggestions.ElementNotRenderable,
         SnoopErrorCode.BlobNotFound => SnoopSuggestions.BlobNotFound,
+        SnoopErrorCode.InvalidArgument => SnoopSuggestions.InvalidArgument,
+        SnoopErrorCode.CursorMismatch => SnoopSuggestions.CursorMismatch,
+        SnoopErrorCode.AgentDisposed => SnoopSuggestions.AgentDisposed,
+        SnoopErrorCode.InvalidState => SnoopSuggestions.InvalidState,
         _ => null,
     };
 }
