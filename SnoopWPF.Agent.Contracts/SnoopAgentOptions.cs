@@ -82,6 +82,14 @@ public sealed class SnoopAgentOptions
     public bool AllowSensitiveRetention { get; init; } = false;
 
     /// <summary>
+    /// Maximum allowed <c>timeoutMs</c> for <c>wpf_wait_for_property</c> calls.
+    /// Requests that exceed this ceiling are rejected with <c>InvalidArgument</c> rather than
+    /// being allowed to hold the concurrency semaphore for an unbounded duration (FX6-A1).
+    /// Default: 30 000 ms (30 seconds).
+    /// </summary>
+    public int MaxWaitForPropertyMs { get; init; } = 30_000;
+
+    /// <summary>
     /// TTL applied to blobs stored in the in-process <c>BlobStore</c>
     /// (e.g. screenshot PNG data). Default is 60 seconds.
     /// </summary>
@@ -141,4 +149,15 @@ public sealed class SnoopAgentOptions
     /// cause two writers to race on the same <c>.jsonl</c> file and corrupt the HMAC chain.</para>
     /// </remarks>
     public string? AuditLogPath { get; init; }
+
+    /// <summary>
+    /// When <see langword="true"/> and the primary <see cref="AuditLogPath"/> directory is
+    /// not writable, the agent falls back to
+    /// <c>%LOCALAPPDATA%\SnoopWPF.Agent\audit\{sessionId}.jsonl</c> instead of aborting
+    /// start-up with <c>SnoopException(AuditUnwritable)</c>.
+    ///
+    /// Default is <see langword="false"/> (fail-fast) so that audit silencing is opt-in.
+    /// Only effective when <see cref="AuditLogPath"/> is non-null. (FX6-D2)
+    /// </summary>
+    public bool AllowAuditFallback { get; init; } = false;
 }

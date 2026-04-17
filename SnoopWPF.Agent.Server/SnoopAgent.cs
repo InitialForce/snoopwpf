@@ -104,9 +104,11 @@ public static class SnoopAgent
             }
 
             // Wire audit log writer if requested (N1: AuditLogWriter production wiring).
+            // FX6-D2: probe-write at construction; throws AuditUnwritable if path not writable
+            // unless AllowAuditFallback=true, in which case it falls back to %LOCALAPPDATA%\SnoopWPF.Agent\audit\.
             if (!string.IsNullOrEmpty(options.AuditLogPath))
             {
-                handle.AuditWriter = new AuditLogWriter(options.AuditLogPath);
+                handle.AuditWriter = new AuditLogWriter(options.AuditLogPath, allowFallback: options.AllowAuditFallback);
             }
 
             // Auto-stop when the application exits.
@@ -184,6 +186,7 @@ public static class SnoopAgent
             EnableMutation = options.EnableMutation,
             EnableRedaction = options.EnableRedaction,
             AuditLogPath = options.AuditLogPath,
+            AllowAuditFallback = options.AllowAuditFallback,
         };
 
         lock (Lock)
@@ -225,9 +228,10 @@ public static class SnoopAgent
             activeHandle = handle;
 
             // Wire audit log writer if requested (N1: AuditLogWriter production wiring).
+            // FX6-D2: probe-write at construction.
             if (!string.IsNullOrEmpty(options.AuditLogPath))
             {
-                handle.AuditWriter = new AuditLogWriter(options.AuditLogPath);
+                handle.AuditWriter = new AuditLogWriter(options.AuditLogPath, allowFallback: options.AllowAuditFallback);
             }
 
             // Auto-stop when the application exits.
@@ -323,9 +327,10 @@ public static class SnoopAgent
             handle.SessionToken = sessionToken;
             activeHandle = handle;
 
+            // FX6-D2: probe-write at construction.
             if (!string.IsNullOrEmpty(options.AuditLogPath))
             {
-                handle.AuditWriter = new AuditLogWriter(options.AuditLogPath);
+                handle.AuditWriter = new AuditLogWriter(options.AuditLogPath, allowFallback: options.AllowAuditFallback);
             }
 
             app.Exit += (_, _) => handle.Dispose();

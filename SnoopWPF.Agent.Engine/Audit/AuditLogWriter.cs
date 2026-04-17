@@ -60,6 +60,13 @@ internal sealed class AuditLogWriter : IAsyncDisposable
     // this field is the authoritative source so duplicate nonces cannot be injected.
     private long counter = 0;
 
+    // FX6-D2: fallback directory used when AllowAuditFallback=true and primary dir is unwritable.
+    private static readonly string FallbackAuditDir =
+        Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "SnoopWPF.Agent",
+            "audit");
+
     /// <summary>
     /// Constructs a new <see cref="AuditLogWriter"/> for the given <paramref name="sessionId"/>
     /// and starts the background worker task.
@@ -73,7 +80,14 @@ internal sealed class AuditLogWriter : IAsyncDisposable
     ///   Maximum time to wait for the background worker to exit during <see cref="DisposeAsync"/>.
     ///   Defaults to 5 seconds. Pass a shorter value in unit tests.
     /// </param>
-    public AuditLogWriter(string sessionId, Channel<AuditEntry>? channel = null, TimeSpan drainTimeout = default)
+    /// <param name="allowFallback">
+    ///   When <see langword="true"/>, if the default audit directory is not writable the writer
+    ///   silently falls back to <c>%LOCALAPPDATA%\SnoopWPF.Agent\audit\</c>.
+    ///   When <see langword="false"/> (the default), an unwritable path throws
+    ///   <see cref="SnoopWPF.Agent.Contracts.SnoopException"/> with code
+    ///   <see cref="SnoopWPF.Agent.Contracts.SnoopErrorCode.AuditUnwritable"/>. (FX6-D2)
+    /// </param>
+    public AuditLogWriter(string sessionId, Channel<AuditEntry>? channel = null, TimeSpan drainTimeout = default, bool allowFallback = false)
     {
         if (string.IsNullOrWhiteSpace(sessionId))
         {
@@ -89,11 +103,91 @@ internal sealed class AuditLogWriter : IAsyncDisposable
         });
 
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        var dir = Path.Combine(localAppData, "SnoopWPF", "audit");
-        Directory.CreateDirectory(dir);
+        var primaryDir = Path.Combine(localAppData, "SnoopWPF", "audit");
 
-        this.filePath = Path.Combine(dir, SanitizeFileName(sessionId) + ".jsonl");
+        // FX6-D2: probe-write at construction time to detect unwritable paths immediately.
+        // This surfaces AuditUnwritable at StartAsync (before the session begins) rather than
+        // silently dropping entries later when the channel fills.
+        this.filePath = ResolveAuditFilePath(primaryDir, sessionId, allowFallback);
+
         this.workerTask = Task.Run(() => this.RunAsync(this.cts.Token));
+    }
+
+    /// <summary>
+    /// Resolves and validates the audit file path. Tries <paramref name="primaryDir"/> first;
+    /// if that is unwritable and <paramref name="allowFallback"/> is <see langword="true"/>,
+    /// falls back to <see cref="FallbackAuditDir"/>. Otherwise throws
+    /// <see cref="SnoopWPF.Agent.Contracts.SnoopException"/>(AuditUnwritable).
+    /// </summary>
+    private static string ResolveAuditFilePath(string primaryDir, string sessionId, bool allowFallback)
+    {
+        var sanitizedId = SanitizeFileName(sessionId);
+
+        Exception? primaryError = ProbeDirectory(primaryDir, sanitizedId);
+        if (primaryError is null)
+        {
+            return Path.Combine(primaryDir, sanitizedId + ".jsonl");
+        }
+
+        if (allowFallback)
+        {
+            // Attempt fallback directory.
+            Exception? fallbackError = ProbeDirectory(FallbackAuditDir, sanitizedId);
+            if (fallbackError is null)
+            {
+                Trace.WriteLine(
+                    $"[AuditLogWriter] Primary audit dir '{primaryDir}' is unwritable " +
+                    $"({primaryError.GetType().Name}); falling back to '{FallbackAuditDir}'.");
+                return Path.Combine(FallbackAuditDir, sanitizedId + ".jsonl");
+            }
+
+            // Both directories failed — throw with the primary error as context.
+            throw new SnoopWPF.Agent.Contracts.SnoopException(
+                SnoopWPF.Agent.Contracts.SnoopErrorCode.AuditUnwritable,
+                $"Audit log path '{primaryDir}' is not writable and fallback directory '{FallbackAuditDir}' also failed. " +
+                "The session cannot start because the audit log is required for mutation sessions. " +
+                $"Inner error: {primaryError.Message}",
+                primaryError);
+        }
+
+        throw new SnoopWPF.Agent.Contracts.SnoopException(
+            SnoopWPF.Agent.Contracts.SnoopErrorCode.AuditUnwritable,
+            $"Audit log path '{primaryDir}' is not writable. " +
+            "The session cannot start because the audit log is required. " +
+            "Set AllowAuditFallback=true to use the default fallback location. " +
+            $"Inner error: {primaryError.Message}",
+            primaryError);
+    }
+
+    /// <summary>
+    /// Probes <paramref name="dir"/> by creating it (if needed) and writing a 0-byte file.
+    /// Returns <see langword="null"/> on success, or the caught exception on failure.
+    /// </summary>
+    private static Exception? ProbeDirectory(string dir, string sanitizedSessionId)
+    {
+        try
+        {
+            Directory.CreateDirectory(dir);
+            // Use a probe file with the same name stem but a distinct extension to avoid
+            // touching the live .jsonl file before the background worker opens it.
+            var probeFile = Path.Combine(dir, sanitizedSessionId + ".probe");
+            File.WriteAllBytes(probeFile, Array.Empty<byte>());
+            // Clean up the probe file — it's only needed to verify write access.
+            try
+            {
+                File.Delete(probeFile);
+            }
+            catch
+            {
+                // Ignore cleanup failure — probe file removal is best-effort.
+            }
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            return ex;
+        }
     }
 
     /// <summary>Exposes the writer end of the internal channel for callers that supply entries.</summary>
