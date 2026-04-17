@@ -20,6 +20,23 @@ You can change property values, view triggers, set breakpoints on property chang
 
 Badges above reflect the upstream build. Fork CI runs via GitHub Actions on the `develop` branch of this repository.
 
+## Connect an AI agent in 60 seconds
+
+**[Getting Started Guide](docs/getting-started.md)** — Claude Desktop and Claude Code setup with copy-paste config snippets.
+
+```json
+{
+  "mcpServers": {
+    "snoop-myapp": {
+      "command": "C:\\tools\\snoop-mcp.exe",
+      "args": ["--pid", "12345"]
+    }
+  }
+}
+```
+
+Add that block to `%APPDATA%\Claude\claude_desktop_config.json`, restart Claude Desktop, and start asking questions about your running WPF app.
+
 ## Why this fork exists
 
 Modern software engineering increasingly leans on AI coding agents (Claude Code,
