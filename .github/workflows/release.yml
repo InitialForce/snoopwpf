@@ -144,15 +144,15 @@ jobs:
           if (Test-Path $pfxPath) { Remove-Item $pfxPath -Force }
 
       - name: Test Snoop.Core.Tests
-        run: dotnet test Snoop.Core.Tests/Snoop.Core.Tests.csproj --configuration Release --framework net8.0-windows --no-build --logger "trx;LogFileName=Snoop.Core.Tests-release.trx" --results-directory output/test-results
+        run: dotnet test Snoop.Core.Tests/Snoop.Core.Tests.csproj --configuration Release --framework net6.0-windows --no-build --logger "trx;LogFileName=Snoop.Core.Tests-release.trx" --results-directory output/test-results
 
       - name: Test SnoopWPF.Agent.Tests
-        run: dotnet test SnoopWPF.Agent.Tests/SnoopWPF.Agent.Tests.csproj --configuration Release --framework net8.0-windows --no-build --logger "trx;LogFileName=SnoopWPF.Agent.Tests-release.trx" --results-directory output/test-results
+        run: dotnet test SnoopWPF.Agent.Tests/SnoopWPF.Agent.Tests.csproj --configuration Release --framework net8.0-windows10.0.19041.0 --no-build --logger "trx;LogFileName=SnoopWPF.Agent.Tests-release.trx" --results-directory output/test-results
 
       - name: Test SnoopWPF.Agent.InjectionTests
         # TODO(FX5-CI): enable injection tests on self-hosted runner when available
         # RequiresInjection tests need elevated privileges / UI session that GHA windows-latest runners do not provide.
-        run: dotnet test SnoopWPF.Agent.InjectionTests/SnoopWPF.Agent.InjectionTests.csproj --configuration Release --framework net8.0-windows --no-build --filter "Category!=RequiresInjection" --logger "trx;LogFileName=SnoopWPF.Agent.InjectionTests-release.trx" --results-directory output/test-results
+        run: dotnet test SnoopWPF.Agent.InjectionTests/SnoopWPF.Agent.InjectionTests.csproj --configuration Release --framework net8.0-windows10.0.19041.0 --no-build --filter "Category!=RequiresInjection" --logger "trx;LogFileName=SnoopWPF.Agent.InjectionTests-release.trx" --results-directory output/test-results
 
       - name: Test SnoopWPF.Agent.Analyzers.Tests
         run: dotnet test SnoopWPF.Agent.Analyzers.Tests/SnoopWPF.Agent.Analyzers.Tests.csproj --configuration Release --framework net8.0 --no-build --logger "trx;LogFileName=SnoopWPF.Agent.Analyzers.Tests-release.trx" --results-directory output/test-results
