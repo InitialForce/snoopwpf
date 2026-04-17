@@ -72,4 +72,27 @@
         <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     </ItemGroup>
 
+    <!--
+        Bundle all referenced-project DLLs into lib/ at pack time.
+        The five PrivateAssets=all references (Contracts, Engine, Tools, Injection, Analyzers)
+        are not listed as NuGet dependencies; instead their outputs are copied directly into
+        the package lib/ folder so consumers get them without an extra NuGet reference.
+        Pattern: https://docs.microsoft.com/en-us/nuget/create-packages/set-package-type#custom-pack-targets
+    -->
+    <PropertyGroup>
+        <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);PackReferencedProjectOutputs</TargetsForTfmSpecificBuildOutput>
+    </PropertyGroup>
+
+    <Target Name="PackReferencedProjectOutputs">
+        <!-- Collect the output DLL (and PDB) from each PrivateAssets=all ProjectReference.
+             $(TargetDir) is the resolved per-TFM output folder, e.g.
+             C:\work\snoopwpf\bin\Release\net8.0-windows\. -->
+        <ItemGroup>
+            <BuildOutputInPackage Include="$(TargetDir)SnoopWPF.Agent.Contracts.dll" />
+            <BuildOutputInPackage Include="$(TargetDir)SnoopWPF.Agent.Engine.dll" />
+            <BuildOutputInPackage Include="$(TargetDir)SnoopWPF.Agent.Tools.dll" />
+            <BuildOutputInPackage Include="$(TargetDir)SnoopWPF.Agent.Injection.dll" />
+        </ItemGroup>
+    </Target>
+
 </Project>
