@@ -235,7 +235,7 @@ public static class SnoopAgent
             // Run the brokered reconnect loop on the thread pool.
             // NOTE: unlike StartCoLocated, self-tests are skipped here because the WPF dispatcher
             // and HwndSource may not yet be fully initialised at StartBrokered call time.
-            _ = Task.Run(() => RunBrokeredAsync(inspector, policy, pipeName, sessionToken, handle.AuditWriter, cts.Token));
+            _ = Task.Run(() => RunBrokeredAsync(inspector, options, policy, pipeName, sessionToken, handle.AuditWriter, cts.Token));
 
             return handle;
         }
@@ -399,6 +399,7 @@ public static class SnoopAgent
 
     private static async Task RunBrokeredAsync(
         SnoopInspector inspector,
+        SnoopAgentOptions options,
         SessionPolicy policy,
         string pipeName,
         string sessionTokenHex,
@@ -411,7 +412,7 @@ public static class SnoopAgent
             SelfTest.UnsafeAccessorBindings();
             SelfTest.HwndSourcePresent();
 
-            await McpServerSetup.RunBrokeredPipeAsync(inspector, policy, pipeName, sessionTokenHex, ct, auditWriter)
+            await McpServerSetup.RunBrokeredPipeAsync(inspector, policy, pipeName, sessionTokenHex, ct, auditWriter, options)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException)

@@ -57,14 +57,14 @@ internal static class McpServerSetup
         switch (options.Transport)
         {
             case TransportMode.Stdio:
-                return RunWithStdioAsync(inspector, policy, handle.AuditWriter, serverOptions, ct);
+                return RunWithStdioAsync(inspector, options, policy, handle.AuditWriter, serverOptions, ct);
 
             case TransportMode.Pipe:
                 // PipeName and SessionToken were resolved in SnoopAgent.StartCoLocated() before the
                 // background task was launched, so handle properties are guaranteed non-null here.
                 var pipeName = handle.PipeName!;
                 var sessionToken = handle.SessionToken!;
-                return RunWithPipeAsync(inspector, policy, handle.AuditWriter, serverOptions, pipeName, sessionToken, ct);
+                return RunWithPipeAsync(inspector, options, policy, handle.AuditWriter, serverOptions, pipeName, sessionToken, ct);
 
             default:
                 throw new ArgumentOutOfRangeException(nameof(options), $"Unknown transport: {options.Transport}");
@@ -73,12 +73,13 @@ internal static class McpServerSetup
 
     private static async Task RunWithStdioAsync(
         ISnoopInspector inspector,
+        SnoopAgentOptions agentOptions,
         SessionPolicy policy,
         AuditLogWriter? auditWriter,
         McpServerOptions serverOptions,
         CancellationToken ct)
     {
-        var services = BuildServiceCollection(inspector, policy, auditWriter);
+        var services = BuildServiceCollection(inspector, agentOptions, policy, auditWriter);
         var sp = services.BuildServiceProvider();
 
         await EmitSessionStartEntryAsync(auditWriter, ct).ConfigureAwait(false);
@@ -91,6 +92,7 @@ internal static class McpServerSetup
 
     private static async Task RunWithPipeAsync(
         ISnoopInspector inspector,
+        SnoopAgentOptions agentOptions,
         SessionPolicy policy,
         AuditLogWriter? auditWriter,
         McpServerOptions serverOptions,
@@ -98,7 +100,7 @@ internal static class McpServerSetup
         string sessionToken,
         CancellationToken ct)
     {
-        var services = BuildServiceCollection(inspector, policy, auditWriter);
+        var services = BuildServiceCollection(inspector, agentOptions, policy, auditWriter);
         var sp = services.BuildServiceProvider();
 
         // PipeOptions.CurrentUserOnly restricts the pipe ACL to the current Windows user,
@@ -301,7 +303,8 @@ internal static class McpServerSetup
         string pipeName,
         string sessionTokenHex,
         CancellationToken ct,
-        AuditLogWriter? auditWriter = null)
+        AuditLogWriter? auditWriter = null,
+        SnoopAgentOptions? agentOptions = null)
     {
         var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
         var serverOptions = new McpServerOptions
@@ -313,7 +316,7 @@ internal static class McpServerSetup
             },
         };
 
-        var services = BuildServiceCollection(inspector, policy, auditWriter);
+        var services = BuildServiceCollection(inspector, agentOptions ?? new SnoopAgentOptions(), policy, auditWriter);
         var sp = services.BuildServiceProvider();
 
         // Reconnect loop: re-create the pipe after each client disconnect.
@@ -434,6 +437,7 @@ internal static class McpServerSetup
     /// </summary>
     private static IServiceCollection BuildServiceCollection(
         ISnoopInspector inspector,
+        SnoopAgentOptions agentOptions,
         SessionPolicy policy,
         AuditLogWriter? auditWriter = null)
     {
@@ -445,8 +449,13 @@ internal static class McpServerSetup
         // Register SessionPolicy so future tool handlers can receive it via DI.
         services.AddSingleton<SessionPolicy>(policy);
 
-        // Register BlobStore so FetchBlobTool (and future blob-producing tools) share one store.
-        services.AddSingleton<BlobStore>();
+        // Register SnoopAgentOptions so tools (e.g. CaptureScreenshotTool) can read BlobTtl.
+        services.AddSingleton<SnoopAgentOptions>(agentOptions);
+
+        // Register BlobStore using the configured BlobTtl as the sweep interval.
+        // The sweep interval controls how often expired entries are purged; using BlobTtl
+        // is a reasonable default so that stale blobs are cleaned up within one TTL window.
+        services.AddSingleton<BlobStore>(_ => new BlobStore(agentOptions.BlobTtl));
 
         // Register AuditLogWriter if audit logging is enabled (N1).
         // Tools that want to emit audit entries can inject AuditLogWriter? from DI.
