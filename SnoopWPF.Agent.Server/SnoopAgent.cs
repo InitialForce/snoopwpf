@@ -117,8 +117,9 @@ public static class SnoopAgent
             }
 
             // Run the server on the thread pool so we don't block the caller or the Dispatcher.
+            // FX6-D1: pass the handle as IStartupFailureSink so startup exceptions surface.
             _ = Task.Run(
-                () => RunServerAsync(inspector, options, policy, handle, cts.Token),
+                () => RunServerAsync(inspector, options, policy, handle, (IStartupFailureSink)handle, cts.Token),
                 cts.Token);
 
             Trace.TraceInformation("SnoopWPF.Agent MCP server starting ({0} transport).", options.Transport);
@@ -235,7 +236,7 @@ public static class SnoopAgent
             // Run the brokered reconnect loop on the thread pool.
             // NOTE: unlike StartCoLocated, self-tests are skipped here because the WPF dispatcher
             // and HwndSource may not yet be fully initialised at StartBrokered call time.
-            _ = Task.Run(() => RunBrokeredAsync(inspector, options, policy, pipeName, sessionToken, handle.AuditWriter, cts.Token));
+            _ = Task.Run(() => RunBrokeredAsync(inspector, options, policy, pipeName, sessionToken, handle.AuditWriter, handle, (IStartupFailureSink)handle, cts.Token));
 
             return handle;
         }
@@ -334,10 +335,12 @@ public static class SnoopAgent
             // PipeAgentServer holds its own copy; zero our buffer as defense-in-depth.
             Array.Clear(tokenBytes, 0, tokenBytes.Length);
 
+            IStartupFailureSink brokeredClientSink = (IStartupFailureSink)handle;
             _ = Task.Run(async () =>
             {
                 try
                 {
+                    handle.IsStarted = true;
                     await pipeClient.RunAsync(cts.Token).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
@@ -346,6 +349,9 @@ public static class SnoopAgent
                 }
                 catch (Exception ex)
                 {
+                    // FX6-D1: route to failure sink.
+                    handle.IsStarted = false;
+                    brokeredClientSink.OnStartupFailed(ex);
                     Trace.TraceError(
                         "SnoopWPF.Agent (BrokeredClient) error: {0}: {1}",
                         ex.GetType().FullName, ex.Message);
@@ -374,6 +380,7 @@ public static class SnoopAgent
         SnoopAgentOptions options,
         SessionPolicy policy,
         SnoopAgentHandle handle,
+        IStartupFailureSink failureSink,
         CancellationToken ct)
     {
         try
@@ -384,6 +391,8 @@ public static class SnoopAgent
             SelfTest.UnsafeAccessorBindings();
             SelfTest.HwndSourcePresent();
 
+            // FX6-D1: mark the handle as started before entering the MCP loop.
+            handle.IsStarted = true;
             await McpServerSetup.RunServerAsync(inspector, options, policy, handle, ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -392,7 +401,9 @@ public static class SnoopAgent
         }
         catch (Exception ex)
         {
-            // Surface unexpected errors without crashing the host process.
+            // FX6-D1: route to failure sink (writes framed MCP error to stderr + sets StartupException).
+            handle.IsStarted = false;
+            failureSink.OnStartupFailed(ex);
             Trace.TraceError("SnoopWPF.Agent MCP server error: {0}", ex.Message);
         }
     }
@@ -404,6 +415,8 @@ public static class SnoopAgent
         string pipeName,
         string sessionTokenHex,
         SnoopWPF.Agent.Engine.Audit.AuditLogWriter? auditWriter,
+        SnoopAgentHandle handle,
+        IStartupFailureSink failureSink,
         CancellationToken ct)
     {
         try
@@ -412,6 +425,8 @@ public static class SnoopAgent
             SelfTest.UnsafeAccessorBindings();
             SelfTest.HwndSourcePresent();
 
+            // FX6-D1: mark the handle as started before entering the brokered loop.
+            handle.IsStarted = true;
             await McpServerSetup.RunBrokeredPipeAsync(inspector, policy, pipeName, sessionTokenHex, ct, auditWriter, options)
                 .ConfigureAwait(false);
         }
@@ -421,6 +436,9 @@ public static class SnoopAgent
         }
         catch (Exception ex)
         {
+            // FX6-D1: route to failure sink.
+            handle.IsStarted = false;
+            failureSink.OnStartupFailed(ex);
             Trace.TraceError("SnoopWPF.Agent MCP server (Brokered) error: {0}", ex.Message);
         }
     }

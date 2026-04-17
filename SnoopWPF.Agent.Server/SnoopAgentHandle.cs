@@ -1,6 +1,9 @@
 namespace SnoopWPF.Agent.Server;
 
 using System;
+using System.IO;
+using System.Text;
+using System.Text.Json;
 using System.Threading;
 using SnoopWPF.Agent.Contracts;
 using SnoopWPF.Agent.Engine.Audit;
@@ -8,11 +11,16 @@ using SnoopWPF.Agent.Engine.Audit;
 /// <summary>
 /// Represents a running SnoopWPF MCP server session. Dispose to stop the server.
 /// </summary>
-public sealed class SnoopAgentHandle : IDisposable
+/// <remarks>
+/// Also implements <see cref="IStartupFailureSink"/> so that the background startup
+/// task can report fatal errors back to the embedding application (FX6-D1).
+/// </remarks>
+public sealed class SnoopAgentHandle : IDisposable, IStartupFailureSink
 {
     private readonly CancellationTokenSource cts;
     private readonly SnoopWPF.Agent.Engine.SnoopInspector inspector;
     private int disposedFlag;
+    private int startupFailedFlag;
 
     internal SnoopAgentHandle(
         CancellationTokenSource cts,
@@ -60,6 +68,69 @@ public sealed class SnoopAgentHandle : IDisposable
     public string? SessionToken { get; internal set; }
 
     /// <summary>
+    /// <see langword="true"/> once the background server loop has started handling MCP
+    /// requests. Set immediately before <c>McpServer.RunAsync</c> is entered (FX6-D1).
+    /// </summary>
+    public bool IsStarted { get; internal set; }
+
+    /// <summary>
+    /// The exception that caused startup to fail, or <see langword="null"/> if startup
+    /// succeeded or has not yet completed. Set by <see cref="IStartupFailureSink.OnStartupFailed"/>
+    /// (FX6-D1).
+    /// </summary>
+    public Exception? StartupException { get; private set; }
+
+    // -------------------------------------------------------------------------
+    // IStartupFailureSink (FX6-D1)
+    // -------------------------------------------------------------------------
+
+    /// <inheritdoc/>
+    void IStartupFailureSink.OnStartupFailed(Exception ex)
+    {
+        // Idempotent: only the first caller wins.
+        if (Interlocked.Exchange(ref this.startupFailedFlag, 1) != 0)
+        {
+            return;
+        }
+
+        this.StartupException = ex;
+
+        // Emit a framed MCP JSON-RPC error notification to stderr so stdio MCP clients
+        // can observe it. Console.Out is redirected to TextWriter.Null in CoLocated mode;
+        // stderr is the only safe channel (MCP spec does not reserve stderr for protocol).
+        try
+        {
+            var errorPayload = new StartupErrorNotification
+            {
+                Jsonrpc = "2.0",
+                Id = null,
+                Error = new StartupErrorDetail
+                {
+                    Code = -32603,
+                    Message = $"SnoopWPF.Agent startup failed: {ex.GetType().Name}: {ex.Message}",
+                },
+            };
+            var json = JsonSerializer.Serialize(errorPayload, StartupErrorSerializerOptions.Options);
+            var body = Encoding.UTF8.GetBytes(json);
+            // Use Content-Length framing so MCP stdio parsers can skip the frame cleanly.
+            var header = $"Content-Length: {body.Length}\r\n\r\n";
+            var headerBytes = Encoding.UTF8.GetBytes(header);
+            var stderr = Console.OpenStandardError();
+            stderr.Write(headerBytes, 0, headerBytes.Length);
+            stderr.Write(body, 0, body.Length);
+            stderr.Flush();
+        }
+        catch
+        {
+            // stderr write failure must not crash the host.
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // IDisposable
+    // -------------------------------------------------------------------------
+
+    /// <summary>
     /// Stops the MCP server and disposes resources.
     /// </summary>
     public void Dispose()
@@ -89,5 +160,39 @@ public sealed class SnoopAgentHandle : IDisposable
         this.PipeName = null;
 
         SnoopAgent.ClearHandle();
+    }
+
+    // -------------------------------------------------------------------------
+    // Private serialization helpers (avoid taking a reference on System.Text.Json
+    // at the call-site of OnStartupFailed which must not allocate or throw).
+    // -------------------------------------------------------------------------
+
+    private sealed class StartupErrorNotification
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("jsonrpc")]
+        public string Jsonrpc { get; set; } = "2.0";
+
+        [System.Text.Json.Serialization.JsonPropertyName("id")]
+        public object? Id { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("error")]
+        public StartupErrorDetail Error { get; set; } = null!;
+    }
+
+    private sealed class StartupErrorDetail
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("code")]
+        public int Code { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("message")]
+        public string Message { get; set; } = string.Empty;
+    }
+
+    private static class StartupErrorSerializerOptions
+    {
+        internal static readonly JsonSerializerOptions Options = new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = null, // use attribute-specified names
+        };
     }
 }
