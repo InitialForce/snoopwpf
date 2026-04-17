@@ -6,18 +6,25 @@ This release introduces the MCP agent surface and a wave of review-driven fixes.
 
 ### New features
 
-- **MCP agent surface (v3, 16 tools, two modes).** `SnoopWPF.Agent` exposes
+- **MCP agent surface (27 tools, two modes).** `SnoopWPF.Agent` exposes
   WPF inspection and mutation via the Model Context Protocol in two modes:
   - **Injection mode** (`snoop-mcp`): out-of-process, injected DLL, named-pipe
     transport, current-user ACL, 256-bit session token handshake.
   - **NuGet mode** (`SnoopWPF.Agent` package): in-process, stdio transport,
     zero-infrastructure embedding for automated test pipelines.
-  Tools: `wpf_get_session_info`, `wpf_get_windows`, `wpf_get_visual_tree`,
+  Observe: `wpf_get_session_info`, `wpf_get_windows`, `wpf_get_visual_tree`,
   `wpf_get_children`, `wpf_get_ancestors`, `wpf_find_elements`,
-  `wpf_inspect_element`, `wpf_get_properties`, `wpf_set_property`,
+  `wpf_inspect_element`, `wpf_get_properties`, `wpf_capture_screenshot`,
   `wpf_get_binding_info`, `wpf_run_diagnostics`, `wpf_get_resources`,
-  `wpf_capture_screenshot`, `wpf_get_triggers`, `wpf_get_behaviors`,
+  `wpf_get_triggers`, `wpf_get_behaviors`.
+  Act: `wpf_execute_command`, `wpf_set_text_value`, `wpf_set_check_state`,
+  `wpf_select_item`, `wpf_set_property`, `wpf_click`, `wpf_toggle`,
+  `wpf_expand_collapse`.
+  Extract: `wpf_resolve_binding`.
+  Utility: `wpf_pump_until_idle`, `wpf_wait_for_property`, `wpf_poll_changes`,
   `wpf_fetch_blob`.
+  All mutation tools use `DependencyObject.SetCurrentValue` to preserve TwoWay
+  binding chains (Snoop Classic parity).
 
 ### Review-fix wave
 
