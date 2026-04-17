@@ -170,23 +170,31 @@ public class FailureReasonDescriptorTests
     }
 
     // ── TargetNotRunning ─────────────────────────────────────────────────────────
+    // "broker_launch_target" is an advisory generic name — NOT a registered upstream
+    // MCP tool.  Category = BrokerLifecycle signals consumer ISuggestionTranslator
+    // implementations to rewrite it to a product-specific name (e.g. "mc_launch").
+    // See ARCHITECTURE-CHANGE-2026-04-16-SUGGESTION-TRANSLATOR.md.
 
     [Test]
-    public void TargetNotRunning_ReturnsBrokerLaunchTarget()
+    public void TargetNotRunning_ReturnsBrokerLaunchTarget_WithBrokerLifecycleCategory()
     {
         var result = FailureReasonDescriptor.Suggest(FailureReason.TargetNotRunning, SampleLocator);
 
         Assert.That(result, Is.Not.Null);
-        Assert.That(result!.Tool, Is.EqualTo("broker_launch_target"));
+        Assert.That(result!.Tool, Is.EqualTo("broker_launch_target"),
+            "Advisory generic name must remain broker_launch_target for consumer translator compatibility.");
+        Assert.That(result.Category, Is.EqualTo(SuggestionCategory.BrokerLifecycle),
+            "Category must be BrokerLifecycle so ISuggestionTranslator can rewrite the tool name.");
     }
 
     [Test]
-    public void TargetNotRunning_WithNullContext_StillReturnsSuggestion()
+    public void TargetNotRunning_WithNullContext_StillReturnsBrokerLifecycleSuggestion()
     {
         var result = FailureReasonDescriptor.Suggest(FailureReason.TargetNotRunning, null);
 
         Assert.That(result, Is.Not.Null);
         Assert.That(result!.Tool, Is.EqualTo("broker_launch_target"));
+        Assert.That(result.Category, Is.EqualTo(SuggestionCategory.BrokerLifecycle));
     }
 
     // ── All 13 values are covered (completeness guard) ───────────────────────────

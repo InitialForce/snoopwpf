@@ -141,10 +141,17 @@ internal static class FailureReasonDescriptor
             },
 
             // ── Process-level failure ───────────────────────────────────────────────
+            // NOTE: "broker_launch_target" is an advisory generic name — it is NOT a
+            // registered upstream MCP tool.  Consumer-side ISuggestionTranslator
+            // implementations (e.g. MC's McSuggestionTranslator) must rewrite it to a
+            // product-specific tool name (e.g. "mc_launch") before forwarding the frame
+            // to the MCP client.  Category = BrokerLifecycle signals translators to
+            // apply that rewrite.  See ARCHITECTURE-CHANGE-2026-04-16-SUGGESTION-TRANSLATOR.md.
             FailureReason.TargetNotRunning => new SuggestionDto
             {
                 Tool = "broker_launch_target",
                 Args = new List<NameValuePairDto>(),
+                Category = Contracts.SuggestionCategory.BrokerLifecycle,
             },
 
             // ── Session-config failures — no auto-remediation ───────────────────────
