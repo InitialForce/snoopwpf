@@ -48,6 +48,14 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
+          # Snoop.Core.Tests multi-targets net472 + net6.0-windows. The .NET 6
+          # runtime is no longer preinstalled on windows-latest, so the test
+          # host fails with "You must install or update .NET to run this
+          # application" if we don't add it here. .NET 8 is needed for the
+          # Agent test suites.
+          dotnet-version: |
+            6.0.x
+            8.0.x
 
       - name: Cache NuGet packages
         uses: actions/cache@v4
