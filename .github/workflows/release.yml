@@ -10,8 +10,8 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: read
-  packages: write
+  contents: write  # for gh release create
+  packages: read   # no longer publishing to GitHub Packages
 
 jobs:
   pack-and-publish:
@@ -41,9 +41,6 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
-          source-url: https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
-        env:
-          NUGET_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Cache NuGet packages
         uses: actions/cache@v4
@@ -162,6 +159,7 @@ jobs:
           dotnet pack SnoopWPF.Agent.Contracts/SnoopWPF.Agent.Contracts.csproj
           --configuration Release --no-build
           -p:Version=${{ steps.version.outputs.VERSION }}
+          --include-symbols
           --output artifacts/nupkg
 
       - name: Pack SnoopWPF.Agent.Analyzers
@@ -169,6 +167,7 @@ jobs:
           dotnet pack SnoopWPF.Agent.Analyzers/SnoopWPF.Agent.Analyzers.csproj
           --configuration Release --no-build
           -p:Version=${{ steps.version.outputs.VERSION }}
+          --include-symbols
           --output artifacts/nupkg
 
       - name: Pack SnoopWPF.Agent.Remote
@@ -176,6 +175,7 @@ jobs:
           dotnet pack SnoopWPF.Agent.Remote/SnoopWPF.Agent.Remote.csproj
           --configuration Release --no-build
           -p:Version=${{ steps.version.outputs.VERSION }}
+          --include-symbols
           --output artifacts/nupkg
 
       - name: Pack SnoopWPF.Agent.BrokerHost
@@ -183,6 +183,7 @@ jobs:
           dotnet pack SnoopWPF.Agent.BrokerHost/SnoopWPF.Agent.BrokerHost.csproj
           --configuration Release --no-build
           -p:Version=${{ steps.version.outputs.VERSION }}
+          --include-symbols
           --output artifacts/nupkg
 
       - name: Pack SnoopWPF.Agent (Server)
@@ -190,6 +191,7 @@ jobs:
           dotnet pack SnoopWPF.Agent.Server/SnoopWPF.Agent.Server.csproj
           --configuration Release --no-build
           -p:Version=${{ steps.version.outputs.VERSION }}
+          --include-symbols
           --output artifacts/nupkg
 
       - name: Upload nupkg artifacts
@@ -198,9 +200,44 @@ jobs:
           name: nupkg
           path: artifacts/nupkg/*.nupkg
 
-      - name: Publish to GitHub Packages
-        run: >
-          dotnet nuget push artifacts/nupkg/*.nupkg
-          --source https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
-          --api-key ${{ secrets.GITHUB_TOKEN }}
-          --skip-duplicate
+      # ---------------------------------------------------------------------------
+      # Publish to nuget.org
+      #
+      # One-time setup for repo owners:
+      #   1. Generate an API key at https://www.nuget.org/account/apikeys
+      #      (Globe keys: push new packages + push new versions; specific packages or
+      #       glob InitialForce.SnoopAgent.*)
+      #   2. Add the key as repository secret:
+      #        NUGET_API_KEY  – the raw API key string
+      # ---------------------------------------------------------------------------
+      - name: Publish to nuget.org
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        shell: pwsh
+        run: |
+          if (-not $env:NUGET_API_KEY) {
+            throw "NUGET_API_KEY secret is not set. Configure at repo settings → Secrets → Actions."
+          }
+          # Push nupkgs (snupkgs are picked up automatically when in the same folder)
+          Get-ChildItem artifacts/nupkg/*.nupkg | ForEach-Object {
+            Write-Host "Pushing $($_.Name)"
+            dotnet nuget push $_.FullName `
+              --source https://api.nuget.org/v3/index.json `
+              --api-key $env:NUGET_API_KEY `
+              --skip-duplicate
+            if ($LASTEXITCODE -ne 0) { throw "dotnet nuget push failed for $($_.Name)" }
+          }
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $isPrerelease = if ($tag -match '-(alpha|beta|rc)\.') { '--prerelease' } else { '' }
+          gh release create $tag `
+            artifacts/nupkg/*.nupkg `
+            artifacts/nupkg/*.snupkg `
+            --generate-notes `
+            $isPrerelease `
+            --title "$tag"
