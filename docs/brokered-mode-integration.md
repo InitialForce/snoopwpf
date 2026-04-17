@@ -97,12 +97,20 @@ private static string? GetFlagValue(string[] args, string prefix)
 ## Broker-side skeleton (external consumer reference)
 
 ```csharp
+using System;
+using System.IO;
+using System.Security.Cryptography;
+using System.Threading;
 using SnoopWPF.Agent.BrokerHost;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+
+// MCP 1.2.0+: StdioServerTransport takes McpServerOptions (not zero-arg).
 
 // 1. Generate pipe name + token (broker decides these values).
 string pipeName = "my-app-" + Guid.NewGuid().ToString("N")[..8];
 string tokenHex = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+using var cts = new CancellationTokenSource();
 
 // 2. FIRST statement: silence stdout. Broker owns MCP stdio.
 Console.SetOut(TextWriter.Null);
@@ -113,7 +121,7 @@ Console.SetOut(TextWriter.Null);
 //    The token is NEVER placed on the command line.
 var process = BrokerTargetSpawner.Spawn(
     exe: @"C:\path\to\MyApp.exe",
-    args: string.Empty,        // additional app args
+    args: Array.Empty<string>(), // additional app args (use IReadOnlyList<string> overload)
     pipeName: pipeName,
     tokenHex: tokenHex);
 
@@ -129,7 +137,11 @@ var opts = new BrokerOptions
     },
 };
 
-await using var transport = new StdioServerTransport();
+var serverOptions = new McpServerOptions
+{
+    ServerInfo = new Implementation { Name = "my-broker", Version = "1.0.0" },
+};
+await using var transport = new StdioServerTransport(serverOptions); // MCP 1.2.0 API
 await BrokerHost.Start(transport, opts, cts.Token);
 
 // 5. On shutdown: kill the target (sample_exit).
