@@ -82,6 +82,12 @@ public sealed class SnoopAgentHandle : IDisposable
             this.AuditWriter = null;
         }
 
+        // Null security-sensitive string references so the GC can collect them sooner.
+        // String is immutable and Array.Clear cannot zero its backing memory, but dropping
+        // the references makes them unreachable and shortens the window they remain in the heap.
+        this.SessionToken = null;
+        this.PipeName = null;
+
         SnoopAgent.ClearHandle();
     }
 }

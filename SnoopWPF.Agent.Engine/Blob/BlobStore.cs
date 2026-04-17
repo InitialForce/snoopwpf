@@ -20,7 +20,15 @@ public sealed class BlobStore : IDisposable
     public static readonly TimeSpan DefaultTtl = TimeSpan.FromMinutes(5);
 
     private readonly ConcurrentDictionary<string, BlobEntry> entries = new(StringComparer.Ordinal);
+
+    // CA2213 suppressed: Timer is disposed via the Timer.Dispose(WaitHandle) overload,
+    // which the CA analyzer does not recognise as a Dispose call.
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Usage",
+        "CA2213:Disposable fields should be disposed",
+        Justification = "Disposed via Timer.Dispose(WaitHandle) in Dispose() — CA2213 cannot detect the WaitHandle overload.")]
     private readonly Timer sweepTimer;
+
     private volatile bool disposed;
 
     /// <summary>
