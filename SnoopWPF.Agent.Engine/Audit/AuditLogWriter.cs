@@ -56,6 +56,10 @@ internal sealed class AuditLogWriter : IAsyncDisposable
     private readonly CancellationTokenSource cts = new CancellationTokenSource();
     private readonly TimeSpan drainTimeout;
 
+    // Writer-owned counter. Any CounterNonce supplied by the caller at ingress is IGNORED;
+    // this field is the authoritative source so duplicate nonces cannot be injected.
+    private long counter = 0;
+
     /// <summary>
     /// Constructs a new <see cref="AuditLogWriter"/> for the given <paramref name="sessionId"/>
     /// and starts the background worker task.
@@ -115,18 +119,23 @@ internal sealed class AuditLogWriter : IAsyncDisposable
 
         await foreach (var rawEntry in this.channel.Reader.ReadAllAsync(ct))
         {
-            // 1. Sanitize reason before computing HMAC so the on-disk value matches.
-            var entry = rawEntry with { Reason = SanitizeReason(rawEntry.Reason) };
+            // 1. Overwrite any caller-supplied CounterNonce with the writer-owned counter.
+            //    The caller's value is ignored; the writer is authoritative over nonce assignment
+            //    so a buggy or malicious caller cannot submit duplicate nonces to weaken replay detection.
+            var entryWithNonce = rawEntry with { CounterNonce = Interlocked.Increment(ref this.counter) };
 
-            // 2. Serialize to JSON with hmac=string.Empty to obtain the payload.
+            // 2. Sanitize reason before computing HMAC so the on-disk value matches.
+            var entry = entryWithNonce with { Reason = SanitizeReason(entryWithNonce.Reason) };
+
+            // 3. Serialize to JSON with hmac=string.Empty to obtain the payload.
             var entryForJson = entry with { Hmac = string.Empty };
             string entryJson = SerializeToJson(serializer, entryForJson);
 
-            // 3. Compute HMAC-SHA256 over: entryJson || prevHmac || sessionKey || counterNonce
+            // 4. Compute HMAC-SHA256 over: entryJson || prevHmac || sessionKey || counterNonce
             byte[] hmacBytes = ComputeHmac(entryJson, prevHmac, this.sessionKey, entry.CounterNonce);
             string hmacHex = Convert.ToHexString(hmacBytes);
 
-            // 4. Produce the final entry with the computed hmac.
+            // 5. Produce the final entry with the computed hmac.
             var finalEntry = entry with { Hmac = hmacHex };
             string finalJson = SerializeToJson(serializer, finalEntry);
 
