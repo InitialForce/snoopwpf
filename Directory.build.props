@@ -56,17 +56,22 @@
         <Copyright>Copyright © Cory Plotts, Bastian Schmidt 2010 - $([System.DateTime]::Today.ToString(yyyy))</Copyright>
     </PropertyGroup>
 
-    <!-- SourceLink -->
+    <!-- SourceLink + Symbol packages -->
     <PropertyGroup>
-        <!-- Optional: Declare that the Repository URL can be published to NuSpec -->
+        <!-- Declare that the Repository URL can be published to NuSpec -->
         <PublishRepositoryUrl>true</PublishRepositoryUrl>
-        <!-- Optional: Embed source files that are not tracked by the source control manager to the PDB -->
+        <!-- Embed source files that are not tracked by the source control manager to the PDB -->
         <EmbedUntrackedSources>true</EmbedUntrackedSources>
-        <!-- Optional: Include PDB in the built .nupkg -->
-        <AllowedOutputExtensionsInPackageBuildOutputFolder>$(AllowedOutputExtensionsInPackageBuildOutputFolder);.pdb</AllowedOutputExtensionsInPackageBuildOutputFolder>
         <!-- By using EmbedAllSources we don't need SourceLink itself -->
         <!-- https://github.com/dotnet/sourcelink/blob/master/docs/README.md#embedallsources -->
         <EmbedAllSources>True</EmbedAllSources>
+        <!-- Produce a companion .snupkg symbol package instead of embedding PDBs in lib/.
+             Consumers can step into SnoopWPF.Agent code via the symbol server once snupkgs
+             are published alongside their corresponding .nupkg on nuget.org (or a private feed).
+             AllowedOutputExtensionsInPackageBuildOutputFolder is intentionally NOT extended
+             with .pdb — PDBs must not appear in lib/, only in the snupkg. -->
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     </PropertyGroup>
 
     <!-- PDB-Options -->
