@@ -12,6 +12,7 @@ concurrency:
 permissions:
   contents: write  # for gh release create
   packages: read   # no longer publishing to GitHub Packages
+  id-token: write  # for NuGet Trusted Publishing (OIDC → temp API key)
 
 jobs:
   pack-and-publish:
@@ -201,24 +202,41 @@ jobs:
           path: artifacts/nupkg/*.nupkg
 
       # ---------------------------------------------------------------------------
-      # Publish to nuget.org
+      # Publish to nuget.org via Trusted Publishing (OIDC)
+      #
+      # No API key secret is used. Instead, the workflow's id-token (granted at the
+      # workflow level via permissions.id-token: write) is exchanged with nuget.org
+      # for a short-lived (1 hour) API key via the NuGet/login@v1 action.
       #
       # One-time setup for repo owners:
-      #   1. Generate an API key at https://www.nuget.org/account/apikeys
-      #      (Globe keys: push new packages + push new versions; specific packages or
-      #       glob InitialForce.SnoopAgent.*)
-      #   2. Add the key as repository secret:
-      #        NUGET_API_KEY  – the raw API key string
+      #   1. Log into https://www.nuget.org → click your username → "Trusted Publishing".
+      #   2. Add a new policy:
+      #        Repository Owner: InitialForce
+      #        Repository:       snoopwpf
+      #        Workflow File:    release.yml         (filename only, no path)
+      #        Environment:      (leave blank)
+      #   3. Add repo secret NUGET_USER with your nuget.org profile name
+      #      (NOT your email). This is the account that owns the packages.
+      #      Path: repo settings → Secrets → Actions → NUGET_USER
+      #
+      # Token validity: 1 hour. Request close to the push (the login step just below
+      # must stay adjacent to the push step).
       # ---------------------------------------------------------------------------
+      - name: NuGet login (OIDC → short-lived API key)
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
       - name: Publish to nuget.org
         env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
         shell: pwsh
         run: |
           if (-not $env:NUGET_API_KEY) {
-            throw "NUGET_API_KEY secret is not set. Configure at repo settings → Secrets → Actions."
+            throw "NUGET_API_KEY was not returned by NuGet/login. Check the trusted publishing policy on nuget.org and the NUGET_USER secret."
           }
-          # Push nupkgs (snupkgs are picked up automatically when in the same folder)
+          # Push nupkgs (snupkgs are picked up automatically when in the same folder).
           Get-ChildItem artifacts/nupkg/*.nupkg | ForEach-Object {
             Write-Host "Pushing $($_.Name)"
             dotnet nuget push $_.FullName `
