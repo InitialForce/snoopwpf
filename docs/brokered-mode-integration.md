@@ -21,8 +21,10 @@ pipe. Broker and target are separate OS processes.
 
 ## Target-side integration (Program.cs patch)
 
-Add to the WPF application's entry point. The broker passes `--snoop-pipe` and
-`--snoop-token` on the command line when spawning the target.
+Add to the WPF application's entry point. The broker passes `--snoop-pipe=NAME` on the
+command line and delivers the session token via a single-line JSON payload written to the
+target's stdin immediately after spawn (`BrokerHandshakePayload { Pipe, Token }`). The token
+never appears on the process command line.
 
 ```csharp
 // In App.xaml.cs or application startup:
@@ -30,13 +32,33 @@ protected override void OnStartup(StartupEventArgs e)
 {
     base.OnStartup(e);
 
-    string? pipeName  = GetFlagValue(e.Args, "--snoop-pipe");
-    string? token     = GetFlagValue(e.Args, "--snoop-token");
+    string? pipeName = GetFlagValue(e.Args, "--snoop-pipe");
 
-    if (!string.IsNullOrEmpty(pipeName) && !string.IsNullOrEmpty(token))
+    if (!string.IsNullOrEmpty(pipeName))
     {
+        // Secure path: broker writes a single-line JSON BrokerHandshakePayload to stdin.
+        // Read it synchronously during startup before the WPF message pump starts.
+        string? line = Console.In.ReadLine();
+        if (string.IsNullOrWhiteSpace(line))
+        {
+            // No handshake payload — broker did not write one. Skip brokered mode.
+            return;
+        }
+
+        var payload = System.Text.Json.JsonSerializer
+            .Deserialize<SnoopWPF.Agent.Contracts.Protocol.BrokerHandshakePayload>(line);
+
+        if (payload is null || string.IsNullOrEmpty(payload.Token))
+            return; // Malformed payload — skip brokered mode.
+
+        // Use the pipe name from the payload if provided; otherwise use the command-line one.
+        if (!string.IsNullOrEmpty(payload.Pipe))
+            pipeName = payload.Pipe;
+
+        string token = payload.Token;
+
         // Brokered mode: agent connects back to broker over the named pipe.
-        // Console.Out is NOT redirected — the broker owns its own stdio.
+        // Console.Out is NOT redirected — the broker drains the target's stdout.
         _agentHandle = SnoopAgent.StartBrokered(
             this,
             pipeName,
@@ -67,6 +89,8 @@ private static string? GetFlagValue(string[] args, string prefix)
 
 - Opens a `NamedPipeServerStream(pipeName, CurrentUserOnly)` and waits for the broker to connect.
 - Performs the framed-JSON handshake (challenge/response with session token).
+- The session token is delivered exclusively via stdin (`BrokerHandshakePayload`) — it never
+  appears on the process command line.
 - Runs a reconnect loop so the broker can restart without requiring a target restart.
 - Does **not** redirect `Console.Out` — the target's stdout is owned by the target, not the MCP transport.
 
@@ -83,8 +107,10 @@ string tokenHex = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
 // 2. FIRST statement: silence stdout. Broker owns MCP stdio.
 Console.SetOut(TextWriter.Null);
 
-// 3. Spawn the target with --snoop-pipe and --snoop-token.
-//    BrokerTargetSpawner drains target stdout/stderr so nothing leaks to broker's stdio.
+// 3. Spawn the target with --snoop-pipe=NAME only.
+//    BrokerTargetSpawner writes the BrokerHandshakePayload (pipe + token) to the child's
+//    stdin automatically, then drains target stdout/stderr so nothing leaks to broker's stdio.
+//    The token is NEVER placed on the command line.
 var process = BrokerTargetSpawner.Spawn(
     exe: @"C:\path\to\MyApp.exe",
     args: string.Empty,        // additional app args
@@ -95,6 +121,7 @@ var process = BrokerTargetSpawner.Spawn(
 var opts = new BrokerOptions
 {
     PipeName = pipeName,
+    SessionToken = tokenHex,   // required (FX2-C3): must match token delivered via stdin
     OnTargetDisconnected = () =>
     {
         // Optionally restart the target or surface TARGET_NOT_RUNNING to MCP callers.
