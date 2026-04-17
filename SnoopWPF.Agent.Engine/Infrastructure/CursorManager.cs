@@ -78,6 +78,18 @@ public sealed class CursorManager : IDisposable
     {
         ThrowIfDisposed(this.disposed, this);
 
+        // FX2-C9 (EC-C1): pageSize <= 0 is invalid. pageSize=0 would produce an
+        // infinite loop at the caller (hasMore=true, offset never advances);
+        // pageSize<0 would allocate a negative-sized array (OverflowException).
+        // Reject at the public boundary with a clear exception.
+        if (pageSize <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(pageSize),
+                pageSize,
+                "pageSize must be greater than zero.");
+        }
+
         if (cursor is null || !this.snapshots.TryGetValue(cursor, out var entry))
         {
             return new CursorPage(
@@ -114,7 +126,12 @@ public sealed class CursorManager : IDisposable
                     stale: stale);
             }
 
-            end = Math.Min(claimedOffset + pageSize, totalCount);
+            // FX2-C9 (EC-M4): clamp before arithmetic to avoid integer overflow
+            // when pageSize is near int.MaxValue and claimedOffset > 0.
+            int desired = pageSize >= totalCount - claimedOffset
+                ? totalCount
+                : claimedOffset + pageSize;
+            end = Math.Min(desired, totalCount);
         }
         while (!entry.TryAdvance(claimedOffset, end));
 
