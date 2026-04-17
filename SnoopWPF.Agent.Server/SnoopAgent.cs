@@ -4,6 +4,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Security.Cryptography;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -46,6 +47,26 @@ public static class SnoopAgent
         // NOTE: StartBrokered does NOT take over stdout — the broker owns its own stdio.
         Console.SetOut(TextWriter.Null);
 
+        // FX2-C5 (I18N-C1): force UTF-8 on stdio when running stdio transport. On non-UTF-8
+        // Windows locales the default OEM code page corrupts non-ASCII WPF element names /
+        // property values when serialized through the StdioServerTransport JSON-RPC framing.
+        //
+        // Guard: GUI WPF apps are typically launched without a console, so Console.In/Out
+        // handles may be invalid — setting encoding then throws IOException. We only force
+        // UTF-8 for stdio transport and swallow the "no console attached" failure.
+        if ((options ?? new SnoopAgentOptions()).Transport == TransportMode.Stdio)
+        {
+            try
+            {
+                Console.OutputEncoding = Encoding.UTF8;
+                Console.InputEncoding = Encoding.UTF8;
+            }
+            catch (IOException)
+            {
+                // No usable console attached — encoding is irrelevant in that case.
+            }
+        }
+
         options ??= new SnoopAgentOptions();
 
         lock (Lock)
@@ -68,12 +89,19 @@ public static class SnoopAgent
                 TimeoutMs = options.TimeoutMs,
                 EnableMutation = policy.EnableMutation,
                 EnableRedaction = policy.EnableRedaction,
+
+                // FX2-C2: propagate AllowSensitiveRetention from policy → engine options.
+                // SessionPolicy.Create(Injection) clamps this to false; for CoLocated/Brokered
+                // the caller's opts value flows through.
+                AllowSensitiveRetention = policy.AllowSensitiveRetention,
+                EnableAutomation = policy.EnableAutomation,
             };
 
             var inspector = new SnoopInspector(
                 dispatcher,
                 rootTarget: Application.Current,
-                options: inspectorOptions);
+                options: inspectorOptions,
+                sessionPolicy: policy);
 
             var cts = new CancellationTokenSource();
             var handle = new SnoopAgentHandle(cts, inspector, policy);
@@ -190,12 +218,17 @@ public static class SnoopAgent
                 TimeoutMs = options.TimeoutMs,
                 EnableMutation = policy.EnableMutation,
                 EnableRedaction = policy.EnableRedaction,
+
+                // FX2-C2: propagate AllowSensitiveRetention + EnableAutomation from policy.
+                AllowSensitiveRetention = policy.AllowSensitiveRetention,
+                EnableAutomation = policy.EnableAutomation,
             };
 
             var inspector = new SnoopInspector(
                 dispatcher,
                 rootTarget: app,
-                options: inspectorOptions);
+                options: inspectorOptions,
+                sessionPolicy: policy);
 
             var cts = new CancellationTokenSource();
             var handle = new SnoopAgentHandle(cts, inspector, policy);
