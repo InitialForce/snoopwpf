@@ -1124,6 +1124,21 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
     /// <inheritdoc/>
     public Task<StateDeltaDto> SetPropertyAsync(string nodeId, string propertyName, string value, CancellationToken ct)
     {
+        // FX2-C9 (EC-C2): validate at the public boundary before dispatching to the
+        // Dispatcher lambda. A null nodeId would trigger NullReferenceException inside
+        // ResolveNodeOrThrow and surface as an opaque InternalError; null propertyName
+        // flows into the redaction filter the same way. Contrast: SetCheckStateAsync,
+        // SelectItemAsync, SetSliderValueAsync all guard here.
+        if (string.IsNullOrEmpty(nodeId))
+        {
+            throw new ArgumentException("nodeId must not be null or empty.", nameof(nodeId));
+        }
+
+        if (string.IsNullOrEmpty(propertyName))
+        {
+            throw new ArgumentException("propertyName must not be null or empty.", nameof(propertyName));
+        }
+
         return this.RunOnDispatcherAsync(() =>
         {
             // FX-M8: enforce MaxTier before any mutation.
