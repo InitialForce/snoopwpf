@@ -70,7 +70,7 @@ public sealed class NodeRegistry : IDisposable
         // Slow path: create new registration
         var newCounter = Interlocked.Increment(ref this.treeVersion);
         var id = $"0:{newCounter}";
-        var registration = new NodeRegistration(id, element);
+        var registration = new NodeRegistration(id);
 
         // GetOrAdd is not available on ConditionalWeakTable, handle race via try/catch
         NodeRegistration actual;
@@ -252,14 +252,11 @@ public sealed class NodeRegistry : IDisposable
         /// <summary>
         /// Initializes a new instance of the <see cref="NodeRegistration"/> class.
         /// </summary>
-        public NodeRegistration(string id, object element)
+        public NodeRegistration(string id)
         {
             this.Id = id;
-            this.ParentRef = new WeakReference<object>(element);
         }
 
         public string Id { get; }
-
-        public WeakReference<object> ParentRef { get; set; }
     }
 }
