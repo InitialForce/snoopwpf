@@ -2,6 +2,7 @@ namespace SnoopWPF.Agent.Engine.Blob;
 
 using System;
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Threading;
 
 /// <summary>
@@ -24,9 +25,33 @@ public sealed class BlobStore : IDisposable
     /// </summary>
     public static readonly TimeSpan DefaultTtl = TimeSpan.FromSeconds(60);
 
+    /// <summary>
+    /// Default maximum number of blobs. Matches
+    /// <see cref="SnoopWPF.Agent.Contracts.SnoopAgentOptions.BlobStoreMaxCount"/>.
+    /// </summary>
+    public const int DefaultMaxCount = 64;
+
+    /// <summary>
+    /// Default maximum total bytes. Matches
+    /// <see cref="SnoopWPF.Agent.Contracts.SnoopAgentOptions.BlobStoreMaxBytes"/>.
+    /// </summary>
+    public const long DefaultMaxBytes = 128L * 1024 * 1024; // 128 MB
+
     private readonly ConcurrentDictionary<string, BlobEntry> entries = new(StringComparer.Ordinal);
 
     private readonly Timer sweepTimer;
+
+    private readonly int maxCount;
+    private readonly long maxBytes;
+
+    // Optional callback invoked (evictedKey) when an entry is evicted due to cap pressure.
+    private readonly Action<string>? onEviction;
+
+    // Object used as a lock for the eviction-critical section in Store().
+    // ConcurrentDictionary operations are individually atomic, but count/byte-cap eviction
+    // requires a brief exclusive window to read count, find the oldest, remove it, and add
+    // the new entry without racing with another concurrent Store().
+    private readonly object storeLock = new object();
 
     private volatile bool disposed;
 
@@ -39,11 +64,40 @@ public sealed class BlobStore : IDisposable
     }
 
     /// <summary>
-    /// Initializes a new <see cref="BlobStore"/> with a custom sweep interval.
+    /// Initializes a new <see cref="BlobStore"/> with a custom sweep interval and default caps.
     /// </summary>
     /// <param name="sweepInterval">How often expired entries are purged.</param>
     public BlobStore(TimeSpan sweepInterval)
+        : this(sweepInterval, DefaultMaxCount, DefaultMaxBytes, onEviction: null)
     {
+    }
+
+    /// <summary>
+    /// Initializes a new <see cref="BlobStore"/> with explicit caps and optional eviction callback.
+    /// </summary>
+    /// <param name="sweepInterval">How often expired entries are purged.</param>
+    /// <param name="maxCount">Maximum number of concurrent entries. Must be at least 1.</param>
+    /// <param name="maxBytes">Maximum total byte footprint. Must be at least 1.</param>
+    /// <param name="onEviction">
+    ///   Optional callback invoked with the evicted key whenever an entry is removed due to
+    ///   count or byte cap pressure. Use this to emit an audit event.
+    /// </param>
+    public BlobStore(TimeSpan sweepInterval, int maxCount, long maxBytes, Action<string>? onEviction)
+    {
+        if (maxCount < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxCount), maxCount, "maxCount must be at least 1.");
+        }
+
+        if (maxBytes < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxBytes), maxBytes, "maxBytes must be at least 1.");
+        }
+
+        this.maxCount = maxCount;
+        this.maxBytes = maxBytes;
+        this.onEviction = onEviction;
+
         this.sweepTimer = new Timer(
             _ => this.Sweep(),
             state: null,
@@ -67,6 +121,7 @@ public sealed class BlobStore : IDisposable
 
     /// <summary>
     /// Stores <paramref name="data"/> under <paramref name="key"/> with a custom TTL.
+    /// Evicts the oldest entry first if count or byte caps would be exceeded.
     /// </summary>
     public void Store(string key, byte[] data, string mimeType, TimeSpan ttl)
     {
@@ -86,7 +141,76 @@ public sealed class BlobStore : IDisposable
         }
 
         var expiresAt = DateTimeOffset.UtcNow.Add(ttl);
-        this.entries[key] = new BlobEntry(data, mimeType, expiresAt);
+        var newEntry = new BlobEntry(data, mimeType, expiresAt);
+
+        // Use a short critical section to keep the eviction logic consistent under
+        // concurrent Store() calls. The lock is NOT held during the onEviction callback
+        // to avoid blocking other threads while audit I/O is in flight.
+        string? evictedKey = null;
+
+        lock (this.storeLock)
+        {
+            // Determine whether the incoming entry replaces an existing one (same key).
+            bool replacing = this.entries.TryGetValue(key, out var existing);
+
+            // Running total of bytes already in the store (excluding the slot we're replacing).
+            long currentBytes = this.entries.Values.Sum(e => (long)e.Data.Length);
+            if (replacing && existing is not null)
+            {
+                currentBytes -= existing.Data.Length;
+            }
+
+            // Evict oldest entries (by expiresAt asc) until both caps are satisfied.
+            while (true)
+            {
+                int currentCount = this.entries.Count - (replacing ? 1 : 0);
+                bool countExceeded = currentCount >= this.maxCount;
+                bool bytesExceeded = currentBytes + data.Length > this.maxBytes;
+
+                if (!countExceeded && !bytesExceeded)
+                {
+                    break;
+                }
+
+                // Find the entry with the smallest expiresAt (oldest). Exclude the key
+                // being replaced (it will be overwritten, not added as a new entry).
+                BlobEntry? oldest = null;
+                string? oldestKey = null;
+                foreach (var kvp in this.entries)
+                {
+                    if (replacing && kvp.Key == key)
+                    {
+                        continue;
+                    }
+
+                    if (oldest is null || kvp.Value.ExpiresAt < oldest.ExpiresAt)
+                    {
+                        oldest = kvp.Value;
+                        oldestKey = kvp.Key;
+                    }
+                }
+
+                if (oldestKey is null)
+                {
+                    // No evictable candidates.
+                    break;
+                }
+
+                if (this.entries.TryRemove(oldestKey, out var removed))
+                {
+                    currentBytes -= removed.Data.Length;
+                    evictedKey = oldestKey;
+                }
+            }
+
+            this.entries[key] = newEntry;
+        }
+
+        // Fire the eviction callback outside the lock so audit I/O doesn't stall Store().
+        if (evictedKey is not null)
+        {
+            this.onEviction?.Invoke(evictedKey);
+        }
     }
 
     /// <summary>
@@ -121,6 +245,11 @@ public sealed class BlobStore : IDisposable
     /// Returns the number of currently stored (possibly including expired) entries.
     /// </summary>
     public int Count => this.entries.Count;
+
+    /// <summary>
+    /// Returns the total byte size of all currently stored entries.
+    /// </summary>
+    public long TotalBytes => this.entries.Values.Sum(e => (long)e.Data.Length);
 
     // -------------------------------------------------------------------------
     // IDisposable

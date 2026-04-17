@@ -452,10 +452,27 @@ internal static class McpServerSetup
         // Register SnoopAgentOptions so tools (e.g. CaptureScreenshotTool) can read BlobTtl.
         services.AddSingleton<SnoopAgentOptions>(agentOptions);
 
-        // Register BlobStore using the configured BlobTtl as the sweep interval.
-        // The sweep interval controls how often expired entries are purged; using BlobTtl
-        // is a reasonable default so that stale blobs are cleaned up within one TTL window.
-        services.AddSingleton<BlobStore>(_ => new BlobStore(agentOptions.BlobTtl));
+        // Register BlobStore using the configured BlobTtl as the sweep interval and the
+        // configured count/byte caps. Evicted entries are written to the audit log (if active).
+        services.AddSingleton<BlobStore>(sp =>
+        {
+            var audit = sp.GetService<AuditLogWriter>();
+            Action<string>? onEviction = audit is null
+                ? null
+                : evictedKey => audit.Writer.TryWrite(new SnoopWPF.Agent.Contracts.Audit.AuditEntry
+                {
+                    At = DateTimeOffset.UtcNow,
+                    ToolName = "blob_store_eviction",
+                    SessionId = agentOptions.AuditLogPath ?? string.Empty,
+                    Outcome = "evicted",
+                    Reason = $"LRU eviction: {evictedKey}",
+                });
+            return new BlobStore(
+                agentOptions.BlobTtl,
+                agentOptions.BlobStoreMaxCount,
+                agentOptions.BlobStoreMaxBytes,
+                onEviction);
+        });
 
         // Register AuditLogWriter if audit logging is enabled (N1).
         // Tools that want to emit audit entries can inject AuditLogWriter? from DI.

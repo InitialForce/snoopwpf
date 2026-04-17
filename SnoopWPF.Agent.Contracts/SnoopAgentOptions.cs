@@ -93,6 +93,20 @@ public sealed class SnoopAgentOptions
     public TimeSpan BlobTtl { get; init; } = TimeSpan.FromSeconds(60);
 
     /// <summary>
+    /// Maximum number of blobs retained in the in-process BlobStore at any one time.
+    /// When the limit is exceeded, the oldest entry (smallest <c>expiresAt</c>) is evicted
+    /// before the new entry is inserted. Default is 64.
+    /// </summary>
+    public int BlobStoreMaxCount { get; init; } = 64;
+
+    /// <summary>
+    /// Maximum total byte footprint of blobs retained in the in-process BlobStore.
+    /// When the limit is exceeded, the oldest entry (smallest <c>expiresAt</c>) is evicted
+    /// before the new entry is inserted. Default is 128 MB.
+    /// </summary>
+    public long BlobStoreMaxBytes { get; init; } = 128L * 1024 * 1024;
+
+    /// <summary>
     /// Opt-in session identifier that enables the per-session HMAC-chained audit log.
     /// When non-null, every tool call produces an <see cref="SnoopWPF.Agent.Contracts.Audit.AuditEntry"/>
     /// appended as JSONL to <c>%LOCALAPPDATA%\SnoopWPF\audit\{AuditLogPath}.jsonl</c>.
