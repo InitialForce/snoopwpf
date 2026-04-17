@@ -21,7 +21,7 @@ public sealed class BlobStore : IDisposable
 
     private readonly ConcurrentDictionary<string, BlobEntry> entries = new(StringComparer.Ordinal);
     private readonly Timer sweepTimer;
-    private bool disposed;
+    private volatile bool disposed;
 
     /// <summary>
     /// Initializes a new <see cref="BlobStore"/> with the default 5-minute sweep interval.
@@ -127,8 +127,16 @@ public sealed class BlobStore : IDisposable
             return;
         }
 
+        // Stop the timer and wait for any in-flight Sweep callback to complete
+        // before clearing entries.  Timer.Dispose(WaitHandle) blocks until the
+        // callback has returned, eliminating the race between Sweep and Dispose.
+        using var timerStopped = new ManualResetEventSlim(false);
+        this.sweepTimer.Dispose(timerStopped.WaitHandle);
+        timerStopped.Wait();
+
+        // Mark disposed AFTER the timer has fully stopped so Sweep cannot observe
+        // a partially-cleared entries dictionary.
         this.disposed = true;
-        this.sweepTimer.Dispose();
         this.entries.Clear();
     }
 
@@ -142,6 +150,13 @@ public sealed class BlobStore : IDisposable
     /// </summary>
     private void Sweep()
     {
+        // Guard against a callback that fires after Dispose has been called but before
+        // Timer.Dispose(WaitHandle) has completed (possible on .NET Framework).
+        if (this.disposed)
+        {
+            return;
+        }
+
         var now = DateTimeOffset.UtcNow;
         foreach (var kvp in this.entries)
         {
