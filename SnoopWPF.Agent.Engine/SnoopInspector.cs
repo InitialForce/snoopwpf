@@ -283,6 +283,9 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
             // Clamp includeProperties to max 10.
             var propNames = includeProperties?.Take(10).ToList();
 
+            // Clamp maxDepth at engine layer (tool schema advertises max: 10).
+            int effectiveMaxDepth = Math.Min(Math.Max(maxDepth, 1), InputConstants.MaxTreeDepth);
+
             var treeTypeEnum = ParseTreeType(treeType);
             using var treeService = TreeService.From(treeTypeEnum);
 
@@ -300,7 +303,7 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
             var truncated = false;
             const int maxNodes = 500;
 
-            var rootDto = this.BuildNodeDtoRecursive(rootItem, 0, maxDepth, propNames, ref nodeCount, maxNodes, ref truncated);
+            var rootDto = this.BuildNodeDtoRecursive(rootItem, 0, effectiveMaxDepth, propNames, ref nodeCount, maxNodes, ref truncated);
 
             return new VisualTreeResultDto
             {
