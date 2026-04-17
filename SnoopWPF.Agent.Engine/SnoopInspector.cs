@@ -3408,7 +3408,19 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
         }
         finally
         {
-            this.concurrencySemaphore.Release();
+            // FX2-C1: Dispose() may have run on another thread between acquiring and
+            // releasing the slot. SemaphoreSlim.Release on a disposed instance throws
+            // ObjectDisposedException → would surface as an unobserved task exception
+            // (AppDomain-fatal on net462). Swallowing ODE is the correct behaviour here
+            // because the disposal path has already released all backing resources.
+            try
+            {
+                this.concurrencySemaphore.Release();
+            }
+            catch (ObjectDisposedException)
+            {
+                // Inspector was disposed while this call was in flight; nothing to release.
+            }
         }
     }
 
