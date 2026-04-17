@@ -20,6 +20,7 @@ using SnoopWPF.Agent.Contracts.Protocol;
 using SnoopWPF.Agent.Engine;
 using SnoopWPF.Agent.Engine.Audit;
 using SnoopWPF.Agent.Engine.Blob;
+using SnoopWPF.Agent.Engine.StateDelta;
 
 /// <summary>
 /// Internal wiring: builds and runs the MCP server.
@@ -445,6 +446,11 @@ internal static class McpServerSetup
 
         // Register ISnoopInspector so tool constructors can receive it via DI.
         services.AddSingleton<ISnoopInspector>(inspector);
+
+        // Register the default suggestion translator (FX6-G).
+        // Consumers that need to rewrite advisory tool names (e.g. BrokerLifecycle
+        // suggestions) may override this binding with their own implementation.
+        services.AddSingleton<ISuggestionTranslator, DefaultSuggestionTranslator>();
 
         // Register SessionPolicy so future tool handlers can receive it via DI.
         services.AddSingleton<SessionPolicy>(policy);
