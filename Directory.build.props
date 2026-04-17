@@ -41,6 +41,10 @@
         <!-- Lock NuGet packages in CI to ensure reproducible builds -->
         <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
         <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+        <!-- Deterministic builds -->
+        <Deterministic>true</Deterministic>
+        <!-- Remap source paths and disable timestamps in CI; keep off locally so VS debugger works -->
+        <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
     </PropertyGroup>
 
     <!-- Assembly info -->
@@ -67,8 +71,7 @@
 
     <!-- PDB-Options -->
     <PropertyGroup>
-        <!-- We should switch "DebugType" to "portable" in the future -->
-        <!-- "Full" and "pdbonly" are the same according to https://github.com/dotnet/roslyn/blob/master/docs/compilers/CSharp/CommandLine.md -->
-        <DebugType>full</DebugType>
+        <!-- "portable" produces cross-platform PDBs and is required for deterministic source embedding -->
+        <DebugType>portable</DebugType>
     </PropertyGroup>
 </Project>
