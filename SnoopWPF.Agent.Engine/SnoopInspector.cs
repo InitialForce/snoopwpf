@@ -3527,6 +3527,59 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
     {
         return this.RunOnDispatcherAsync(() =>
         {
+            var currentVersion = this.nodeRegistry.Version;
+
+            // FX6-A6: Fast path — skip the O(N) tree walk when the registry version has not
+            // changed since the last poll.
+            //
+            // Rationale: nodeRegistry.Version increments on every GetOrCreateId call.  If
+            // Version == sinceVersion, no new nodes have been registered since the caller's
+            // baseline, which means the "added" set is definitively empty.  We still need to
+            // detect "removed" nodes (GC-collected objects), but we can do that in O(|live|)
+            // by probing each previously-live node's WeakReference rather than re-walking the
+            // entire visual tree.
+            if (currentVersion == sinceVersion
+                && this.lastPollVersion == sinceVersion
+                && this.lastPollLiveIds is not null
+                && rootLocator is null) // Fast path only applies to full-tree polls; scoped polls always walk.
+            {
+                // "added" = empty (version unchanged ⇒ no new registrations).
+                // "removed" = previously-live nodes whose WeakReference has been collected.
+                var changes = new List<Contracts.Dtos.NodeChangeEntryDto>();
+                var stillLive = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
+
+                foreach (var nodeId in this.lastPollLiveIds)
+                {
+                    var weakRef = this.nodeRegistry.TryGetWeakReference(nodeId);
+                    if (weakRef is not null && weakRef.TryGetTarget(out _))
+                    {
+                        stillLive.Add(nodeId);
+                    }
+                    else
+                    {
+                        changes.Add(new Contracts.Dtos.NodeChangeEntryDto
+                        {
+                            NodeId = nodeId,
+                            ChangeKind = "removed",
+                        });
+                    }
+                }
+
+                // Update snapshot with only the still-live nodes.
+                this.lastPollVersion = currentVersion;
+                this.lastPollLiveIds = stillLive;
+
+                return new Contracts.Dtos.PollChangesResultDto
+                {
+                    TreeVersion = currentVersion,
+                    SinceVersion = sinceVersion,
+                    Changes = changes,
+                    ChangeCount = changes.Count,
+                };
+            }
+
+            // ── Standard path: O(N) tree walk ─────────────────────────────────────────────
+
             // Walk the live visual tree from the effective root (or locator root).
             var rootTarget = rootLocator is not null
                 ? (object?)this.locatorResolver.TryResolve(rootLocator, this.GetEffectiveRootTarget())
@@ -3546,17 +3599,17 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
 
             // Snapshot version after the walk (GetExistingId does not increment, so
             // this equals Version before the walk). Used as the returned baseline.
-            var currentVersion = this.nodeRegistry.Version;
+            currentVersion = this.nodeRegistry.Version;
 
             // "added" = in live tree AND registered after sinceVersion.
-            var changes = new List<Contracts.Dtos.NodeChangeEntryDto>();
+            var standardChanges = new List<Contracts.Dtos.NodeChangeEntryDto>();
 
             foreach (var nodeId in liveNodeIds)
             {
                 if (TryParseNodeVersion(nodeId, out var nodeVersion)
                     && nodeVersion > sinceVersion)
                 {
-                    changes.Add(new Contracts.Dtos.NodeChangeEntryDto
+                    standardChanges.Add(new Contracts.Dtos.NodeChangeEntryDto
                     {
                         NodeId = nodeId,
                         ChangeKind = "added",
@@ -3583,7 +3636,7 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
 
             foreach (var removedId in removedIds)
             {
-                changes.Add(new Contracts.Dtos.NodeChangeEntryDto
+                standardChanges.Add(new Contracts.Dtos.NodeChangeEntryDto
                 {
                     NodeId = removedId,
                     ChangeKind = "removed",
@@ -3598,8 +3651,8 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
             {
                 TreeVersion = currentVersion,
                 SinceVersion = sinceVersion,
-                Changes = changes,
-                ChangeCount = changes.Count,
+                Changes = standardChanges,
+                ChangeCount = standardChanges.Count,
             };
         }, ct);
     }
