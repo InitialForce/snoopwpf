@@ -7,9 +7,21 @@ on:
       - develop
     tags:
       - v*
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - 'ARCHITECTURE-CHANGE-*.md'
+      - 'Changelog.md'
+      - 'Artwork/**'
   pull_request:
     branches:
       - develop
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - 'ARCHITECTURE-CHANGE-*.md'
+      - 'Changelog.md'
+      - 'Artwork/**'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
