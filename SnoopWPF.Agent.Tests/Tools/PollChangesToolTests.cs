@@ -117,7 +117,7 @@ public class PollChangesToolTests
         };
 
         var tool = new PollChangesTool(this.fake);
-        await tool.PollChangesAsync(sinceVersion: 0, rootLocator: "$type:MainWindow", ct: CancellationToken.None);
+        await tool.PollChangesAsync(sinceVersion: 0, rootLocator: "type=MainWindow", ct: CancellationToken.None);
 
         Assert.That(capturedLocator, Is.Not.Null);
     }

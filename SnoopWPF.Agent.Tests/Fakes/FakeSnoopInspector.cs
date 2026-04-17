@@ -57,6 +57,25 @@ public sealed class FakeSnoopInspector : ISnoopInspector
 
     public Func<string, string, CancellationToken, Task<StateDeltaDto>>? OnSelectItem { get; set; }
 
+    public Func<string, CancellationToken, Task<StateDeltaDto>>? OnClick { get; set; }
+
+    public Func<string, CancellationToken, Task<StateDeltaDto>>? OnToggle { get; set; }
+
+    public Func<string, string, CancellationToken, Task<StateDeltaDto>>? OnExpandCollapse { get; set; }
+
+    public Func<string, string, CancellationToken, Task<BindingResolutionDto>>? OnResolveBinding { get; set; }
+
+    public Func<long, WpfLocator?, CancellationToken, Task<PollChangesResultDto>>? OnPollChanges { get; set; }
+
+    public Func<int, IReadOnlyList<string>?, CancellationToken, Task<PumpUntilIdleResultDto>>? OnPumpUntilIdle { get; set; }
+
+    /// <summary>
+    /// When <see langword="true"/>, any call to a method whose delegate is null throws
+    /// <see cref="InvalidOperationException"/> immediately, surfacing test vacuity at call time.
+    /// Default is <see langword="false"/> for backward compatibility.
+    /// </summary>
+    public bool StrictMode { get; set; }
+
 #pragma warning restore SA1201
 
     // ---------- ISnoopInspector implementation ----------
@@ -217,7 +236,19 @@ public sealed class FakeSnoopInspector : ISnoopInspector
         => this.InvokeLocatorDelegate<List<BehaviorDto>>(locator, ct);
 
     public Task<BindingResolutionDto> ResolveBindingAsync(string nodeId, string propertyName, CancellationToken ct)
-        => Task.FromResult(new BindingResolutionDto { Status = "NoBinding" });
+    {
+        if (this.OnResolveBinding is not null)
+        {
+            return this.OnResolveBinding.Invoke(nodeId, propertyName, ct);
+        }
+
+        if (this.StrictMode)
+        {
+            throw new InvalidOperationException("strict mode: OnResolveBinding not configured");
+        }
+
+        return Task.FromResult(new BindingResolutionDto { Status = "NoBinding" });
+    }
 
     public Task<BindingResolutionDto> ResolveBindingAsync(WpfLocator locator, string propertyName, CancellationToken ct)
         => this.InvokeLocatorDelegate<BindingResolutionDto>(locator, ct);
@@ -258,19 +289,55 @@ public sealed class FakeSnoopInspector : ISnoopInspector
         => this.InvokeLocatorDelegate<StateDeltaDto>(locator, ct);
 
     public Task<StateDeltaDto> ClickAsync(string nodeId, CancellationToken ct)
-        => Task.FromResult(new StateDeltaDto { Success = true });
+    {
+        if (this.OnClick is not null)
+        {
+            return this.OnClick.Invoke(nodeId, ct);
+        }
+
+        if (this.StrictMode)
+        {
+            throw new InvalidOperationException("strict mode: OnClick not configured");
+        }
+
+        return Task.FromResult(new StateDeltaDto { Success = true });
+    }
 
     public Task<StateDeltaDto> ClickAsync(WpfLocator locator, CancellationToken ct)
         => this.InvokeLocatorDelegate<StateDeltaDto>(locator, ct);
 
     public Task<StateDeltaDto> ToggleAsync(string nodeId, CancellationToken ct)
-        => Task.FromResult(new StateDeltaDto { Success = true });
+    {
+        if (this.OnToggle is not null)
+        {
+            return this.OnToggle.Invoke(nodeId, ct);
+        }
+
+        if (this.StrictMode)
+        {
+            throw new InvalidOperationException("strict mode: OnToggle not configured");
+        }
+
+        return Task.FromResult(new StateDeltaDto { Success = true });
+    }
 
     public Task<StateDeltaDto> ToggleAsync(WpfLocator locator, CancellationToken ct)
         => this.InvokeLocatorDelegate<StateDeltaDto>(locator, ct);
 
     public Task<StateDeltaDto> ExpandCollapseAsync(string nodeId, string action, CancellationToken ct)
-        => Task.FromResult(new StateDeltaDto { Success = true });
+    {
+        if (this.OnExpandCollapse is not null)
+        {
+            return this.OnExpandCollapse.Invoke(nodeId, action, ct);
+        }
+
+        if (this.StrictMode)
+        {
+            throw new InvalidOperationException("strict mode: OnExpandCollapse not configured");
+        }
+
+        return Task.FromResult(new StateDeltaDto { Success = true });
+    }
 
     public Task<StateDeltaDto> ExpandCollapseAsync(WpfLocator locator, string action, CancellationToken ct)
         => this.InvokeLocatorDelegate<StateDeltaDto>(locator, ct);
@@ -280,8 +347,32 @@ public sealed class FakeSnoopInspector : ISnoopInspector
         => this.InvokeLocatorDelegate<WaitForPropertyResultDto>(locator, ct);
 
     public Task<PollChangesResultDto> PollChangesAsync(long sinceVersion, WpfLocator? rootLocator, CancellationToken ct)
-        => Task.FromResult(new PollChangesResultDto { TreeVersion = sinceVersion, SinceVersion = sinceVersion });
+    {
+        if (this.OnPollChanges is not null)
+        {
+            return this.OnPollChanges.Invoke(sinceVersion, rootLocator, ct);
+        }
+
+        if (this.StrictMode)
+        {
+            throw new InvalidOperationException("strict mode: OnPollChanges not configured");
+        }
+
+        return Task.FromResult(new PollChangesResultDto { TreeVersion = sinceVersion, SinceVersion = sinceVersion });
+    }
 
     public Task<PumpUntilIdleResultDto> PumpUntilIdleAsync(int timeoutMs, IReadOnlyList<string>? resources, CancellationToken ct)
-        => Task.FromResult(new PumpUntilIdleResultDto { IdleReached = true });
+    {
+        if (this.OnPumpUntilIdle is not null)
+        {
+            return this.OnPumpUntilIdle.Invoke(timeoutMs, resources, ct);
+        }
+
+        if (this.StrictMode)
+        {
+            throw new InvalidOperationException("strict mode: OnPumpUntilIdle not configured");
+        }
+
+        return Task.FromResult(new PumpUntilIdleResultDto { IdleReached = true });
+    }
 }
