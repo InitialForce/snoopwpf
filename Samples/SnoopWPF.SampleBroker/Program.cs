@@ -76,6 +76,7 @@ internal static class Program
             var opts = new BrokerOptions
             {
                 PipeName = pipeName,
+                SessionToken = tokenHex,
                 OnTargetDisconnected = () =>
                 {
                     Console.Error.WriteLine("[SampleBroker] Target disconnected — shutting down.");
