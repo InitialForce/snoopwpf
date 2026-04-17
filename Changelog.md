@@ -36,19 +36,28 @@ This release introduces the MCP agent surface and a wave of review-driven fixes.
 - **Error-order fix:** `McpErrorResponse` now sets `error` before `id` in
   the serialised JSON object, matching the JSON-RPC 2.0 specification order
   expected by strict validators.
+- **Pipe handshake v2 (nonce + HMAC) — breaking change:** The pipe authentication
+  protocol has been upgraded from v1 (session-token echo) to v2. The server now
+  sends a `HandshakeChallenge` containing a fresh per-connection nonce; the agent
+  computes `HMACSHA256(key=sessionTokenBytes, data=nonce)` and returns the proof.
+  The session token is never transmitted over the pipe in either direction. Protocol
+  version field is `2`. Agents built against the v1 protocol will be rejected.
 - **Pipe handshake timeout:** Both sides of the pipe handshake apply a 5-second
   timeout (`ProtocolConstants.HandshakeTimeoutMs = 5000`) to prevent an
   unresponsive peer from blocking indefinitely.
-- **Constant-time token compare:** The server verifies the echoed session token
-  via `CryptographicOperations.FixedTimeEquals` to prevent timing oracle attacks.
+- **Constant-time HMAC compare:** The server verifies the HMAC proof via
+  `CryptographicOperations.FixedTimeEquals` to prevent timing oracle attacks.
+- **HMAC-SHA256 audit log chain (v6.1, PRD §9.4):** `AuditLogWriter` computes a
+  per-entry HMAC chain over `entryJson || prevHmac || sessionKey || counterNonce`
+  (big-endian 8-byte counter). The audit log is written with an owner-only ACL.
+  In brokered mode the audit log is target-process-only (the broker never
+  constructs `AuditLogWriter`).
 
 ### Known limitations carried to v1.1
 
 - No TLS — localhost named pipes only; no remote MCP support.
 - `SnoopLog.txt` has no ACL or per-session rotation (plain append log; see
   `docs/security.md`). ACL + rotation deferred to v1.1.
-- HMAC-SHA256 audit chain for tool invocations is planned but not yet
-  implemented.
 - `--force` flag to override the process-ownership check is not yet implemented.
 
 ---
