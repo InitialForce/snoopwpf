@@ -29,7 +29,7 @@ using SnoopWPF.Agent.Remote;
 /// </para>
 /// <para>
 /// Downstream consumers (e.g. MC's <c>UiMcpHost</c>) add their own lifecycle tools
-/// (e.g. <c>mc_launch</c>) on top of the 18-tool surface registered here. Pass a
+/// (e.g. <c>mc_launch</c>) on top of the 27-tool surface registered here. Pass a
 /// callback to <see cref="BrokerOptions.OnTargetDisconnected"/> to hook disconnection events.
 /// </para>
 /// </remarks>
@@ -130,7 +130,7 @@ public static class BrokerHost
         proxy.StartPump();
 
         // -----------------------------------------------------------------------
-        // Build DI container and register the 18 tool proxies.
+        // Build DI container and register the 27 tool proxies.
         // NOTE: AuditLogWriter is intentionally NOT registered here.
         //       Audit is target-only (M1-13 / B-5). The broker only sees MCP calls;
         //       the injected target writes audit entries for actual WPF state access.
