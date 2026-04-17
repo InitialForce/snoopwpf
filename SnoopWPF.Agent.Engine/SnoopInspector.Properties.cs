@@ -287,7 +287,6 @@ public sealed partial class SnoopInspector
         };
     }
 
-
     public Task<StateDeltaDto> SetPropertyAsync(string nodeId, string propertyName, string value, CancellationToken ct)
     {
         // FX2-C9 (EC-C2): validate at the public boundary before dispatching to the

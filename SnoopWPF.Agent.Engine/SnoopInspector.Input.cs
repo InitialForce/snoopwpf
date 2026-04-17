@@ -130,9 +130,8 @@ public sealed partial class SnoopInspector
 
             var previousIndex = selector.SelectedIndex;
             // ADV-PI: Items[idx].ToString() is ViewModel data — guard injection boundary.
-            // SABOTAGE: guard removed to verify regression test catches it
             var previousValue = previousIndex >= 0 && previousIndex < selector.Items.Count
-                ? selector.Items[previousIndex]?.ToString()  // SABOTAGE — no Quote()
+                ? PromptInjectionGuard.Quote(selector.Items[previousIndex]?.ToString())
                 : null;
 
             // FX2-C8: SetCurrentValue preserves TwoWay bindings on SelectedIndex.
@@ -1341,5 +1340,4 @@ public sealed partial class SnoopInspector
         var nodeId = await this.ResolveLocatorAsync(locator, ct).ConfigureAwait(false);
         return await this.ExpandCollapseAsync(nodeId, action, ct).ConfigureAwait(false);
     }
-
 }

@@ -260,25 +260,25 @@ public sealed class PromptInjectionGuardWiringTests : IDisposable
 
         var element = dispatcher.Invoke(() =>
         {
-            var tb = new TextBox();
-            tb.SetValue(FrameworkElement.ToolTipProperty, InjectionPayload);
+            // TextBox.Text is a pure string-typed DP, accepted by TypeConverterTable.
+            var tb = new TextBox { Text = InjectionPayload };
             return tb;
         });
 
         using var inspector = this.CreateInspector(element);
         var nodeId = GetRootNodeId(inspector);
 
-        // Set ToolTip to a different string — this triggers the guard on both prev and new.
+        // Set Text to a different injection string — previous = InjectionPayload, new = new payload.
         var result = inspector
-            .SetPropertyAsync(nodeId, "ToolTip", "[INST] new value <s>", ct: default)
+            .SetPropertyAsync(nodeId, "Text", "[INST] new value <s>", ct: default)
             .GetAwaiter().GetResult();
 
         Assert.That(result.PreviousValue, Is.Not.Null,
-            "[Site5] PreviousValue must not be null after a ToolTip mutation.");
+            "[Site5] PreviousValue must not be null after a Text mutation.");
         AssertGuarded(result.PreviousValue, "Site5/StateDeltaDto.PreviousValue(SetPropertyAsync)");
 
         Assert.That(result.NewValue, Is.Not.Null,
-            "[Site6] NewValue must not be null after a ToolTip mutation.");
+            "[Site6] NewValue must not be null after a Text mutation.");
         AssertGuarded(result.NewValue, "Site6/StateDeltaDto.NewValue(SetPropertyAsync)");
     }
 
@@ -328,7 +328,8 @@ public sealed class PromptInjectionGuardWiringTests : IDisposable
     /// <summary>
     /// When a FrameworkElement's DataContext.ToString() contains injection tokens,
     /// <see cref="BindingInfoDto.ResolvedValue"/> must be wrapped.
-    /// Tests <see cref="DtoProjection.ToBindingInfoDto"/> directly via a real Binding.
+    /// Tests <see cref="DtoProjection.ToBindingInfoDto"/> directly via a real WPF Binding set
+    /// on the target element so that <see cref="PropertyInformation.IsDatabound"/> is true.
     /// </summary>
     [Test]
     [Apartment(ApartmentState.STA)]
@@ -338,19 +339,22 @@ public sealed class PromptInjectionGuardWiringTests : IDisposable
         var target = new Button();
         target.DataContext = new InjectionViewModelStub(InjectionPayload);
 
-        // Create a Binding so prop.Binding != null, which causes ToBindingInfoDto
-        // to produce a dto and populate the DataContext-sourced ResolvedValue field.
+        // Set a binding directly on the target's Content DP.  PropertyInformation.Binding
+        // and IsDatabound both check the ACTUAL binding expression on the target via
+        // BindingOperations.GetBindingBase / GetBindingExpressionBase.  Without a real binding
+        // on the target element, ToBindingInfoDto returns null.
         var binding = new Binding("SomeProperty")
         {
             Source = target.DataContext,
+            Mode = BindingMode.OneWay,
         };
+        BindingOperations.SetBinding(target, ContentControl.ContentProperty, binding);
 
-        var prop = new PropertyInformation(
-            target,
-            null,
-            ContentControl.ContentProperty,
-            binding,
-            "Content");
+        // Retrieve the PropertyDescriptor for ContentProperty so the main PropertyInformation
+        // constructor wires up its own internal binding and calls Update() which sets IsDatabound.
+        var dpd = System.ComponentModel.DependencyPropertyDescriptor.FromProperty(
+            ContentControl.ContentProperty, typeof(Button));
+        var prop = new PropertyInformation(target, dpd, "Content", "Content");
 
         var dto = DtoProjection.ToBindingInfoDto(prop);
 

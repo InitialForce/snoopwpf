@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net8.0-windows</TargetFramework>
+        <UseWpf>true</UseWpf>
+        <OutputType>WinExe</OutputType>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <RootNamespace>SnoopWPF.Minimal</RootNamespace>
+        <AssemblyName>SnoopWPF.Minimal</AssemblyName>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../../SnoopWPF.Agent.Contracts/SnoopWPF.Agent.Contracts.csproj" />
+        <ProjectReference Include="../../SnoopWPF.Agent.Server/SnoopWPF.Agent.Server.csproj" />
+    </ItemGroup>
+
+</Project>

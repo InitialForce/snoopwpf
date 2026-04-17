@@ -31,7 +31,6 @@ using SnoopWPF.Agent.Engine.Sync;
 /// <content/>
 public sealed partial class SnoopInspector
 {
-
     // ── M2-09: wpf_wait_for_property ──────────────────────────────────────────
 
     /// <inheritdoc/>
@@ -580,5 +579,4 @@ public sealed partial class SnoopInspector
             }
         }
     }
-
 }
