@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading.Tasks;
 using SnoopWPF.Agent.Contracts.Protocol;
@@ -17,25 +18,93 @@ public static class BrokerTargetSpawner
 {
     /// <summary>
     /// Starts the target executable with the given arguments and named-pipe handshake parameters.
-    /// Prefer the <see cref="IReadOnlyList{String}"/> overload for safety; the string overload
-    /// is retained for backward compatibility.
     /// </summary>
+    /// <param name="exe">Full path to the target executable.</param>
+    /// <param name="args">
+    /// A Windows command-line argument string (may contain quoted tokens with embedded spaces,
+    /// e.g. <c>--mode test --file "C:\x y.txt"</c>). Parsed with <c>CommandLineToArgvW</c>
+    /// so each logical token is passed as a separate argv entry. Must not contain attacker-controlled
+    /// text — use the <see cref="Spawn(string, IReadOnlyList{string}, string, string)"/> overload
+    /// for any caller that already has an argv list.
+    /// </param>
+    /// <param name="pipeName">The named-pipe name the target should connect to.</param>
+    /// <param name="tokenHex">The hex-encoded session token for the handshake.</param>
+    /// <returns>The started <see cref="Process"/>.</returns>
+    /// <remarks>
+    /// <para>
+    /// This overload is kept for source compatibility with callers that produce a compound
+    /// command-line string. New callers should use the
+    /// <see cref="Spawn(string, IReadOnlyList{string}, string, string)"/> overload, which
+    /// eliminates any parsing ambiguity.
+    /// </para>
+    /// <para>
+    /// <b>FX4-C6-retry:</b> the previous implementation passed the entire <paramref name="args"/>
+    /// string as a single opaque argv item, silently breaking callers that passed compound strings
+    /// like <c>--mode test --file "C:\path with spaces\f.txt"</c> (child received one item, not four).
+    /// This revision parses via <c>CommandLineToArgvW</c> — the canonical Windows command-line
+    /// parser — so behaviour matches what <c>cmd.exe</c> would produce.
+    /// </para>
+    /// </remarks>
+    [Obsolete(
+        "Pass IReadOnlyList<string> to preserve argv boundaries. " +
+        "This overload is kept for source-compat only and will throw on non-empty args in a future release.",
+        error: false)]
     public static Process Spawn(string exe, string args, string pipeName, string tokenHex)
     {
-        // FX2-C6 (ADV-C3): the string-concatenation path is a shell-arg injection vector
-        // when callers forward attacker-controlled text. Route through the safe overload
-        // by splitting into argv-shaped tokens. Callers that already produce an argv list
-        // should migrate to the overload below.
+        // FX4-C6-retry: parse the compound string into individual argv tokens using the
+        // canonical Windows parser (CommandLineToArgvW). This restores correct behaviour
+        // for callers that passed e.g. "--mode test --file \"C:\\x y.txt\"" and expected
+        // four separate argv entries — not one opaque blob.
         var argv = new List<string>();
-        if (!string.IsNullOrWhiteSpace(args))
+        if (!string.IsNullOrEmpty(args))
         {
-            // Single opaque string — delegate quoting behaviour to the OS loader by
-            // passing it as one argument. Individual tokens with spaces would need to
-            // use the argv overload; this string form is best-effort only.
-            argv.Add(args);
+            argv.AddRange(SplitCommandLine(args));
         }
 
         return Spawn(exe, argv, pipeName, tokenHex);
+    }
+
+    /// <summary>
+    /// Splits a Windows command-line argument string into individual argv tokens using
+    /// <c>CommandLineToArgvW</c> from <c>shell32.dll</c> — the same parser that
+    /// <c>cmd.exe</c> and the Windows loader use.
+    /// </summary>
+    /// <param name="commandLine">The command-line string to parse (not including the program name).</param>
+    /// <returns>An ordered list of unquoted argument strings.</returns>
+    /// <exception cref="System.ComponentModel.Win32Exception">
+    /// Thrown if <c>CommandLineToArgvW</c> returns a null pointer (unexpected; indicates
+    /// an out-of-memory condition or severely malformed input).
+    /// </exception>
+    private static IReadOnlyList<string> SplitCommandLine(string commandLine)
+    {
+        if (string.IsNullOrEmpty(commandLine))
+        {
+            return Array.Empty<string>();
+        }
+
+        nint argvPtr = NativeMethods.CommandLineToArgvW(commandLine, out int argc);
+        if (argvPtr == IntPtr.Zero)
+        {
+            throw new System.ComponentModel.Win32Exception(
+                Marshal.GetLastWin32Error(),
+                $"CommandLineToArgvW failed to parse: {commandLine}");
+        }
+
+        try
+        {
+            var result = new string[argc];
+            for (int i = 0; i < argc; i++)
+            {
+                nint strPtr = Marshal.ReadIntPtr(argvPtr, i * IntPtr.Size);
+                result[i] = Marshal.PtrToStringUni(strPtr) ?? string.Empty;
+            }
+
+            return result;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(argvPtr);
+        }
     }
 
     /// <summary>
@@ -150,4 +219,27 @@ public static class BrokerTargetSpawner
             // Best-effort drain — ignore all errors (process may have already exited).
         }
     }
+}
+
+/// <summary>
+/// Thin P/Invoke shim for the Windows shell APIs used by <see cref="BrokerTargetSpawner"/>.
+/// </summary>
+internal static class NativeMethods
+{
+    /// <summary>
+    /// Parses a Unicode command-line string into an array of pointers to argument strings,
+    /// using the same rules as the Windows command-line parser.
+    /// </summary>
+    /// <param name="lpCmdLine">The command-line string to parse. Must not include the program name.</param>
+    /// <param name="pNumArgs">Receives the number of arguments in the returned array.</param>
+    /// <returns>
+    /// A pointer to an array of <paramref name="pNumArgs"/> <c>LPWSTR</c> pointers allocated in
+    /// a single <c>LocalAlloc</c> block. The caller must free this pointer with
+    /// <see cref="Marshal.FreeHGlobal"/> when done. Returns <c>IntPtr.Zero</c> on failure;
+    /// call <see cref="Marshal.GetLastWin32Error"/> for the error code.
+    /// </returns>
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    internal static extern nint CommandLineToArgvW(
+        [MarshalAs(UnmanagedType.LPWStr)] string lpCmdLine,
+        out int pNumArgs);
 }
