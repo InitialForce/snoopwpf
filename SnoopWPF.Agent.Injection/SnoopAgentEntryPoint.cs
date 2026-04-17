@@ -158,10 +158,39 @@ public static class SnoopAgentEntryPoint
         // The pipe server runs on a background thread so it doesn't block
         // the injected thread (which the CLR shim may need to return).
         // ---------------------------------------------------------------
+        //
+        // FX2-C4 (MAJOR-I4 / PRD-M5): construct the injection SessionPolicy and pass
+        // both policy and inspector options. Without these, EnsureMutationTier sees a
+        // null sessionPolicy and L1 mutation paths become REACHABLE in injection mode,
+        // violating MF-11.
+        //
+        // SessionMode.Injection forces:
+        //   - EnableRedaction = true (MF-11)
+        //   - MaxTier = L0ReadOnly (S7)
+        //   - AllowSensitiveRetention = false
+        var injectionAgentOptions = new SnoopWPF.Agent.Contracts.SnoopAgentOptions
+        {
+            EnableMutation = false,
+            EnableAutomation = false,
+            EnableRedaction = true,
+        };
+        var injectionPolicy = SnoopWPF.Agent.Contracts.SessionPolicy.Create(
+            SnoopWPF.Agent.Contracts.SessionMode.Injection,
+            injectionAgentOptions);
+
+        var inspectorOptions = new SnoopWPF.Agent.Engine.SnoopInspectorOptions
+        {
+            EnableMutation = injectionPolicy.EnableMutation,
+            EnableRedaction = injectionPolicy.EnableRedaction,
+            EnableAutomation = injectionPolicy.EnableAutomation,
+            AllowSensitiveRetention = injectionPolicy.AllowSensitiveRetention,
+        };
+
         var inspector = new SnoopWPF.Agent.Engine.SnoopInspector(
             dispatcher,
             rootTarget: null, // null → engine uses Application.Current
-            options: null);
+            options: inspectorOptions,
+            sessionPolicy: injectionPolicy);
 
         var server = new PipeAgentServer(pipeName, sessionTokenBytes, inspector);
 
