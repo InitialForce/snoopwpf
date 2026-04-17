@@ -201,19 +201,6 @@ public static class SnoopAgentEntryPoint
 
         var cts = new CancellationTokenSource();
 
-        // Hook AppDomain.ProcessExit to trigger graceful shutdown.
-        AppDomain.CurrentDomain.ProcessExit += (_, _) =>
-        {
-            cts.Cancel();
-            // FX4-MEM-C1: dispose the CTS so the kernel WaitHandle is released promptly.
-            // Must come after Cancel() so the token is observed before the handle closes.
-            cts.Dispose();
-            inspector.Dispose();
-            server.Dispose();
-            // Unregister the AssemblyResolve handler so it doesn't outlive the agent.
-            UninstallAssemblyResolver();
-        };
-
         // Run the server loop on a dedicated background thread.
         var serverThread = new Thread(() =>
         {
@@ -239,6 +226,37 @@ public static class SnoopAgentEntryPoint
         serverThread.Name = "SnoopAgentPipeServer";
         serverThread.IsBackground = true;
         serverThread.Start();
+
+        // Hook AppDomain.ProcessExit to trigger graceful shutdown.
+        AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+        {
+            // FX5-injection-disposal-order: Cancel first so serverThread's ReadAsync
+            // throws OCE and exits the loop, then JOIN before disposing so that
+            // in-flight request handlers can no longer reach writeLock after it is
+            // freed. Without the join, server.Dispose() races with task continuations
+            // still holding writeLock.WaitAsync — causing silent ObjectDisposedException.
+            cts.Cancel();
+
+            if (!serverThread.Join(TimeSpan.FromSeconds(5)))
+            {
+                // Degraded path: serverThread did not observe cancellation in time.
+                // Log via Trace and fall through to force-dispose.
+                System.Diagnostics.Trace.WriteLine(
+                    "[SnoopAgentEntryPoint] serverThread did not exit within 5s of cancellation — forcing disposal.");
+            }
+
+            // FX4-MEM-C1: dispose the CTS so the kernel WaitHandle is released promptly.
+            // Must come after Cancel() so the token is observed before the handle closes.
+            cts.Dispose();
+
+            // server and inspector may already be disposed by the serverThread finally
+            // block; both types are safe to call Dispose() on more than once.
+            server.Dispose();
+            inspector.Dispose();
+
+            // Unregister the AssemblyResolve handler so it doesn't outlive the agent.
+            UninstallAssemblyResolver();
+        };
     }
 
     // -----------------------------------------------------------------

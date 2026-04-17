@@ -856,6 +856,47 @@ is not supported by WPF. Mutation must be enabled (`EnableMutation = true` in
 
 ---
 
+## wpf_set_slider_value
+
+Sets the `Value` of a `Slider` or any `RangeBase` element via `SetCurrentValue` on
+`RangeBase.ValueProperty` (L0). No raw Win32 input is used.
+Uses `DependencyObject.SetCurrentValue` so existing TwoWay bindings and triggers remain intact — setting a value does NOT clear the binding chain.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `nodeId` | string | *(required)* | Node ID of the Slider element whose value should be set. |
+| `value` | number | *(required)* | Target value. Clamped to `Slider.Minimum..Maximum` by WPF unless `normalized=true`. |
+| `normalized` | boolean | `false` | When `false`, value is an absolute number. When `true`, value is a fraction in `[0.0, 1.0]` mapped to `Minimum..Maximum`. |
+
+**Returns:**
+
+```json
+{
+  "success": true,
+  "stateChanged": true,
+  "treeVersionDelta": 1,
+  "failureReason": null,
+  "suggestion": null
+}
+```
+
+**Guidelines:** Use this tool instead of simulated mouse drags whenever the target is a Slider and
+you need a deterministic final value. Pass `normalized=false` (the default) to supply an absolute
+value; WPF will clamp it to `[Minimum, Maximum]` automatically. Pass `normalized=true` to supply
+a fraction in `[0.0, 1.0]` — the engine maps it to `Minimum + value × (Maximum − Minimum)`.
+Mutation must be enabled (`EnableMutation = true` in `SnoopAgentOptions`).
+
+**Limitations:** The tool targets `RangeBase.ValueProperty` only; `TickFrequency` and
+`IsSnapToTickEnabled` are respected by WPF's own coerce logic, so the final stored value may
+differ from the requested value when tick-snapping is active. If the `Value` property has a
+two-way binding, the bound source will be updated via the normal DP change notification path.
+
+**Applies to:** Slider, ProgressBar, ScrollBar, and any other `RangeBase` subclass.
+
+---
+
 ## wpf_toggle
 
 Flip the toggle state of a WPF element via the UI Automation TogglePattern (L1).
