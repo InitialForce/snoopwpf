@@ -210,6 +210,57 @@ public sealed class ToolExceptionMapperTests
     }
 
     // -------------------------------------------------------------------------
+    // Wrap(Func<Task<string>>): LocatorParseException → InvalidArgument (FX6-C2)
+    // -------------------------------------------------------------------------
+
+    [Test]
+    public void Wrap_LocatorParseException_ThrowsMcpExceptionWithInvalidArgumentCode()
+    {
+        var ex = Assert.ThrowsAsync<McpException>(() =>
+            ToolExceptionMapper.Wrap(() =>
+                throw new LocatorParseException("Invalid token at position 7")));
+
+        Assert.That(ex!.Message, Does.Contain("INVALID_ARGUMENT"),
+            "LocatorParseException must be mapped to McpException with INVALID_ARGUMENT code.");
+    }
+
+    [Test]
+    public void Wrap_LocatorParseException_MessageContainsOriginalMessage()
+    {
+        var ex = Assert.ThrowsAsync<McpException>(() =>
+            ToolExceptionMapper.Wrap(() =>
+                throw new LocatorParseException("Invalid token at position 7")));
+
+        Assert.That(ex!.Message, Does.Contain("Invalid token at position 7"),
+            "McpException message must contain the original LocatorParseException message.");
+    }
+
+    [Test]
+    public void WrapCallToolResult_LocatorParseException_ThrowsMcpExceptionWithInvalidArgumentCode()
+    {
+        var ex = Assert.ThrowsAsync<McpException>(() =>
+            ToolExceptionMapper.WrapCallToolResult(() =>
+                throw new LocatorParseException("Unexpected key: $foo")));
+
+        Assert.That(ex!.Message, Does.Contain("INVALID_ARGUMENT"),
+            "WrapCallToolResult must map LocatorParseException to INVALID_ARGUMENT.");
+    }
+
+    [Test]
+    public void Wrap_AggregateException_WrappingLocatorParseException_ThrowsMcpExceptionWithInvalidArgumentCode()
+    {
+        var lpe = new LocatorParseException("Bad locator");
+        var aex = new AggregateException(lpe);
+
+        var ex = Assert.ThrowsAsync<McpException>(() =>
+            ToolExceptionMapper.Wrap(() =>
+                throw aex));
+
+        Assert.That(ex!.Message, Does.Contain("INVALID_ARGUMENT"),
+            "AggregateException wrapping LocatorParseException must be unwrapped to INVALID_ARGUMENT.");
+    }
+
+    // -------------------------------------------------------------------------
     // Null handler guard
     // -------------------------------------------------------------------------
 

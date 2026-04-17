@@ -119,6 +119,30 @@ public class WaitForPropertyToolTests
 
         Assert.That(ex!.Message, Does.Contain("5000"));
     }
+
+    // ── FX6-C2: LocatorParseException mapped to McpException(INVALID_ARGUMENT) ─
+
+    [Test]
+    public void MalformedLocator_ThrowsMcpException()
+    {
+        // Arrange: locator with invalid syntax that WpfLocatorParser will reject.
+        var options = new SnoopAgentOptions();
+        var tool = new WaitForPropertyTool(this.fake, options);
+
+        // Act / Assert: raw LocatorParseException must NOT escape — it must be
+        // mapped to McpException(INVALID_ARGUMENT) by ToolExceptionMapper (FX6-C2).
+        var ex = Assert.ThrowsAsync<McpException>(
+            () => tool.WaitForPropertyAsync(
+                locator: "!!!invalid!!!",
+                propertyName: "IsEnabled",
+                expectedValue: "True",
+                timeoutMs: 5_000,
+                presenceExpected: "present",
+                ct: CancellationToken.None));
+
+        Assert.That(ex!.Message, Does.Contain("INVALID_ARGUMENT"),
+            "A malformed locator must surface as McpException with INVALID_ARGUMENT, not as a raw LocatorParseException.");
+    }
 }
 
 /// <summary>

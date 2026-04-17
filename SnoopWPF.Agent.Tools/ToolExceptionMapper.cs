@@ -16,6 +16,7 @@ using SnoopWPF.Agent.Contracts;
 /// <para>
 /// Mapping rules:
 /// <list type="bullet">
+/// <item><see cref="LocatorParseException"/> → <see cref="SnoopErrorCode.InvalidArgument"/> (FX6-C2)</item>
 /// <item><see cref="ObjectDisposedException"/> → <see cref="SnoopErrorCode.AgentDisposed"/></item>
 /// <item><see cref="InvalidOperationException"/> → <see cref="SnoopErrorCode.InvalidState"/></item>
 /// <item><see cref="AggregateException"/> → unwrap first inner exception and recurse</item>
@@ -55,6 +56,16 @@ public static class ToolExceptionMapper
         catch (SnoopException ex)
         {
             throw ErrorMapping.ToMcpException(ex);
+        }
+        catch (LocatorParseException ex)
+        {
+            // FX6-C2: map locator parse errors → InvalidArgument so the LLM sees a
+            // structured error code rather than a raw LocatorParseException class name.
+            throw ErrorMapping.ToMcpException(new SnoopException(
+                SnoopErrorCode.InvalidArgument,
+                $"Invalid locator syntax: {ex.Message}",
+                innerException: ex,
+                suggestions: new[] { SnoopSuggestions.InvalidArgument }));
         }
         catch (ObjectDisposedException ex)
         {
@@ -104,6 +115,15 @@ public static class ToolExceptionMapper
         {
             throw ErrorMapping.ToMcpException(ex);
         }
+        catch (LocatorParseException ex)
+        {
+            // FX6-C2: map locator parse errors → InvalidArgument.
+            throw ErrorMapping.ToMcpException(new SnoopException(
+                SnoopErrorCode.InvalidArgument,
+                $"Invalid locator syntax: {ex.Message}",
+                innerException: ex,
+                suggestions: new[] { SnoopSuggestions.InvalidArgument }));
+        }
         catch (ObjectDisposedException ex)
         {
             throw ErrorMapping.ToMcpException(new SnoopException(
@@ -139,6 +159,15 @@ public static class ToolExceptionMapper
         if (inner is SnoopException snoopInner)
         {
             return ErrorMapping.ToMcpException(snoopInner);
+        }
+
+        if (inner is LocatorParseException lpeInner)
+        {
+            return ErrorMapping.ToMcpException(new SnoopException(
+                SnoopErrorCode.InvalidArgument,
+                $"Invalid locator syntax: {lpeInner.Message}",
+                innerException: lpeInner,
+                suggestions: new[] { SnoopSuggestions.InvalidArgument }));
         }
 
         if (inner is ObjectDisposedException odeInner)
