@@ -9,6 +9,15 @@
     <DevelopmentDependency>true</DevelopmentDependency>
     <!-- NuGet analyzer packaging: suppress default lib/ content, place DLL under analyzers/dotnet/cs/ -->
     <IncludeBuildOutput>false</IncludeBuildOutput>
+    <!-- Analyzer packages have no runtime dependencies flowing to consumers
+         (all PackageReferences are PrivateAssets=all). Suppress the dependency
+         group entirely to avoid NU5128 (missing lib/netstandard2.0/ content). -->
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <!-- Analyzer DLLs sit under analyzers/dotnet/cs/ not lib/, so the standard
+         snupkg symbol-packaging path has nothing to ship (NU5017). PDBs are
+         embedded in the analyzer DLL itself via Directory.Build.props portable
+         debug settings, so symbols are still available for debugging. -->
+    <IncludeSymbols>false</IncludeSymbols>
     <!-- RS1038: "Do not include workspaces layer in analyzer assembly" — suppressed because
          this project deliberately includes the code fix provider (Workspaces layer) in the
          same assembly as the diagnostic analyzer. This is the standard approach for small,

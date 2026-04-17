@@ -160,7 +160,6 @@ jobs:
           dotnet pack SnoopWPF.Agent.Contracts/SnoopWPF.Agent.Contracts.csproj
           --configuration Release --no-build
           -p:Version=${{ steps.version.outputs.VERSION }}
-          --include-symbols
           --output artifacts/nupkg
 
       - name: Pack SnoopWPF.Agent.Analyzers
@@ -168,7 +167,6 @@ jobs:
           dotnet pack SnoopWPF.Agent.Analyzers/SnoopWPF.Agent.Analyzers.csproj
           --configuration Release --no-build
           -p:Version=${{ steps.version.outputs.VERSION }}
-          --include-symbols
           --output artifacts/nupkg
 
       - name: Pack SnoopWPF.Agent.Remote
@@ -176,7 +174,6 @@ jobs:
           dotnet pack SnoopWPF.Agent.Remote/SnoopWPF.Agent.Remote.csproj
           --configuration Release --no-build
           -p:Version=${{ steps.version.outputs.VERSION }}
-          --include-symbols
           --output artifacts/nupkg
 
       - name: Pack SnoopWPF.Agent.BrokerHost
@@ -184,7 +181,6 @@ jobs:
           dotnet pack SnoopWPF.Agent.BrokerHost/SnoopWPF.Agent.BrokerHost.csproj
           --configuration Release --no-build
           -p:Version=${{ steps.version.outputs.VERSION }}
-          --include-symbols
           --output artifacts/nupkg
 
       - name: Pack SnoopWPF.Agent (Server)
@@ -192,7 +188,6 @@ jobs:
           dotnet pack SnoopWPF.Agent.Server/SnoopWPF.Agent.Server.csproj
           --configuration Release --no-build
           -p:Version=${{ steps.version.outputs.VERSION }}
-          --include-symbols
           --output artifacts/nupkg
 
       - name: Upload nupkg artifacts
