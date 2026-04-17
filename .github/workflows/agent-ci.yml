@@ -82,6 +82,7 @@ jobs:
         with:
           name: test-results-${{ matrix.target }}
           path: output/test-results
+          retention-days: 7
 
   brokered-suite:
     name: brokered-suite (net8.0-windows / x64)
@@ -122,6 +123,7 @@ jobs:
         with:
           name: brokered-suite-logs-${{ matrix.target }}-${{ matrix.arch }}
           path: output/test-results
+          retention-days: 7
 
   verigui-harness:
     name: verigui-harness (net8.0-windows)
@@ -164,3 +166,4 @@ jobs:
         with:
           name: verigui-report
           path: output/verigui-report.json
+          retention-days: 7

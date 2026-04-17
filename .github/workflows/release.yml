@@ -72,6 +72,7 @@ jobs:
         with:
           name: release-test-results
           path: output/test-results
+          retention-days: 7
 
       - name: Pack SnoopWPF.Agent.Contracts
         run: >

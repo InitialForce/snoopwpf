@@ -49,23 +49,28 @@ jobs:
         with:
           name: test-results
           path: output/test-results
+          retention-days: 7
         if: ${{ always() }}
       - uses: actions/upload-artifact@v4
         with:
           name: artifacts
           path: artifacts
+          retention-days: 14
       - uses: actions/upload-artifact@v4
         with:
           name: agent-nupkg
           path: artifacts/SnoopWPF.Agent.*.nupkg
+          retention-days: 14
         if: ${{ always() }}
       - uses: actions/upload-artifact@v4
         with:
           name: snoop-mcp
           path: artifacts/snoop-mcp.*.zip
+          retention-days: 14
         if: ${{ always() }}
       - uses: actions/upload-artifact@v4
         with:
           name: snoop-cli
           path: artifacts/snoop-cli.*.zip
+          retention-days: 14
         if: ${{ always() }}
