@@ -40,6 +40,14 @@ jobs:
         if: matrix.target == 'net8.0-windows'
         run: dotnet test SnoopWPF.Agent.Tests/SnoopWPF.Agent.Tests.csproj --configuration Release --framework net8.0-windows --no-build --logger "trx;LogFileName=SnoopWPF.Agent.Tests-${{ matrix.target }}.trx" --results-directory output/test-results
 
+      - name: Test SnoopWPF.Agent.InjectionTests
+        if: matrix.target == 'net8.0-windows'
+        run: dotnet test SnoopWPF.Agent.InjectionTests/SnoopWPF.Agent.InjectionTests.csproj --configuration Release --framework net8.0-windows --no-build --filter "Category!=RequiresInjection" --logger "trx;LogFileName=SnoopWPF.Agent.InjectionTests-${{ matrix.target }}.trx" --results-directory output/test-results
+
+      - name: Test SnoopWPF.Agent.Analyzers.Tests
+        if: matrix.target == 'net8.0-windows'
+        run: dotnet test SnoopWPF.Agent.Analyzers.Tests/SnoopWPF.Agent.Analyzers.Tests.csproj --configuration Release --framework net8.0 --no-build --logger "trx;LogFileName=SnoopWPF.Agent.Analyzers.Tests-${{ matrix.target }}.trx" --results-directory output/test-results
+
       - name: Test SnoopWPF.Agent.IntegrationTests
         if: matrix.target == 'net8.0-windows'
         run: dotnet test SnoopWPF.Agent.IntegrationTests/SnoopWPF.Agent.IntegrationTests.csproj --configuration Release --framework net8.0-windows --no-build --logger "trx;LogFileName=SnoopWPF.Agent.IntegrationTests-${{ matrix.target }}.trx" --results-directory output/test-results
