@@ -2561,8 +2561,26 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
                 uiElement.GetValue(System.Windows.Controls.Primitives.ButtonBase.CommandProperty)
                 is System.Windows.Input.ICommand;
 
-            // Invoke via IInvokeProvider.
-            invokeProvider.Invoke();
+            // FX2-C7: Invoke() throws ElementNotEnabledException (:InvalidOperationException)
+            // when the element is disabled. Convert to a structured PATTERN_NOT_SUPPORTED
+            // failure instead of letting it escape as a generic InternalError.
+            try
+            {
+                invokeProvider.Invoke();
+            }
+            catch (InvalidOperationException ex)
+            {
+                System.Diagnostics.Trace.WriteLine(
+                    $"[SnoopWPF.Agent] ClickAsync: nodeId={nodeId}, UIA Invoke threw: {ex.GetType().Name}");
+                return new StateDeltaDto
+                {
+                    Success = false,
+                    ElementVisible = true,
+                    StateChanged = false,
+                    FailureReason = FailureReason.PatternNotSupported,
+                    Suggestion = FailureReasonDescriptor.Suggest(FailureReason.PatternNotSupported, null),
+                };
+            }
 
             System.Diagnostics.Trace.WriteLine(
                 $"[SnoopWPF.Agent] ClickAsync: nodeId={nodeId}, hasCommandBound={hasCommandBound}");
@@ -2689,8 +2707,25 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
                 };
             }
 
-            // Toggle via IToggleProvider — flips current state (non-deterministic).
-            toggleProvider.Toggle();
+            // FX2-C7: Toggle() throws ElementNotEnabledException on disabled elements.
+            // Convert to a structured PATTERN_NOT_SUPPORTED failure.
+            try
+            {
+                toggleProvider.Toggle();
+            }
+            catch (InvalidOperationException ex)
+            {
+                System.Diagnostics.Trace.WriteLine(
+                    $"[SnoopWPF.Agent] ToggleAsync: nodeId={nodeId}, UIA Toggle threw: {ex.GetType().Name}");
+                return new StateDeltaDto
+                {
+                    Success = false,
+                    ElementVisible = true,
+                    StateChanged = false,
+                    FailureReason = FailureReason.PatternNotSupported,
+                    Suggestion = FailureReasonDescriptor.Suggest(FailureReason.PatternNotSupported, null),
+                };
+            }
 
             System.Diagnostics.Trace.WriteLine(
                 $"[SnoopWPF.Agent] ToggleAsync: nodeId={nodeId}, type={uiElement.GetType().Name}");
@@ -2782,17 +2817,56 @@ public sealed class SnoopInspector : ISnoopInspector, IDisposable
             }
 
             bool expand = string.Equals(action, "expand", StringComparison.OrdinalIgnoreCase);
-            if (expand)
+
+            // FX2 (META-M1): capture the pre-call ExpandCollapseState so we can detect
+            // no-op requests (e.g. Expand() on an already-expanded node) and return
+            // StateChanged=false + STATE_UNCHANGED instead of misreporting a mutation.
+            var previousState = provider.ExpandCollapseState;
+
+            // FX2-C7: Expand/Collapse throw ElementNotEnabledException on disabled elements.
+            try
             {
-                provider.Expand();
+                if (expand)
+                {
+                    provider.Expand();
+                }
+                else
+                {
+                    provider.Collapse();
+                }
             }
-            else
+            catch (InvalidOperationException ex)
             {
-                provider.Collapse();
+                System.Diagnostics.Trace.WriteLine(
+                    $"[SnoopWPF.Agent] ExpandCollapseAsync: nodeId={nodeId}, UIA {action} threw: {ex.GetType().Name}");
+                return new StateDeltaDto
+                {
+                    Success = false,
+                    ElementVisible = true,
+                    StateChanged = false,
+                    FailureReason = FailureReason.PatternNotSupported,
+                    Suggestion = FailureReasonDescriptor.Suggest(FailureReason.PatternNotSupported, null),
+                };
             }
 
             System.Diagnostics.Trace.WriteLine(
                 $"[SnoopWPF.Agent] ExpandCollapseAsync: nodeId={nodeId}, action={action}, type={uiElement.GetType().Name}");
+
+            var newState = provider.ExpandCollapseState;
+            var stateChanged = previousState != newState;
+
+            if (!stateChanged)
+            {
+                // FX-M10 / PRD §7.6: Success=true + StateChanged=false → STATE_UNCHANGED.
+                return new StateDeltaDto
+                {
+                    Success = true,
+                    ElementVisible = true,
+                    StateChanged = false,
+                    ChosenTier = InputTier.L1,
+                    FailureReason = FailureReason.StateUnchanged,
+                };
+            }
 
             return new StateDeltaDto
             {
