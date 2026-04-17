@@ -37,7 +37,7 @@ interactively in another window.
 
 ## Fork goals
 
-- **AI-agent inspection** via 16 MCP tools covering visual / logical / automation
+- **AI-agent inspection** via 27 MCP tools covering visual / logical / automation
   trees, properties with binding and trigger detail, resources, behaviors,
   screenshots, and diagnostics.
 - **Two deployment modes:**
@@ -120,7 +120,7 @@ Planning artifacts for this fork live at the repository root:
 |---|---|
 | `SnoopWPF.Agent.Contracts` | Shared DTOs, `ISnoopInspector` interface, protocol types. `net462;net6.0-windows;net8.0-windows`. |
 | `SnoopWPF.Agent.Engine` | Core inspector implementation — tree, properties, bindings, diagnostics, resources, screenshots. Wraps `Snoop.Core`. |
-| `SnoopWPF.Agent.Tools` | 16 MCP tool handlers (one per tool). |
+| `SnoopWPF.Agent.Tools` | 27 MCP tool handlers (one per tool). |
 | `SnoopWPF.Agent.Server` | NuGet-mode entry point: `SnoopAgent.StartCoLocated()`. Packs to `SnoopWPF.Agent` NuGet. |
 | `SnoopWPF.Agent.Remote` | Host-side pipe client (`PipeSnoopInspectorProxy` implementing `ISnoopInspector`). |
 | `SnoopWPF.Agent.Injection` | Injected-process DLL — hosts inspector, serves pipe, performs handshake. |
