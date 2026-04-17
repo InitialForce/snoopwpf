@@ -42,7 +42,7 @@ interactively in another window.
   screenshots, and diagnostics.
 - **Two deployment modes:**
   - *NuGet (compile-in)* — reference `SnoopWPF.Agent` and call
-    `SnoopAgent.Start()` at startup. Zero process-injection complexity. Intended
+    `SnoopAgent.StartCoLocated()` at startup. Zero process-injection complexity. Intended
     for apps you own and can recompile.
   - *Injection (external host)* — `snoop-mcp.exe` injects into any running WPF
     process via the existing Snoop injection pipeline. For third-party or legacy
@@ -81,7 +81,7 @@ interactively in another window.
 protected override void OnStartup(StartupEventArgs e)
 {
     base.OnStartup(e);
-    var agent = SnoopAgent.Start();
+    var agent = SnoopAgent.StartCoLocated();
     // agent.PipeName + agent.SessionToken when using Pipe transport
 }
 ```
@@ -121,7 +121,7 @@ Planning artifacts for this fork live at the repository root:
 | `SnoopWPF.Agent.Contracts` | Shared DTOs, `ISnoopInspector` interface, protocol types. `net462;net6.0-windows;net8.0-windows`. |
 | `SnoopWPF.Agent.Engine` | Core inspector implementation — tree, properties, bindings, diagnostics, resources, screenshots. Wraps `Snoop.Core`. |
 | `SnoopWPF.Agent.Tools` | 16 MCP tool handlers (one per tool). |
-| `SnoopWPF.Agent.Server` | NuGet-mode entry point: `SnoopAgent.Start()`. Packs to `SnoopWPF.Agent` NuGet. |
+| `SnoopWPF.Agent.Server` | NuGet-mode entry point: `SnoopAgent.StartCoLocated()`. Packs to `SnoopWPF.Agent` NuGet. |
 | `SnoopWPF.Agent.Remote` | Host-side pipe client (`PipeSnoopInspectorProxy` implementing `ISnoopInspector`). |
 | `SnoopWPF.Agent.Injection` | Injected-process DLL — hosts inspector, serves pipe, performs handshake. |
 | `SnoopWPF.Agent.Host` | `snoop-mcp.exe` — injects into target PID, speaks MCP on stdio. |

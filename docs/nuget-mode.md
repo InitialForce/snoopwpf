@@ -25,7 +25,7 @@ dotnet add package SnoopWPF.Agent
 
 ## Minimal Setup
 
-Call `SnoopAgent.Start()` once, from the WPF UI thread, after the application is
+Call `SnoopAgent.StartCoLocated()` once, from the WPF UI thread, after the application is
 initialized. The safest place is in `App.OnStartup`:
 
 ```csharp
@@ -39,7 +39,7 @@ public partial class App : Application
         base.OnStartup(e);
 
         // Default: stdio transport. The MCP server is ready immediately.
-        SnoopAgent.Start();
+        SnoopAgent.StartCoLocated();
     }
 }
 ```
@@ -50,10 +50,10 @@ That is the entire integration. The server stops automatically when the applicat
 
 ## SnoopAgentOptions
 
-Pass a `SnoopAgentOptions` instance to `SnoopAgent.Start()` to configure behavior.
+Pass a `SnoopAgentOptions` instance to `SnoopAgent.StartCoLocated()` to configure behavior.
 
 ```csharp
-SnoopAgent.Start(new SnoopAgentOptions
+SnoopAgent.StartCoLocated(new SnoopAgentOptions
 {
     Transport      = TransportMode.Stdio,   // default
     EnableMutation  = false,                // default — set true to allow wpf_set_property
@@ -106,7 +106,7 @@ any MCP traffic. The pipe name and session token are exposed on the returned
 `SnoopAgentHandle` so the embedding application can deliver them to its client.
 
 ```csharp
-var handle = SnoopAgent.Start(new SnoopAgentOptions
+var handle = SnoopAgent.StartCoLocated(new SnoopAgentOptions
 {
     Transport = TransportMode.Pipe,
     // PipeName: omit to auto-generate as "snoop-agent-{guid}"
@@ -125,7 +125,7 @@ string sessionToken = handle.SessionToken!;  // 64-character hex string
 You can also supply your own pipe name and/or session token:
 
 ```csharp
-SnoopAgent.Start(new SnoopAgentOptions
+SnoopAgent.StartCoLocated(new SnoopAgentOptions
 {
     Transport     = TransportMode.Pipe,
     PipeName      = "my-app-snoop",
@@ -141,7 +141,7 @@ on Windows is `\\.\pipe\{pipeName}`.
 
 ## Lifecycle
 
-`SnoopAgent.Start()` returns a `SnoopAgentHandle`. The agent runs until:
+`SnoopAgent.StartCoLocated()` returns a `SnoopAgentHandle`. The agent runs until:
 
 1. The handle is disposed explicitly:
 
@@ -151,7 +151,7 @@ on Windows is `\\.\pipe\{pipeName}`.
    protected override void OnStartup(StartupEventArgs e)
    {
        base.OnStartup(e);
-       _snoopHandle = SnoopAgent.Start();
+       _snoopHandle = SnoopAgent.StartCoLocated();
    }
 
    protected override void OnExit(ExitEventArgs e)
@@ -163,7 +163,7 @@ on Windows is `\\.\pipe\{pipeName}`.
 
 2. The `Application.Exit` event fires (the agent subscribes automatically).
 
-`SnoopAgent.Start()` throws `InvalidOperationException` if called a second time while
+`SnoopAgent.StartCoLocated()` throws `InvalidOperationException` if called a second time while
 a server is already running. Dispose the existing handle first.
 
 ---
@@ -173,7 +173,7 @@ a server is already running. Dispose the existing handle first.
 Property mutations are disabled by default. To allow `wpf_set_property`:
 
 ```csharp
-SnoopAgent.Start(new SnoopAgentOptions
+SnoopAgent.StartCoLocated(new SnoopAgentOptions
 {
     EnableMutation = true,
 });
@@ -202,7 +202,7 @@ For apps where you only want the agent in development builds:
 
 ```csharp
 #if DEBUG
-SnoopAgent.Start();
+SnoopAgent.StartCoLocated();
 #endif
 ```
 
@@ -211,7 +211,7 @@ Or via an environment variable:
 ```csharp
 if (Environment.GetEnvironmentVariable("ENABLE_SNOOP_AGENT") == "1")
 {
-    SnoopAgent.Start();
+    SnoopAgent.StartCoLocated();
 }
 ```
 
@@ -220,7 +220,7 @@ Or a command-line flag (mimicking the sample app):
 ```csharp
 if (!args.Contains("--no-agent"))
 {
-    SnoopAgent.Start();
+    SnoopAgent.StartCoLocated();
 }
 ```
 
@@ -230,7 +230,7 @@ if (!args.Contains("--no-agent"))
 
 ### "SnoopAgent is already running"
 
-You called `SnoopAgent.Start()` more than once. Dispose the first handle before
+You called `SnoopAgent.StartCoLocated()` more than once. Dispose the first handle before
 calling `Start()` again, or gate the call with a null check:
 
 ```csharp
@@ -238,18 +238,18 @@ private SnoopAgentHandle? _agent;
 
 if (_agent == null)
 {
-    _agent = SnoopAgent.Start();
+    _agent = SnoopAgent.StartCoLocated();
 }
 ```
 
-### "SnoopAgent.Start() must be called from a thread that has a WPF Dispatcher"
+### "SnoopAgent.StartCoLocated() must be called from a thread that has a WPF Dispatcher"
 
-Call `Start()` from `App.OnStartup` or another UI-thread entry point, not from a
+Call `StartCoLocated()` from `App.OnStartup` or another UI-thread entry point, not from a
 background thread or a static constructor.
 
 ### Client connects but tools return NODE_NOT_FOUND immediately
 
-The application may not have created its main window yet. Ensure `Start()` is called
+The application may not have created its main window yet. Ensure `StartCoLocated()` is called
 after `InitializeComponent()` or after the main window's `Loaded` event fires.
 
 ### MCP client cannot connect (stdio)
@@ -264,5 +264,5 @@ The default per-operation timeout is 5 seconds. If your app performs heavy work 
 the UI thread, increase `TimeoutMs`:
 
 ```csharp
-SnoopAgent.Start(new SnoopAgentOptions { TimeoutMs = 15000 });
+SnoopAgent.StartCoLocated(new SnoopAgentOptions { TimeoutMs = 15000 });
 ```

@@ -18,7 +18,7 @@ Both modes can run simultaneously with the full Snoop UI window.
 
 ### NuGet / Compile-in Mode
 
-Your WPF app references the `SnoopWPF.Agent` NuGet package and calls `SnoopAgent.Start()`
+Your WPF app references the `SnoopWPF.Agent` NuGet package and calls `SnoopAgent.StartCoLocated()`
 at startup. The MCP server runs in-process alongside your application.
 
 - Requires .NET 8+
@@ -46,21 +46,21 @@ on stdio to the AI client.
 <PackageReference Include="SnoopWPF.Agent" Version="*" />
 ```
 
-### 2. Call Start() in your App
+### 2. Call StartCoLocated() in your App
 
 ```csharp
 // App.xaml.cs
 protected override void OnStartup(StartupEventArgs e)
 {
     base.OnStartup(e);
-    SnoopAgent.Start(); // default: stdio transport
+    SnoopAgent.StartCoLocated(); // default: stdio transport
 }
 ```
 
 The server is ready as soon as `Start()` returns. Dispose the handle to stop it early:
 
 ```csharp
-var handle = SnoopAgent.Start();
+var handle = SnoopAgent.StartCoLocated();
 // ... later:
 handle.Dispose();
 ```
