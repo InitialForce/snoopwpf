@@ -9,16 +9,10 @@
 
   <!-- NuGet package metadata -->
   <PropertyGroup>
-    <PackageId>SnoopWPF.Agent.Remote</PackageId>
+    <PackageId>InitialForce.SnoopAgent.Remote</PackageId>
     <Description>Pipe client and framing library for SnoopWPF Agent brokered mode. Consumed by external brokers to communicate with an injected SnoopWPF Agent over named-pipe transport.</Description>
-    <Authors>Cory Plotts, Bastian Schmidt, and contributors</Authors>
-    <PackageTags>wpf;mcp;snoop;agent;remote;pipe</PackageTags>
-    <PackageLicenseFile>License.txt</PackageLicenseFile>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>snoop.png</PackageIcon>
-    <PackageProjectUrl>https://github.com/InitialForce/snoopwpf</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/InitialForce/snoopwpf</RepositoryUrl>
-    <RepositoryType>git</RepositoryType>
   </PropertyGroup>
 
   <!-- NuGet pack: include license, per-package readme, and icon -->

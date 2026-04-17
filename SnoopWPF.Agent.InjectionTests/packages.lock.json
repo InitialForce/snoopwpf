@@ -208,17 +208,17 @@
           "System.Collections.Immutable": "9.0.0"
         }
       },
-      "snoopwpf.agent.contracts": {
+      "InitialForce.SnoopAgent.Contracts": {
         "type": "Project",
         "dependencies": {
           "Microsoft.NETFramework.ReferenceAssemblies.net462": "[1.0.3, )"
         }
       },
-      "snoopwpf.agent.remote": {
+      "InitialForce.SnoopAgent.Remote": {
         "type": "Project",
         "dependencies": {
-          "Microsoft.NETFramework.ReferenceAssemblies.net462": "[1.0.3, )",
-          "SnoopWPF.Agent.Contracts": "[6.2.0-rc.1, )"
+          "InitialForce.SnoopAgent.Contracts": "[1.0.0-rc.1, )",
+          "Microsoft.NETFramework.ReferenceAssemblies.net462": "[1.0.3, )"
         }
       },
       "Microsoft.CodeAnalysis.Analyzers": {

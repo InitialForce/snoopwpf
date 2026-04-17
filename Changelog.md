@@ -1,4 +1,35 @@
-﻿# Changelog for Snoop
+﻿# Changelog
+
+All notable changes to this project will be documented in this file.
+The format is based on Keep a Changelog and this project adheres to SemVer from 1.0.0 onward.
+
+## [1.0.0-rc.1] — Unreleased
+
+This is the first public release of InitialForce.SnoopAgent on nuget.org.
+
+### Changed
+- Package renamed from `SnoopWPF.Agent.*` to `InitialForce.SnoopAgent.*`.
+  Assembly names and namespaces are unchanged (`SnoopWPF.Agent.*`).
+- Version reset from 6.2.0-rc.1 to 1.0.0-rc.1 to signal the new package identity.
+- Version suffix scheme changed to SemVer-compliant `rc.1` (was `rc1`).
+
+### Breaking
+- Package ID change is breaking for any pre-public consumers. Update
+  `<PackageReference>` entries from `SnoopWPF.Agent.*` to `InitialForce.SnoopAgent.*`.
+  Source code using the `SnoopWPF.Agent.*` namespaces does NOT need to change.
+
+### Added
+- NOTICE.md documenting MS-PL attribution and third-party components.
+- Source Link + deterministic builds enabled in Directory.Build.props.
+
+### Prior history
+All changes through v6.2.0-rc1 are preserved under the Heritage section below.
+
+---
+
+## Heritage
+
+# Changelog for Snoop
 
 ## [1.0.0] (unreleased)
 

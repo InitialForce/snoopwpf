@@ -304,7 +304,7 @@
         "resolved": "7.0.0",
         "contentHash": "qmeeYNROMsONF6ndEZcIQ+VxR4Q/TX/7uIVLJqtwIWL7dDWeh0l1UIqgo4wYyjG//5lUNhwkLDSFl+pAWO6oiA=="
       },
-      "snoopwpf.agent.analyzers": {
+      "InitialForce.SnoopAgent.Analyzers": {
         "type": "Project",
         "dependencies": {
           "Microsoft.NETFramework.ReferenceAssemblies.net462": "[1.0.3, )"

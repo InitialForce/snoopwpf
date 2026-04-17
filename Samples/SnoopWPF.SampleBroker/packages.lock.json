@@ -217,7 +217,7 @@
           "System.Text.Encodings.Web": "10.0.4"
         }
       },
-      "snoopwpf.agent.brokerhost": {
+      "InitialForce.SnoopAgent.BrokerHost": {
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection": "[10.0.5, )",
@@ -225,7 +225,7 @@
           "ModelContextProtocol": "[1.2.0, )"
         }
       },
-      "snoopwpf.agent.contracts": {
+      "InitialForce.SnoopAgent.Contracts": {
         "type": "Project",
         "dependencies": {
           "Microsoft.NETFramework.ReferenceAssemblies.net462": "[1.0.3, )"

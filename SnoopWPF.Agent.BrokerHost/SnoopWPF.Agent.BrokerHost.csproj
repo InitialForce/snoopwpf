@@ -12,16 +12,10 @@
   <!-- NuGet package metadata -->
   <PropertyGroup>
     <IsPackable>true</IsPackable>
-    <PackageId>SnoopWPF.Agent.BrokerHost</PackageId>
+    <PackageId>InitialForce.SnoopAgent.BrokerHost</PackageId>
     <Description>Brokered-mode host library for SnoopWPF Agent. Provides the MCP broker infrastructure consumed by external host processes (e.g. UiMcpHost) to communicate with injected WPF agents.</Description>
-    <Authors>Cory Plotts, Bastian Schmidt, and contributors</Authors>
-    <PackageTags>wpf;mcp;snoop;agent;broker;host</PackageTags>
-    <PackageLicenseFile>License.txt</PackageLicenseFile>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>snoop.png</PackageIcon>
-    <PackageProjectUrl>https://github.com/InitialForce/snoopwpf</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/InitialForce/snoopwpf</RepositoryUrl>
-    <RepositoryType>git</RepositoryType>
   </PropertyGroup>
 
   <!-- NuGet pack: include license, per-package readme, and icon -->

@@ -260,6 +260,20 @@
           "System.Text.Encodings.Web": "10.0.4"
         }
       },
+      "InitialForce.SnoopAgent": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection": "[10.0.5, )",
+          "Microsoft.NETFramework.ReferenceAssemblies.net462": "[1.0.3, )",
+          "ModelContextProtocol": "[1.2.0, )"
+        }
+      },
+      "InitialForce.SnoopAgent.Contracts": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.NETFramework.ReferenceAssemblies.net462": "[1.0.3, )"
+        }
+      },
       "snoop.core": {
         "type": "Project",
         "dependencies": {
@@ -268,35 +282,21 @@
           "System.IO.FileSystem.AccessControl": "[5.0.0, )"
         }
       },
-      "SnoopWPF.Agent": {
-        "type": "Project",
-        "dependencies": {
-          "Microsoft.Extensions.DependencyInjection": "[10.0.5, )",
-          "Microsoft.NETFramework.ReferenceAssemblies.net462": "[1.0.3, )",
-          "ModelContextProtocol": "[1.2.0, )"
-        }
-      },
-      "snoopwpf.agent.contracts": {
-        "type": "Project",
-        "dependencies": {
-          "Microsoft.NETFramework.ReferenceAssemblies.net462": "[1.0.3, )"
-        }
-      },
       "snoopwpf.agent.engine": {
         "type": "Project",
         "dependencies": {
+          "InitialForce.SnoopAgent.Contracts": "[1.0.0-rc.1, )",
           "Microsoft.NETFramework.ReferenceAssemblies.net462": "[1.0.3, )",
-          "Snoop.Core": "[6.2.0-rc.1, )",
-          "SnoopWPF.Agent.Contracts": "[6.2.0-rc.1, )"
+          "Snoop.Core": "[1.0.0-rc.1, )"
         }
       },
       "snoopwpf.agent.tools": {
         "type": "Project",
         "dependencies": {
+          "InitialForce.SnoopAgent.Contracts": "[1.0.0-rc.1, )",
           "Microsoft.NETFramework.ReferenceAssemblies.net462": "[1.0.3, )",
           "ModelContextProtocol": "[1.2.0, )",
-          "SnoopWPF.Agent.Contracts": "[6.2.0-rc.1, )",
-          "SnoopWPF.Agent.Engine": "[6.2.0-rc.1, )"
+          "SnoopWPF.Agent.Engine": "[1.0.0-rc.1, )"
         }
       },
       "Microsoft.CodeAnalysis.Analyzers": {

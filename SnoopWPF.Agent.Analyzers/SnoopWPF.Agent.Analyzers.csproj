@@ -25,16 +25,10 @@
 
   <!-- NuGet package metadata -->
   <PropertyGroup>
-    <PackageId>SnoopWPF.Agent.Analyzers</PackageId>
+    <PackageId>InitialForce.SnoopAgent.Analyzers</PackageId>
     <Description>Roslyn analyzers (SWPF0001 + code fix) for SnoopWPF Agent. Warns when attaching an agent to a process that has not been annotated as SnoopWPF-compatible.</Description>
-    <Authors>Cory Plotts, Bastian Schmidt, and contributors</Authors>
-    <PackageTags>wpf;mcp;snoop;agent;analyzer;roslyn</PackageTags>
-    <PackageLicenseFile>License.txt</PackageLicenseFile>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>snoop.png</PackageIcon>
-    <PackageProjectUrl>https://github.com/InitialForce/snoopwpf</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/InitialForce/snoopwpf</RepositoryUrl>
-    <RepositoryType>git</RepositoryType>
   </PropertyGroup>
 
   <!-- NuGet analyzer packaging convention: place DLL under analyzers/dotnet/cs/ -->

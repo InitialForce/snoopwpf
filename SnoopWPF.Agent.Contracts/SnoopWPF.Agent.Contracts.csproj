@@ -14,16 +14,10 @@
   <!-- NuGet package metadata -->
   <PropertyGroup>
     <IsPackable>true</IsPackable>
-    <PackageId>SnoopWPF.Agent.Contracts</PackageId>
+    <PackageId>InitialForce.SnoopAgent.Contracts</PackageId>
     <Description>Shared DTOs, interfaces, and WpfLocator for SnoopWPF Agent. Referenced by both the server (injected side) and remote clients.</Description>
-    <Authors>Cory Plotts, Bastian Schmidt, and contributors</Authors>
-    <PackageTags>wpf;mcp;snoop;agent;contracts;dto</PackageTags>
-    <PackageLicenseFile>License.txt</PackageLicenseFile>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>snoop.png</PackageIcon>
-    <PackageProjectUrl>https://github.com/InitialForce/snoopwpf</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/InitialForce/snoopwpf</RepositoryUrl>
-    <RepositoryType>git</RepositoryType>
   </PropertyGroup>
 
   <!-- NuGet pack: include license, per-package readme, and icon -->

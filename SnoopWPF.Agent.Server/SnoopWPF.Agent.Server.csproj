@@ -24,16 +24,10 @@
 
     <!-- NuGet package metadata -->
     <PropertyGroup>
-        <PackageId>SnoopWPF.Agent</PackageId>
-        <Description>MCP server for WPF runtime inspection via SnoopWPF. Exposes visual tree, properties, triggers, behaviors, and screenshots as MCP tools for AI-assisted debugging.</Description>
-        <Authors>Cory Plotts, Bastian Schmidt, and contributors</Authors>
-        <PackageTags>wpf;mcp;snoop;agent;inspector;claude;ai;debug;visualtree</PackageTags>
-        <PackageLicenseFile>License.txt</PackageLicenseFile>
+        <PackageId>InitialForce.SnoopAgent</PackageId>
+        <Description>MCP server agent for inspecting and automating WPF applications. Exposes 29 tools for AI coding agents (Claude Code, etc.). This is the primary package — it bundles Engine, Tools, Contracts, and Injection assemblies.</Description>
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <PackageIcon>snoop.png</PackageIcon>
-        <PackageProjectUrl>https://github.com/InitialForce/snoopwpf</PackageProjectUrl>
-        <RepositoryUrl>https://github.com/InitialForce/snoopwpf</RepositoryUrl>
-        <RepositoryType>git</RepositoryType>
     </PropertyGroup>
 
     <!-- NuGet pack: include license, per-package readme, and icon -->

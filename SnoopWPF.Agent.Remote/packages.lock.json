@@ -95,7 +95,7 @@
           "System.Collections.Immutable": "9.0.0"
         }
       },
-      "snoopwpf.agent.contracts": {
+      "InitialForce.SnoopAgent.Contracts": {
         "type": "Project",
         "dependencies": {
           "Microsoft.NETFramework.ReferenceAssemblies.net462": "[1.0.3, )"

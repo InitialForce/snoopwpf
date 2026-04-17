@@ -195,6 +195,12 @@
           "System.Runtime.CompilerServices.Unsafe": "4.5.3"
         }
       },
+      "InitialForce.SnoopAgent.Contracts": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.NETFramework.ReferenceAssemblies.net462": "[1.0.3, )"
+        }
+      },
       "snoop.core": {
         "type": "Project",
         "dependencies": {
@@ -202,18 +208,12 @@
           "Microsoft.Windows.CsWin32": "[0.3.264, )"
         }
       },
-      "snoopwpf.agent.contracts": {
-        "type": "Project",
-        "dependencies": {
-          "Microsoft.NETFramework.ReferenceAssemblies.net462": "[1.0.3, )"
-        }
-      },
       "snoopwpf.agent.engine": {
         "type": "Project",
         "dependencies": {
+          "InitialForce.SnoopAgent.Contracts": "[1.0.0-rc.1, )",
           "Microsoft.NETFramework.ReferenceAssemblies.net462": "[1.0.3, )",
-          "Snoop.Core": "[6.2.0-rc.1, )",
-          "SnoopWPF.Agent.Contracts": "[6.2.0-rc.1, )"
+          "Snoop.Core": "[1.0.0-rc.1, )"
         }
       },
       "Microsoft.CodeAnalysis.Analyzers": {
@@ -415,6 +415,12 @@
         "resolved": "4.5.4",
         "contentHash": "zteT+G8xuGu6mS+mzDzYXbzS7rd3K6Fjb9RiZlYlJPam2/hU7JCBZBVEcywNuR+oZ1ncTvc/cq0faRr3P01OVg=="
       },
+      "InitialForce.SnoopAgent.Contracts": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.NETFramework.ReferenceAssemblies.net462": "[1.0.3, )"
+        }
+      },
       "snoop.core": {
         "type": "Project",
         "dependencies": {
@@ -423,18 +429,12 @@
           "System.IO.FileSystem.AccessControl": "[5.0.0, )"
         }
       },
-      "snoopwpf.agent.contracts": {
-        "type": "Project",
-        "dependencies": {
-          "Microsoft.NETFramework.ReferenceAssemblies.net462": "[1.0.3, )"
-        }
-      },
       "snoopwpf.agent.engine": {
         "type": "Project",
         "dependencies": {
+          "InitialForce.SnoopAgent.Contracts": "[1.0.0-rc.1, )",
           "Microsoft.NETFramework.ReferenceAssemblies.net462": "[1.0.3, )",
-          "Snoop.Core": "[6.2.0-rc.1, )",
-          "SnoopWPF.Agent.Contracts": "[6.2.0-rc.1, )"
+          "Snoop.Core": "[1.0.0-rc.1, )"
         }
       },
       "Microsoft.CodeAnalysis.Analyzers": {
@@ -596,6 +596,12 @@
         "resolved": "5.0.0",
         "contentHash": "t0MGLukB5WAVU9bO3MGzvlGnyJPgUlcwerXn1kzBRjwLKixT96XV0Uza41W49gVd8zEMFu9vQEFlv0IOrytICA=="
       },
+      "InitialForce.SnoopAgent.Contracts": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.NETFramework.ReferenceAssemblies.net462": "[1.0.3, )"
+        }
+      },
       "snoop.core": {
         "type": "Project",
         "dependencies": {
@@ -604,18 +610,12 @@
           "System.IO.FileSystem.AccessControl": "[5.0.0, )"
         }
       },
-      "snoopwpf.agent.contracts": {
-        "type": "Project",
-        "dependencies": {
-          "Microsoft.NETFramework.ReferenceAssemblies.net462": "[1.0.3, )"
-        }
-      },
       "snoopwpf.agent.engine": {
         "type": "Project",
         "dependencies": {
+          "InitialForce.SnoopAgent.Contracts": "[1.0.0-rc.1, )",
           "Microsoft.NETFramework.ReferenceAssemblies.net462": "[1.0.3, )",
-          "Snoop.Core": "[6.2.0-rc.1, )",
-          "SnoopWPF.Agent.Contracts": "[6.2.0-rc.1, )"
+          "Snoop.Core": "[1.0.0-rc.1, )"
         }
       },
       "Microsoft.CodeAnalysis.Analyzers": {
