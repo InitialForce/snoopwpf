@@ -156,6 +156,7 @@ internal sealed class AuditLogWriter : IAsyncDisposable
 
     /// <summary>
     /// Computes HMAC-SHA256 over: <c>entryJson_utf8 || prevHmac || sessionKey || counterNonce_be8</c>.
+    /// Uses <see cref="HMACSHA256.HashData(byte[], byte[])"/> to avoid per-call HMACSHA256 allocation.
     /// </summary>
     internal static byte[] ComputeHmac(
         string entryJson,
@@ -170,12 +171,19 @@ internal sealed class AuditLogWriter : IAsyncDisposable
             Array.Reverse(nonceBytes);
         }
 
-        using var hmac = new HMACSHA256(sessionKey);
-        hmac.TransformBlock(entryBytes, 0, entryBytes.Length, null, 0);
-        hmac.TransformBlock(prevHmac, 0, prevHmac.Length, null, 0);
-        hmac.TransformBlock(sessionKey, 0, sessionKey.Length, null, 0);
-        hmac.TransformFinalBlock(nonceBytes, 0, nonceBytes.Length);
-        return hmac.Hash!;
+        // Concatenate all inputs into a single buffer then call the one-shot static overload,
+        // which avoids allocating an HMACSHA256 instance on every audit write.
+        var payload = new byte[entryBytes.Length + prevHmac.Length + sessionKey.Length + nonceBytes.Length];
+        var pos = 0;
+        Buffer.BlockCopy(entryBytes, 0, payload, pos, entryBytes.Length);
+        pos += entryBytes.Length;
+        Buffer.BlockCopy(prevHmac, 0, payload, pos, prevHmac.Length);
+        pos += prevHmac.Length;
+        Buffer.BlockCopy(sessionKey, 0, payload, pos, sessionKey.Length);
+        pos += sessionKey.Length;
+        Buffer.BlockCopy(nonceBytes, 0, payload, pos, nonceBytes.Length);
+
+        return HMACSHA256.HashData(sessionKey, payload);
     }
 
     // -------------------------------------------------------------------------
@@ -225,9 +233,11 @@ internal sealed class AuditLogWriter : IAsyncDisposable
 
     private static string SerializeToJson(DataContractJsonSerializer serializer, AuditEntry entry)
     {
+        // Use an expandable MemoryStream and read from GetBuffer() + tracked length to avoid
+        // the extra ToArray() copy allocation on every audit write.
         using var ms = new MemoryStream();
         serializer.WriteObject(ms, entry);
-        return Encoding.UTF8.GetString(ms.ToArray());
+        return Encoding.UTF8.GetString(ms.GetBuffer(), 0, (int)ms.Length);
     }
 
     private static FileStream OpenWithOwnerOnlyAcl(string path)
