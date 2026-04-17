@@ -31,6 +31,14 @@ jobs:
         with:
           global-json-file: global.json
 
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/packages.lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
       - name: Build Snoop.sln
         run: dotnet build Snoop.sln --configuration Release --framework ${{ matrix.target }} --no-incremental
 
@@ -79,6 +87,14 @@ jobs:
         with:
           global-json-file: global.json
 
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/packages.lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
       - name: Build Snoop.sln
         run: dotnet build Snoop.sln --configuration Release --framework ${{ matrix.target }} --no-incremental -p:Platform=${{ matrix.arch }}
 
@@ -106,6 +122,14 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/packages.lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
 
       - name: Build VeriGuiHarness
         run: dotnet build SnoopWPF.Agent.VeriGuiHarness/SnoopWPF.Agent.VeriGuiHarness.csproj --configuration Release --framework net8.0-windows --no-incremental
