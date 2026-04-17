@@ -124,7 +124,7 @@ public static class BrokerHost
         // Register disconnection notification before starting the pump.
         if (opts.OnTargetDisconnected is not null)
         {
-            RegisterDisconnectCallback(proxy, opts.OnTargetDisconnected);
+            RegisterDisconnectCallback(proxy, opts.OnTargetDisconnected, ct);
         }
 
         proxy.StartPump();
@@ -156,28 +156,30 @@ public static class BrokerHost
     /// </summary>
     private static void RegisterDisconnectCallback(
         PipeSnoopInspectorProxy proxy,
-        Action onDisconnected)
+        Action onDisconnected,
+        CancellationToken ct)
     {
         // Monitor the proxy in a background task: if it starts throwing SessionNotFound
         // on probe calls, the target has disconnected; fire the callback.
-        _ = MonitorDisconnectAsync(proxy, onDisconnected);
+        _ = MonitorDisconnectAsync(proxy, onDisconnected, ct);
     }
 
     private static async Task MonitorDisconnectAsync(
         PipeSnoopInspectorProxy proxy,
-        Action onDisconnected)
+        Action onDisconnected,
+        CancellationToken ct)
     {
         try
         {
             // Wait a tick to let the pump start.
-            await Task.Delay(100).ConfigureAwait(false);
+            await Task.Delay(100, ct).ConfigureAwait(false);
 
             // Poll until the proxy reports disconnected.
             while (true)
             {
                 try
                 {
-                    await proxy.GetSessionInfoAsync(CancellationToken.None).ConfigureAwait(false);
+                    await proxy.GetSessionInfoAsync(ct).ConfigureAwait(false);
                 }
                 catch (SnoopException ex) when (ex.Code == SnoopErrorCode.SessionNotFound)
                 {
@@ -186,19 +188,23 @@ public static class BrokerHost
                 }
                 catch (OperationCanceledException)
                 {
-                    // Broker shutting down — do not fire callback.
+                    // Broker shutting down (ct fired) — do not fire callback.
                     return;
                 }
                 catch
                 {
-                    // Any other error also means disconnection.
+                    // Any other error also means a genuine pipe disconnection.
                     break;
                 }
 
-                await Task.Delay(500).ConfigureAwait(false);
+                await Task.Delay(500, ct).ConfigureAwait(false);
             }
 
             onDisconnected();
+        }
+        catch (OperationCanceledException)
+        {
+            // Broker shutting down (ct fired via Task.Delay) — do not fire callback.
         }
         catch
         {
