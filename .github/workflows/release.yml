@@ -66,7 +66,11 @@ jobs:
           echo "VERSION=$version" >> $env:GITHUB_OUTPUT
 
       - name: Build Release
-        run: dotnet build Snoop.sln --configuration Release --no-incremental -p:Version=${{ steps.version.outputs.VERSION }}
+        # Note: --no-incremental is deliberately NOT passed here. It maps to MSBuild
+        # /t:Rebuild, which fails on Snoop.GenericInjector.vcxproj (the native C++
+        # project does not define a Rebuild target). Since the runner starts from a
+        # fresh checkout there is no stale output to worry about.
+        run: dotnet build Snoop.sln --configuration Release -p:Version=${{ steps.version.outputs.VERSION }}
 
       # ---------------------------------------------------------------------------
       # Authenticode codesign for Snoop.GenericInjector.dll
