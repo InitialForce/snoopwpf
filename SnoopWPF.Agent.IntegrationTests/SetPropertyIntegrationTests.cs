@@ -306,9 +306,12 @@ public sealed class SetPropertyIntegrationTests : WpfIntegrationTestBase
     }
 
     /// <summary>
-    /// StateUnchanged path: setting a property to its current value returns
-    /// success=false, stateChanged=false, failureReason=StateUnchanged, and a
-    /// suggestion pointing at wpf_inspect_element.
+    /// StateUnchanged path per PRD §7.6 / FX-M10: setting a property to its current
+    /// observable value returns <c>success=true, stateChanged=false,
+    /// failureReason=STATE_UNCHANGED, suggestion=wpf_wait_for_property</c>.
+    ///
+    /// FX2 meta-fix: the test previously asserted the pre-FX-M10 shape (<c>Success=false</c>),
+    /// which contradicted production. Now aligned to the PRD-compliant post-fix shape.
     /// </summary>
     [Test]
     public async Task SetPropertyStateDelta_StateUnchanged_ReturnsStateUnchangedWithSuggestion()
@@ -326,18 +329,18 @@ public sealed class SetPropertyIntegrationTests : WpfIntegrationTestBase
             .SetPropertyAsync(nodeId, "Width", "220", ct: default)
             .ConfigureAwait(false);
 
-        // Now set the same value — should yield StateUnchanged.
+        // Now set the same value — should yield STATE_UNCHANGED.
         var result = await this.Client.Inspector
             .SetPropertyAsync(nodeId, "Width", "220", ct: default)
             .ConfigureAwait(false);
 
         Assert.That(result, Is.Not.Null);
-        Assert.That(result.Success, Is.False, "success must be false when state is unchanged.");
+        Assert.That(result.Success, Is.True, "success must be true on the STATE_UNCHANGED path (FX-M10 / PRD §7.6).");
         Assert.That(result.StateChanged, Is.False, "stateChanged must be false when value did not change.");
         Assert.That(result.FailureReason, Is.EqualTo(FailureReason.StateUnchanged),
-            "failureReason must be StateUnchanged (7).");
-        Assert.That(result.Suggestion, Is.Not.Null, "A suggestion must be provided for StateUnchanged.");
-        Assert.That(result.Suggestion!.Tool, Is.EqualTo("wpf_inspect_element"),
-            "The suggestion tool must be wpf_inspect_element.");
+            "failureReason must be StateUnchanged.");
+        Assert.That(result.Suggestion, Is.Not.Null, "A suggestion must be provided for STATE_UNCHANGED.");
+        Assert.That(result.Suggestion!.Tool, Is.EqualTo("wpf_wait_for_property"),
+            "The suggestion tool must be wpf_wait_for_property per PRD §7.6.");
     }
 }
