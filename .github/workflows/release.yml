@@ -39,6 +39,25 @@ jobs:
       - name: Build Release
         run: dotnet build Snoop.sln --configuration Release --no-incremental -p:Version=${{ steps.version.outputs.VERSION }}
 
+      - name: Test Snoop.Core.Tests
+        run: dotnet test Snoop.Core.Tests/Snoop.Core.Tests.csproj --configuration Release --framework net8.0-windows --no-build --logger "trx;LogFileName=Snoop.Core.Tests-release.trx" --results-directory output/test-results
+
+      - name: Test SnoopWPF.Agent.Tests
+        run: dotnet test SnoopWPF.Agent.Tests/SnoopWPF.Agent.Tests.csproj --configuration Release --framework net8.0-windows --no-build --logger "trx;LogFileName=SnoopWPF.Agent.Tests-release.trx" --results-directory output/test-results
+
+      - name: Test SnoopWPF.Agent.InjectionTests
+        run: dotnet test SnoopWPF.Agent.InjectionTests/SnoopWPF.Agent.InjectionTests.csproj --configuration Release --framework net8.0-windows --no-build --filter "Category!=RequiresInjection" --logger "trx;LogFileName=SnoopWPF.Agent.InjectionTests-release.trx" --results-directory output/test-results
+
+      - name: Test SnoopWPF.Agent.Analyzers.Tests
+        run: dotnet test SnoopWPF.Agent.Analyzers.Tests/SnoopWPF.Agent.Analyzers.Tests.csproj --configuration Release --framework net8.0 --no-build --logger "trx;LogFileName=SnoopWPF.Agent.Analyzers.Tests-release.trx" --results-directory output/test-results
+
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-test-results
+          path: output/test-results
+
       - name: Pack SnoopWPF.Agent.Contracts
         run: >
           dotnet pack SnoopWPF.Agent.Contracts/SnoopWPF.Agent.Contracts.csproj
