@@ -140,6 +140,19 @@ internal static class FailureReasonDescriptor
                 },
             },
 
+            // ── Element disabled (pattern supported but IsEnabled=false) ───────────
+            FailureReason.ElementDisabled => new SuggestionDto
+            {
+                Tool = "wpf_wait_for_property",
+                Args = new List<NameValuePairDto>
+                {
+                    new() { Name = "locator",       Value = locator },
+                    new() { Name = "propertyName",  Value = "IsEnabled" },
+                    new() { Name = "expectedValue", Value = "true" },
+                    new() { Name = "timeoutMs",     Value = "5000" },
+                },
+            },
+
             // ── Process-level failure ───────────────────────────────────────────────
             // NOTE: "broker_launch_target" is an advisory generic name — it is NOT a
             // registered upstream MCP tool.  Consumer-side ISuggestionTranslator

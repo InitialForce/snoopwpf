@@ -197,7 +197,21 @@ public class FailureReasonDescriptorTests
         Assert.That(result.Category, Is.EqualTo(SuggestionCategory.BrokerLifecycle));
     }
 
-    // ── All 13 values are covered (completeness guard) ───────────────────────────
+    // ── ElementDisabled (FX6-C1) ─────────────────────────────────────────────────
+
+    [Test]
+    public void ElementDisabled_ReturnsWaitForIsEnabled()
+    {
+        var result = FailureReasonDescriptor.Suggest(FailureReason.ElementDisabled, SampleLocator);
+
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result!.Tool, Is.EqualTo("wpf_wait_for_property"));
+        AssertArg(result, "propertyName",  "IsEnabled");
+        AssertArg(result, "expectedValue", "true");
+        AssertArg(result, "timeoutMs",     "5000");
+    }
+
+    // ── All 15 values are covered (completeness guard) ───────────────────────────
 
     [Test]
     public void AllEnumValues_ReturnSuggestionOrNull_NoException(
@@ -214,7 +228,9 @@ public class FailureReasonDescriptorTests
             FailureReason.DispatcherBusy,
             FailureReason.ElementOutsideViewport,
             FailureReason.PatternNotSupported,
-            FailureReason.TargetNotRunning)]
+            FailureReason.TargetNotRunning,
+            FailureReason.ElementDisabled,
+            FailureReason.BlobNotFound)]
         FailureReason reason)
     {
         Assert.DoesNotThrow(() => FailureReasonDescriptor.Suggest(reason, SampleLocator));

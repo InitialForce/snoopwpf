@@ -45,6 +45,7 @@ public class SuggestionTranslatorTests
     [TestCase(FailureReason.StateUnchanged)]
     [TestCase(FailureReason.DispatcherBusy)]
     [TestCase(FailureReason.TargetNotRunning)]
+    [TestCase(FailureReason.ElementDisabled)] // FX6-C1: now has a descriptor entry
     public void NonNullReasons_ReturnNonNullSuggestion(FailureReason reason)
     {
         var result = this.translator.Translate(reason, SampleCtx);
@@ -68,18 +69,6 @@ public class SuggestionTranslatorTests
 
         Assert.That(result, Is.Null,
             $"{reason} should return null (no automated remediation)");
-    }
-
-    // ── ElementDisabled — no entry in FailureReasonDescriptor yet ─────────────────
-    // TODO(bd-1we.3.1 / FX6-C1): add a descriptor entry for ElementDisabled so this
-    // test can be promoted to NonNullReasons_ReturnNonNullSuggestion.
-
-    [Test]
-    public void ElementDisabled_DoesNotThrow()
-    {
-        Assert.DoesNotThrow(
-            () => this.translator.Translate(FailureReason.ElementDisabled, SampleCtx),
-            "Translate must not throw for ElementDisabled even though no entry exists yet.");
     }
 
     // ── Empty context (null locator) — no exceptions ──────────────────────────────
