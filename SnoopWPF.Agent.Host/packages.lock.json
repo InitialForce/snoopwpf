@@ -419,6 +419,17 @@
           "Microsoft.Windows.SDK.Win32Metadata": "63.0.31-preview"
         }
       },
+      "ModelContextProtocol.Core": {
+        "type": "Transitive",
+        "resolved": "1.2.0",
+        "contentHash": "x0eQqFKtV30nWP6yVy0d/3RnAKwM14ay1CHnUNb7EpwZEXJJJqjPENYvpzwqi8+8LNMMK/g33WnnLYIf1JGMOg==",
+        "dependencies": {
+          "Microsoft.Extensions.AI.Abstractions": "10.4.1",
+          "Microsoft.Extensions.Logging.Abstractions": "10.0.5",
+          "System.IO.Pipelines": "10.0.5",
+          "System.Net.ServerSentEvents": "10.0.5"
+        }
+      },
       "StyleCop.Analyzers.Unstable": {
         "type": "Transitive",
         "resolved": "1.2.0.556",
@@ -546,18 +557,6 @@
           "Microsoft.Windows.SDK.Win32Docs": "0.1.42-alpha",
           "Microsoft.Windows.SDK.Win32Metadata": "68.0.4-preview",
           "Microsoft.Windows.WDK.Win32Metadata": "0.13.25-experimental"
-        }
-      },
-      "ModelContextProtocol.Core": {
-        "type": "CentralTransitive",
-        "requested": "[1.2.0, )",
-        "resolved": "1.2.0",
-        "contentHash": "x0eQqFKtV30nWP6yVy0d/3RnAKwM14ay1CHnUNb7EpwZEXJJJqjPENYvpzwqi8+8LNMMK/g33WnnLYIf1JGMOg==",
-        "dependencies": {
-          "Microsoft.Extensions.AI.Abstractions": "10.4.1",
-          "Microsoft.Extensions.Logging.Abstractions": "10.0.5",
-          "System.IO.Pipelines": "10.0.5",
-          "System.Net.ServerSentEvents": "10.0.5"
         }
       },
       "System.IO.FileSystem.AccessControl": {

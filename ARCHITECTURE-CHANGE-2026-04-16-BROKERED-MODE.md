@@ -39,11 +39,21 @@ agent (ephemeral in target).
 
 ```csharp
 // Existing (unchanged):
-public static void StartCoLocated(Application app, SnoopAgentOptions opts);
+public static SnoopAgentHandle StartCoLocated(SnoopAgentOptions? options = null);
 
-// New:
-public static void StartBrokered(Application app, string pipeName,
-                                 SnoopAgentOptions opts);
+// New (brokered server — WPF target owns the pipe server):
+public static SnoopAgentHandle StartBrokered(
+    System.Windows.Application app,
+    string pipeName,
+    string sessionToken,
+    SnoopAgentOptions? options = null);
+
+// New (brokered client — WPF target connects to broker-owned pipe):
+public static SnoopAgentHandle StartBrokeredClient(
+    System.Windows.Application app,
+    string pipeName,
+    string sessionToken,
+    SnoopAgentOptions? options = null);
 
 // Existing (unchanged):
 public static void StartInjection(...);  // runtime-loaded, L0 only
