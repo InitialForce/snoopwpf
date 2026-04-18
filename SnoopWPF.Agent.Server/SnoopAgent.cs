@@ -456,7 +456,7 @@ public static class SnoopAgent
             }
 
             int pid = Environment.ProcessId;
-            long startTicks = Process.GetCurrentProcess().StartTime.Ticks;
+            long startTicks = Process.GetCurrentProcess().StartTime.ToUniversalTime().Ticks;
             pipeName = $"motioncatalyst-mcp-{sid}-{pid}-{startTicks}";
         }
 

@@ -270,6 +270,42 @@ public sealed class StartBrokeredServerTests
     }
 
     // -------------------------------------------------------------------------
+    // bd-1a9.75: Auto-generated pipe name must embed UTC ticks
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// The auto-generated pipe name embeds the process StartTime as UTC ticks
+    /// so it is consistent with the session manifest's startTimeTicks field,
+    /// which also uses ToUniversalTime().Ticks.
+    /// </summary>
+    [Test]
+    public async Task StartBrokeredServerAsync_AutoPipeName_EmbedsUtcStartTicks()
+    {
+        await using var handle = await SnoopAgent.StartBrokeredServerAsync(new BrokeredServerSettings())
+            .ConfigureAwait(false);
+
+        Assert.That(handle.PipeName, Is.Not.Null);
+
+        // Format: motioncatalyst-mcp-<sid>-<pid>-<startTimeTicks>
+        // Extract the last segment (the ticks component).
+        var parts = handle.PipeName!.Split('-');
+        Assert.That(parts.Length, Is.GreaterThanOrEqualTo(5),
+            "Auto-generated pipe name must have at least 5 dash-separated segments.");
+
+        string ticksPart = parts[^1];
+        Assert.That(long.TryParse(ticksPart, out long embeddedTicks), Is.True,
+            "Last segment of pipe name must be parseable as a long (ticks).");
+
+        // The embedded ticks must match UTC start time, not local start time.
+        long expectedUtcTicks = System.Diagnostics.Process.GetCurrentProcess()
+            .StartTime.ToUniversalTime().Ticks;
+
+        Assert.That(embeddedTicks, Is.EqualTo(expectedUtcTicks),
+            "Pipe name ticks must equal Process.StartTime.ToUniversalTime().Ticks (UTC), " +
+            "not the local-time .Ticks value.");
+    }
+
+    // -------------------------------------------------------------------------
     // Client-side handshake helper (mirrors StartBrokeredTests pattern)
     // -------------------------------------------------------------------------
 
