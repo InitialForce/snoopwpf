@@ -120,6 +120,71 @@ public class WaitForPropertyToolTests
         Assert.That(ex!.Message, Does.Contain("5000"));
     }
 
+    // ── bd-1a9.20: CONDITION_NOT_MET warning surface ──────────────────────────────
+
+    [Test]
+    public async Task ConditionNotMet_EmitsWarningInJson()
+    {
+        // Arrange: inspector returns conditionMet=false (simulated timeout).
+        var options = new SnoopAgentOptions();
+        var tool = new WaitForPropertyTool(this.fake, options);
+
+        this.fake.ConfigureLocatorDelegate<WaitForPropertyResultDto>(
+            (locator, ct) => Task.FromResult(new WaitForPropertyResultDto
+            {
+                ConditionMet = false,
+                ActualValue = "False",
+                ElapsedMs = 5000,
+                PollCount = 50,
+            }));
+
+        // Act
+        var json = await tool.WaitForPropertyAsync(
+            locator: "type=Button",
+            propertyName: "IsEnabled",
+            expectedValue: "True",
+            timeoutMs: 5_000,
+            presenceExpected: "present",
+            ct: System.Threading.CancellationToken.None);
+
+        // Assert: warnings[] is present and contains CONDITION_NOT_MET (bd-1a9.20 AC).
+        var node = System.Text.Json.Nodes.JsonNode.Parse(json)!;
+        var warnings = node["warnings"]?.AsArray();
+        Assert.That(warnings, Is.Not.Null, "warnings[] must be present when conditionMet=false");
+        Assert.That(warnings!.Count, Is.EqualTo(1));
+        Assert.That(warnings[0]!.GetValue<string>(), Does.StartWith("[CONDITION_NOT_MET]"));
+        Assert.That(warnings[0]!.GetValue<string>(), Does.Contain("IsEnabled"));
+    }
+
+    [Test]
+    public async Task ConditionMet_NoWarningInJson()
+    {
+        // Arrange: inspector returns conditionMet=true (no warning expected).
+        var options = new SnoopAgentOptions();
+        var tool = new WaitForPropertyTool(this.fake, options);
+
+        this.fake.ConfigureLocatorDelegate<WaitForPropertyResultDto>(
+            (locator, ct) => Task.FromResult(new WaitForPropertyResultDto
+            {
+                ConditionMet = true,
+                ActualValue = "True",
+                ElapsedMs = 100,
+                PollCount = 2,
+            }));
+
+        var json = await tool.WaitForPropertyAsync(
+            locator: "type=Button",
+            propertyName: "IsEnabled",
+            expectedValue: "True",
+            timeoutMs: 5_000,
+            presenceExpected: "present",
+            ct: System.Threading.CancellationToken.None);
+
+        // Assert: no warnings when condition was satisfied (bd-1a9.20 AC — omit when empty).
+        var node = System.Text.Json.Nodes.JsonNode.Parse(json)!;
+        Assert.That(node["warnings"], Is.Null, "warnings[] must be absent when conditionMet=true");
+    }
+
     // ── FX6-C2: LocatorParseException mapped to McpException(INVALID_ARGUMENT) ─
 
     [Test]

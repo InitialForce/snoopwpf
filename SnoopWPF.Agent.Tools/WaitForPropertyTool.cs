@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using ModelContextProtocol.Server;
 using SnoopWPF.Agent.Contracts;
+using SnoopWPF.Agent.Engine.Diagnostics;
 
 /// <summary>
 /// MCP tool: wpf_wait_for_property — poll a WPF element property until an expected condition is met.
@@ -45,6 +46,20 @@ public sealed class WaitForPropertyTool(ISnoopInspector inspector, SnoopAgentOpt
         {
             var wpfLocator = WpfLocatorParser.Parse(locator);
             var result = await inspector.WaitForPropertyAsync(wpfLocator, propertyName, expectedValue, timeoutMs, presenceExpected, ct).ConfigureAwait(false);
+
+            if (!result.ConditionMet)
+            {
+                // Emit a non-fatal warning so the LLM knows the wait timed out without
+                // raising an exception.  The response is still returned successfully;
+                // the warning surfaces in the JSON payload via AttachWarnings (bd-1a9.20).
+                SnoopAgentContext.AddWarning(
+                    "CONDITION_NOT_MET",
+                    $"wpf_wait_for_property timed out after {result.ElapsedMs} ms " +
+                    $"({result.PollCount} polls). " +
+                    $"Property '{propertyName}' did not reach expected value within {timeoutMs} ms. " +
+                    "Consider calling wpf_pump_until_idle before retrying.");
+            }
+
             return JsonSerializer.Serialize(result, ToolSerializerOptions.Default);
         });
     }
