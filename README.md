@@ -435,6 +435,7 @@ See [docs/comparison.md](docs/comparison.md) for the full 8-tool comparison matr
 | Security model in depth | [docs/security.md](docs/security.md) |
 | NuGet consumer guide (feed setup, auth, upgrade from 6.x) | [docs/consuming-nuget.md](docs/consuming-nuget.md) |
 | Machine-readable tool surface for AI consumers | [llms.txt](llms.txt) |
+| Future directions (5 concrete extension ideas) | [docs/improvement-ideas.md](docs/improvement-ideas.md) |
 
 ---
 
