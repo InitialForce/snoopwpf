@@ -69,6 +69,9 @@
       <BuildOutputInPackage Include="$(TargetDir)SnoopWPF.Agent.Remote.dll" />
       <BuildOutputInPackage Include="$(TargetDir)SnoopWPF.Agent.Tools.dll" />
       <BuildOutputInPackage Include="$(TargetDir)SnoopWPF.Agent.Engine.dll" />
+      <!-- Engine transitively needs Snoop.Core at runtime; include the DLL in lib/
+           so brokers do not hit FileNotFoundException on first visual-tree call. -->
+      <BuildOutputInPackage Include="$(TargetDir)Snoop.Core.dll" />
     </ItemGroup>
   </Target>
 

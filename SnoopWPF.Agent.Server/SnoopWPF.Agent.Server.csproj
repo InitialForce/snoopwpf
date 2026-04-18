@@ -80,12 +80,17 @@
     <Target Name="PackReferencedProjectOutputs">
         <!-- Collect the output DLL (and PDB) from each PrivateAssets=all ProjectReference.
              $(TargetDir) is the resolved per-TFM output folder, e.g.
-             C:\work\snoopwpf\bin\Release\net8.0-windows\. -->
+             C:\work\snoopwpf\bin\Release\net8.0-windows\.
+             Snoop.Core.dll comes in transitively via Engine → Snoop.Core and must ship
+             in lib/ alongside the agent DLLs — without it consumers hit
+             FileNotFoundException("Snoop.Core") the first time a wpf_* tool fires
+             and the Engine code path tries to walk the visual tree. -->
         <ItemGroup>
             <BuildOutputInPackage Include="$(TargetDir)SnoopWPF.Agent.Contracts.dll" />
             <BuildOutputInPackage Include="$(TargetDir)SnoopWPF.Agent.Engine.dll" />
             <BuildOutputInPackage Include="$(TargetDir)SnoopWPF.Agent.Tools.dll" />
             <BuildOutputInPackage Include="$(TargetDir)SnoopWPF.Agent.Injection.dll" />
+            <BuildOutputInPackage Include="$(TargetDir)Snoop.Core.dll" />
         </ItemGroup>
     </Target>
 

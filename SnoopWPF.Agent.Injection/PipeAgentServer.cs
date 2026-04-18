@@ -242,15 +242,17 @@ public sealed class PipeAgentServer : IDisposable
                         },
                     };
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
+                    System.Diagnostics.Trace.TraceError(
+                        $"[PipeAgentServer] Unhandled exception in '{request.Method}': {ex.GetType().FullName}: {ex.Message}{System.Environment.NewLine}{ex.StackTrace}");
                     response = new PipeResponse
                     {
                         Id = requestId,
                         Error = new PipeErrorPayload
                         {
                             Code = "InternalError",
-                            Message = "An internal error occurred.",
+                            Message = $"An internal error occurred: {ex.GetType().Name}: {ex.Message}",
                         },
                     };
                 }
