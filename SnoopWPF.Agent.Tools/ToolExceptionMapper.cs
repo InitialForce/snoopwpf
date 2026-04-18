@@ -1,10 +1,14 @@
 namespace SnoopWPF.Agent.Tools;
 
 using System;
+using System.Collections.Generic;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using SnoopWPF.Agent.Contracts;
+using SnoopWPF.Agent.Engine.Diagnostics;
 
 /// <summary>
 /// Wraps tool-handler delegates to ensure that all exception types are mapped to
@@ -32,8 +36,15 @@ public static class ToolExceptionMapper
     /// Executes <paramref name="handler"/> and maps any thrown exception to
     /// <see cref="McpException"/> using the rules defined on <see cref="ToolExceptionMapper"/>.
     /// </summary>
+    /// <remarks>
+    /// Before invoking <paramref name="handler"/> a fresh <see cref="SnoopAgentContext"/> scope
+    /// is opened.  After the handler returns successfully, accumulated warnings are drained and,
+    /// when non-empty, injected into the returned JSON object as a top-level <c>warnings</c>
+    /// array.  Each element is a string of the form <c>[CODE] message</c>.  When no warnings
+    /// were emitted the JSON payload is returned unchanged.
+    /// </remarks>
     /// <param name="handler">The async tool-handler delegate returning a string result.</param>
-    /// <returns>The string result of the handler.</returns>
+    /// <returns>The string result of the handler, optionally augmented with a <c>warnings</c> field.</returns>
     /// <exception cref="McpException">
     /// Thrown when <paramref name="handler"/> throws an exception that maps to a known error code.
     /// </exception>
@@ -44,9 +55,12 @@ public static class ToolExceptionMapper
             throw new ArgumentNullException(nameof(handler));
         }
 
+        using var scope = SnoopAgentContext.BeginScope();
+
         try
         {
-            return await handler().ConfigureAwait(false);
+            var result = await handler().ConfigureAwait(false);
+            return AttachWarnings(result, SnoopAgentContext.DrainWarnings());
         }
         catch (McpException)
         {
@@ -91,6 +105,46 @@ public static class ToolExceptionMapper
             // FX6-A4: unwrap AggregateException and recurse on first inner exception.
             throw MapAggregateException(aex);
         }
+    }
+
+    /// <summary>
+    /// Injects accumulated <paramref name="warnings"/> into the JSON payload as a top-level
+    /// <c>warnings</c> array (strings of the form <c>[CODE] message</c>).
+    /// Returns <paramref name="json"/> unchanged when <paramref name="warnings"/> is empty or
+    /// when the payload is not a JSON object (e.g. a plain string or array).
+    /// </summary>
+    internal static string AttachWarnings(string json, IReadOnlyList<AgentWarning> warnings)
+    {
+        if (warnings.Count == 0)
+        {
+            return json;
+        }
+
+        // Only augment JSON object payloads.  Non-object responses (rare) are returned
+        // as-is to avoid breaking downstream deserialisers.
+        JsonNode? node;
+        try
+        {
+            node = JsonNode.Parse(json);
+        }
+        catch (JsonException)
+        {
+            return json;
+        }
+
+        if (node is not JsonObject obj)
+        {
+            return json;
+        }
+
+        var warningStrings = new JsonArray();
+        foreach (var w in warnings)
+        {
+            warningStrings.Add(JsonValue.Create($"[{w.Code}] {w.Message}"));
+        }
+
+        obj["warnings"] = warningStrings;
+        return obj.ToJsonString(ToolSerializerOptions.Default);
     }
 
     /// <summary>
