@@ -20,18 +20,21 @@ public sealed class BrokeredServerHandle : IAsyncDisposable, IDisposable
 {
     private readonly CancellationTokenSource cts;
     private readonly Task listenerTask;
+    private readonly ManifestHandle? manifestHandle;
     private int disposedFlag;
 
     internal BrokeredServerHandle(
         string pipeName,
         string sessionToken,
         CancellationTokenSource cts,
-        Task listenerTask)
+        Task listenerTask,
+        ManifestHandle? manifestHandle = null)
     {
         this.PipeName = pipeName ?? throw new ArgumentNullException(nameof(pipeName));
         this.SessionToken = sessionToken ?? throw new ArgumentNullException(nameof(sessionToken));
         this.cts = cts ?? throw new ArgumentNullException(nameof(cts));
         this.listenerTask = listenerTask ?? throw new ArgumentNullException(nameof(listenerTask));
+        this.manifestHandle = manifestHandle;
     }
 
     /// <summary>
@@ -83,6 +86,9 @@ public sealed class BrokeredServerHandle : IAsyncDisposable, IDisposable
 
         this.cts.Dispose();
 
+        // Best-effort manifest cleanup; errors are swallowed inside ManifestHandle.Dispose().
+        this.manifestHandle?.Dispose();
+
         // Null security-sensitive references so GC can collect them sooner.
         this.PipeName = null;
         this.SessionToken = null;
@@ -112,6 +118,9 @@ public sealed class BrokeredServerHandle : IAsyncDisposable, IDisposable
         }
 
         this.cts.Dispose();
+
+        // Best-effort manifest cleanup; errors are swallowed inside ManifestHandle.Dispose().
+        this.manifestHandle?.Dispose();
 
         this.PipeName = null;
         this.SessionToken = null;

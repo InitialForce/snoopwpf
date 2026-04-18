@@ -480,7 +480,24 @@ public static class SnoopAgent
             () => RunBrokeredServerListenerAsync(pipeName, sessionToken, settings, linkedCts.Token),
             linkedCts.Token);
 
-        var handle = new BrokeredServerHandle(pipeName, sessionToken, linkedCts, listenerTask);
+        // Write the session manifest AFTER the pipe listener is started (R4 invariant: pipe-first).
+        // ManifestHandle disposal is wired to linkedCts cancellation so the manifest file is
+        // cleaned up when the handle is disposed or the lease expires.
+        ManifestHandle? manifestHandle = null;
+        try
+        {
+            manifestHandle = SessionManifestWriter.Write(pipeName, sessionToken);
+        }
+        catch (Exception ex)
+        {
+            // Manifest write failure is non-fatal: the pipe is already listening.
+            // Log and continue so the broker can still connect (it will fail manifest validation).
+            Trace.TraceWarning(
+                "SnoopWPF.Agent Mode 2: session manifest write failed (non-fatal): {0}: {1}",
+                ex.GetType().Name, ex.Message);
+        }
+
+        var handle = new BrokeredServerHandle(pipeName, sessionToken, linkedCts, listenerTask, manifestHandle);
 
         Trace.TraceInformation(
             "SnoopWPF.Agent Mode 2 pipe server started: pipe='{0}'.", pipeName);
