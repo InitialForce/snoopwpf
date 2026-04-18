@@ -401,8 +401,10 @@ public static class SnoopAgent
     /// file (bd-1a9.24) so the broker can discover and connect to the pipe.
     /// </para>
     /// <para>
-    /// The pipe uses <see cref="PipeOptions.CurrentUserOnly"/> which causes Windows to set
-    /// a DACL granting access only to the current user SID with no inherited ACEs.
+    /// The pipe is created with a hardened DACL via <see cref="NamedPipeServerStreamAcl.Create"/>:
+    /// a protected <see cref="System.IO.Pipes.PipeSecurity"/> with
+    /// <c>SetAccessRuleProtection(isProtected: true, preserveInheritance: false)</c> and a
+    /// single ALLOW ACE for the current user SID (FullControl).  No inherited ACEs are present.
     /// A broker running as a different user will receive an <c>ACCESS_DENIED</c> error when
     /// calling <c>CreateFile</c> on the pipe.
     /// </para>
@@ -488,12 +490,9 @@ public static class SnoopAgent
 
     /// <summary>
     /// Background listener for Mode 2 (warm-attach) server role.
-    /// Creates a <see cref="NamedPipeServerStream"/> with <c>CurrentUserOnly</c> ACL,
-    /// waits for exactly one broker connection, then performs the HMAC handshake (reusing
-    /// <see cref="McpServerSetup.PerformPipeHandshakeAsync"/>).
-    /// After a successful handshake the MCP session is run via
-    /// <see cref="McpServerSetup.RunBrokeredPipeAsync"/> on the <paramref name="pipeName"/>
-    /// (which re-binds to the same pipe name for the reconnect loop).
+    /// Delegates pipe creation and handshake to <see cref="BrokerPipeServer"/>, which
+    /// applies a hardened DACL (protected, single ALLOW ACE for current user SID, no
+    /// inherited ACEs) and enforces the ALREADY_ATTACHED constraint (R7).
     /// </summary>
     private static async Task RunBrokeredServerListenerAsync(
         string pipeName,
@@ -503,58 +502,32 @@ public static class SnoopAgent
     {
         _ = settings; // AgentOptions forwarded in bd-1a9.23 when MCP session is wired.
 
-        // PipeOptions.CurrentUserOnly sets a DACL that allows only the current user SID
-        // with no inherited ACEs — satisfying the bead DACL acceptance criteria.
-        // The pipe is created here so that the pipe name exists on the system as soon
-        // as StartBrokeredServerAsync returns the handle, allowing the manifest writer
-        // (bd-1a9.24) to embed it immediately.
-        using var pipeServer = new NamedPipeServerStream(
-            pipeName,
-            PipeDirection.InOut,
-            maxNumberOfServerInstances: 1,
-            PipeTransmissionMode.Byte,
-            PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+        // BrokerPipeServer creates the pipe with:
+        //   - NamedPipeServerStreamAcl.Create (security set atomically at creation)
+        //   - PipeSecurity with SetAccessRuleProtection(true, false) — no inherited ACEs
+        //   - Single ALLOW ACE for current user SID (FullControl)
+        // After the first authenticated client connects, it starts an ALREADY_ATTACHED
+        // guard loop that rejects any subsequent connection with a structured error frame.
+        using var brokerPipeServer = new BrokerPipeServer(pipeName, sessionToken);
 
-        Trace.TraceInformation("SnoopWPF.Agent Mode 2 pipe server waiting for broker connection on '{0}'.", pipeName);
-
-        try
-        {
-            await pipeServer.WaitForConnectionAsync(ct).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            // Dispose or external cancellation before broker arrived — exit cleanly.
-            Trace.TraceInformation("SnoopWPF.Agent Mode 2 pipe server: listener cancelled before broker connected.");
-            return;
-        }
-
-        // Reuse the existing HMAC handshake logic (identical wire protocol to Mode 1).
-        // Server speaks first: sends nonce challenge, reads HMAC proof response.
-        bool handshakeOk = await McpServerSetup.PerformPipeHandshakeAsync(pipeServer, sessionToken, ct)
+        using var authenticatedPipe = await brokerPipeServer
+            .AcceptAuthenticatedClientAsync(ct)
             .ConfigureAwait(false);
 
-        if (!handshakeOk)
+        if (authenticatedPipe is null)
         {
-            Trace.TraceWarning("SnoopWPF.Agent Mode 2 pipe server: handshake failed. Connection rejected.");
+            // Handshake failed or cancelled — listener exits cleanly.
+            Trace.TraceInformation(
+                "SnoopWPF.Agent Mode 2 pipe server: listener exited (handshake failed or cancelled).");
             return;
         }
 
         Trace.TraceInformation("SnoopWPF.Agent Mode 2 pipe server: broker authenticated. Handing off to MCP session.");
 
-        // The pipe server stream is now authenticated. Dispose it here so the OS pipe
-        // handle is released; RunBrokeredPipeAsync will re-create a listener on the same
-        // pipe name for the reconnect loop (broker crash-and-restart support).
-        // The MCP session uses the reconnect loop's own NamedPipeServerStream instances.
-        pipeServer.Dispose();
-
-        // RunBrokeredPipeAsync owns the reconnect loop and MCP session lifecycle.
-        // inspector is supplied by the caller of StartBrokered (bd-1a9.23 wires the WPF app).
-        // For the skeleton (this bead), we pass a sentinel null; production callers
-        // use the overload that provides an ISnoopInspector.
-        // NOTE: RunBrokeredPipeAsync requires an ISnoopInspector; Mode 2 production wiring
-        // will be completed in bd-1a9.23 (settings-driven auto-listen on Application.Startup).
-        // This listener completes its duty after handshake validation — the reconnect loop
-        // entry point is intentionally deferred to the next bead.
+        // The authenticated pipe stream is now ready. Dispose it so the OS handle is
+        // released; RunBrokeredPipeAsync (bd-1a9.23) will re-create the listener on the
+        // same pipe name for the reconnect loop.
+        // NOTE: Mode 2 production wiring (inspector handoff) is completed in bd-1a9.23.
         Trace.TraceInformation(
             "SnoopWPF.Agent Mode 2 pipe server: handshake complete (MCP session wiring deferred to bd-1a9.23).");
     }
