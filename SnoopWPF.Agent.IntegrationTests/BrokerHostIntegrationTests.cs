@@ -351,6 +351,14 @@ public sealed class BrokerHostIntegrationTests
         public Task<PollChangesResultDto> PollChangesAsync(long sinceVersion, WpfLocator? rootLocator, CancellationToken ct) => throw new NotImplementedException();
 
         public Task<PumpUntilIdleResultDto> PumpUntilIdleAsync(int timeoutMs, IReadOnlyList<string>? resources, CancellationToken ct) => throw new NotImplementedException();
+
+        public Task<StateDeltaDto> DoubleClickAsync(string nodeId, CancellationToken ct) => throw new NotImplementedException();
+
+        public Task<StateDeltaDto> SelectItemByScrollAsync(string nodeId, int targetIndex, CancellationToken ct) => throw new NotImplementedException();
+
+        public Task<StateDeltaDto> SelectItemByIndexAsync(string nodeId, int index, CancellationToken ct) => throw new NotImplementedException();
+
+        public Task<List<ListItemDto>> GetListItemsAsync(string nodeId, CancellationToken ct) => throw new NotImplementedException();
 #pragma warning restore SA1201
     }
 }
