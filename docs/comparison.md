@@ -198,7 +198,7 @@ Symbols: ✅ full support / ⚠️ partial or workaround needed / ❌ not suppor
 | Keyboard input | ✅ [7] | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Click / invoke | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | List virtualization handling | ✅ [8] | ❌ | ⚠️ [9] | ⚠️ [9] | ⚠️ [9] | ⚠️ [9] | ❌ | ⚠️ [9] |
-| Hot-reload friendly | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | ✅ | ❌ |
+| Hot-reload friendly | ✅ [11] | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | ✅ | ❌ |
 | MCP native | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Protocol type | MCP stdio/pipe | None (GUI) | .NET API | COM API | WebDriver | WebDriver | WebDriver | .NET API |
 | In-proc vs out-of-proc | Both [10] | Out (GUI) | Out | Out | Out | Out | Out | Out |
@@ -240,11 +240,15 @@ Symbols: ✅ full support / ⚠️ partial or workaround needed / ❌ not suppor
    (CheckBox/RadioButton), and `wpf_set_slider_value` (Slider/RangeBase) — all implemented
    with `SetCurrentValue` at the DP layer. Raw Win32 keystroke simulation (`SendInput`,
    `PostMessage WM_KEYDOWN`) is not provided; use FlaUI's `Keyboard` class for that need.
-8. `wpf_select_item` with an integer index identifier calls `ItemContainerGenerator.ContainerFromIndex`
-   followed by `BringIntoView` to materialize the virtualized container. The item is then
-   selected via `SetCurrentValue` on `Selector.SelectedItemProperty`. Inspection-without-selection
-   of virtualized items (reading properties from an off-screen item without changing selection)
-   is not yet supported — see [honest weaknesses](#honest-weaknesses).
+8. snoopwpf handles virtualization via dedicated tools: `wpf_select_item` accepts a zero-based
+   integer `identifier` (e.g. `"500"`) and calls `ItemContainerGenerator.ContainerFromIndex`
+   followed by `BringIntoView` to materialize the virtualized container, then sets selection via
+   `SetCurrentValue` on `Selector.SelectedItemProperty`; `wpf_select_item_by_scroll` forces
+   realization by scrolling to the target index before selecting (preferred when the caller has
+   only an index and needs explicit scroll control); `wpf_select_item_by_index` is the explicit
+   integer-index alias when you want to avoid the string-identifier form. Inspection-without-
+   selection of virtualized items (reading properties from an off-screen item without changing
+   selection) is not yet supported — see [honest weaknesses](#honest-weaknesses).
 9. UIA cannot enumerate items that have not been realized by the `VirtualizingStackPanel` (or
    other virtualizing panel). The automation tree for a 10,000-item `ListBox` reports only the
    currently visible item containers. Workarounds involve programmatic scrolling to force
@@ -252,7 +256,17 @@ Symbols: ✅ full support / ⚠️ partial or workaround needed / ❌ not suppor
 10. NuGet co-located mode is in-proc (agent runs in the same process as the app, shares the
     WPF Dispatcher). Injection mode and brokered mode are out-of-proc (the `snoop-mcp.exe`
     injector loads into the target process address space, but the MCP server transport boundary
-    is a named pipe to the external host).
+    is a named pipe to the external host). snoopwpf supports three brokered sub-modes:
+    `StartBrokered` (target=client, broker=server, stdin token), `StartBrokeredClient` (legacy
+    alias), and `StartBrokeredServerAsync` (target=server, broker=client, manifest-based).
+    Mode-dependent features — hot-reload friendliness, source-code requirement, third-party-app
+    support — vary by sub-mode; see footnote [11] and the architecture docs for details.
+11. Hot-reload behavior is mode-dependent. In NuGet co-located mode, a `dotnet watch` rebuild
+    terminates and restarts the host process, requiring agent reconnection. In brokered mode
+    (`StartBrokeredServerAsync`), the broker process is separate from the target; the broker
+    session survives target restarts and can reattach automatically, giving a warm-attach
+    advantage over co-located mode. This makes brokered mode the preferred attach strategy for
+    development workflows where the app is rebuilt frequently.
 
 ---
 
@@ -381,6 +395,12 @@ Microsoft's own guidance directing users to Appium Windows Driver.
 If you find a factual error — for example if a tool you use has added a capability listed as
 ❌ — please open an issue against [InitialForce/snoopwpf](https://github.com/InitialForce/snoopwpf)
 with a link to the relevant documentation or release notes.
+
+> **Versioning note:** Alternative version numbers (FlaUI 4.x June 2025, upstream Snoop 6.0.0
+> May 2025, WinAppDriver 1.2.1 2020, Appium Windows Driver v3.x 2025) reflect the package
+> metadata at docs-write time. Check the linked GitHub release pages for current versions.
+> WinAppDriver has had no commits since 2020 as of this writing; that characterization is
+> time-stable, but other projects may have released newer versions.
 
 ## Citations
 
