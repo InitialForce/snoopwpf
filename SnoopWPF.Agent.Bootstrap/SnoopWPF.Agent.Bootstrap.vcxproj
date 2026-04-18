@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SnoopWPF.Agent.Bootstrap.vcxproj
+  CoreCLR bootstrap DLL — Path A spike (bd-1a9.32).
+  Uses hostfxr/nethost headers from Microsoft.NETCore.App.Host.win-x64.
+  x64 only (MotionCatalyst target is 64-bit).
+-->
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <PropertyGroup>
+    <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
+    <Platform Condition="'$(Platform)' == ''">x64</Platform>
+    <ResolveNuGetPackages>false</ResolveNuGetPackages>
+  </PropertyGroup>
+
+  <!-- Dotnet SDK build workarounds (prevents NU1503 / SDK TFM mismatch) -->
+  <Target Name="Build" />
+  <Target Name="VSTest" />
+  <Target Name="_IsProjectRestoreSupported" Returns="@(_ValidProjectsForRestore)">
+    <ItemGroup>
+      <_ValidProjectsForRestore Include="$(MSBuildProjectFullPath)" />
+    </ItemGroup>
+  </Target>
+  <Target Name="Restore" />
+
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>16.0</VCProjectVersion>
+    <ProjectGuid>{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>SnoopWPFAgentBootstrap</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <ProjectName>SnoopWPF.Agent.Bootstrap</ProjectName>
+    <IntDir>obj\$(Configuration)\$(Platform)\</IntDir>
+    <OutDir>..\bin\$(Configuration)\</OutDir>
+    <OutputPath>..\bin\$(Configuration)\</OutputPath>
+    <TargetName>$(ProjectName)</TargetName>
+
+    <!-- Path to nethost/hostfxr headers from the dotnet host pack.
+         Using the highest net10 version available. -->
+    <DotNetHostPackPath>C:\Program Files\dotnet\packs\Microsoft.NETCore.App.Host.win-x64\10.0.5\runtimes\win-x64\native</DotNetHostPackPath>
+  </PropertyGroup>
+
+  <Import Condition="Exists('$(VCTargetsPath)\Microsoft.Cpp.Default.props')" Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+
+  <PropertyGroup Label="Configuration">
+    <!-- Auto-detect latest installed toolset (v142 → v143 → v144 → v145) -->
+    <v143_Installed Condition="Exists('$(VCTargetsPath)\Platforms\x64\PlatformToolsets\v143\Toolset.props')">true</v143_Installed>
+    <v144_Installed Condition="Exists('$(VCTargetsPath)\Platforms\x64\PlatformToolsets\v144\Toolset.props')">true</v144_Installed>
+    <v145_Installed Condition="Exists('$(VCTargetsPath)\Platforms\x64\PlatformToolsets\v145\Toolset.props')">true</v145_Installed>
+
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset Condition="'$(v143_Installed)' == 'true'">v143</PlatformToolset>
+    <PlatformToolset Condition="'$(v144_Installed)' == 'true'">v144</PlatformToolset>
+    <PlatformToolset Condition="'$(v145_Installed)' == 'true'">v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)'=='Debug'" Label="Configuration">
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <WholeProgramOptimization>false</WholeProgramOptimization>
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+
+  <Import Condition="Exists('$(VCTargetsPath)\Microsoft.Cpp.props')" Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <ConformanceMode>true</ConformanceMode>
+      <SDLCheck>true</SDLCheck>
+      <BufferSecurityCheck>true</BufferSecurityCheck>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <RuntimeLibrary Condition="'$(Configuration)'=='Release'">MultiThreaded</RuntimeLibrary>
+      <RuntimeLibrary Condition="'$(Configuration)'=='Debug'">MultiThreadedDebug</RuntimeLibrary>
+      <Optimization Condition="'$(Configuration)'=='Release'">MaxSpeed</Optimization>
+      <Optimization Condition="'$(Configuration)'=='Debug'">Disabled</Optimization>
+      <PreprocessorDefinitions>SNOOPAGENTBOOTSTRAP_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(Configuration)'=='Release'">NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(Configuration)'=='Debug'">_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <!-- nethost.h requires NETHOST_USE_AS_STATIC to use static lib; omit for DLL import -->
+      <AdditionalIncludeDirectories>$(DotNetHostPackPath);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <!-- Disable C4100 (unreferenced param) and C4267 (size_t → int) for header-only SDK code -->
+      <DisableSpecificWarnings>4100;4267</DisableSpecificWarnings>
+      <!-- Precompiled header -->
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableUAC>false</EnableUAC>
+      <!-- Link against nethost.lib (dynamic import) from the same host pack -->
+      <AdditionalLibraryDirectories>$(DotNetHostPackPath);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <!-- nethost.lib = import lib for nethost.dll.
+           shlwapi.lib for PathFileExistsW. -->
+      <AdditionalDependencies>nethost.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Release'">
+    <ClCompile>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+    </ClCompile>
+    <Link>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <!-- pch.cpp must NOT use the precompiled header — it creates it -->
+  <ItemGroup>
+    <ClCompile Include="pch.cpp">
+      <PrecompiledHeader>Create</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="dllmain.cpp" />
+    <ClCompile Include="SnoopAgentStart.cpp" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ClInclude Include="framework.h" />
+    <ClInclude Include="pch.h" />
+  </ItemGroup>
+
+  <Import Condition="Exists('$(VCTargetsPath)\Microsoft.Cpp.targets')" Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+
+</Project>

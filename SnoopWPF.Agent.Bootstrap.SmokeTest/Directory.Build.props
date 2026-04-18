@@ -1,0 +1,14 @@
+<!-- Stops MSBuild from walking up to the repo-root Directory.Build.props,
+     which enables StyleCop/CA as errors. This spike smoke-test relaxes those rules. -->
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>false</CentralPackageTransitivePinningEnabled>
+    <RestoreLockedMode>false</RestoreLockedMode>
+    <!-- Treat StyleCop/CA as warnings, not errors, for spike code -->
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <NoWarn>$(NoWarn);SA1025;SA1210;SA1400;SA1513;SA1633;CA2101;NU1503</NoWarn>
+    <!-- Disable StyleCop entirely for the smoke test -->
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+</Project>
