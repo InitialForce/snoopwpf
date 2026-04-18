@@ -13,69 +13,64 @@ target) and an **agent** (runs inside the target WPF process, owns all property 
 and mutations). Three deployment modes exist: **co-located** (NuGet embedded, agent IS
 the MCP server on stdio), **injection** (agent is injected via `CreateRemoteThread` +
 hostfxr into an already-running process), and **brokered** (target calls
-`StartBrokeredServer` at startup, broker discovers it via a manifest file and proxies
-all calls over a named pipe). The agent exposes 29 `wpf_*` MCP tools covering the
-visual tree, properties, bindings, resources, triggers, screenshots, input simulation,
-and diagnostics.
+`StartBrokeredServerAsync` at startup, broker discovers it via a manifest file and
+proxies all calls over a named pipe). The agent exposes 33 `wpf_*` MCP tools covering
+the visual tree, properties, bindings, resources, triggers, screenshots, input
+simulation, and diagnostics.
 
 ---
 
 ## Project Inventory
 
-| # | Project | Artifact | Role |
-|---|---------|----------|------|
-| 1 | `SnoopWPF.Agent.Bootstrap` | `SnoopWPF.Agent.Bootstrap.dll` (native x64 C++) | Native DLL whose `DllMain` is a no-op. Exports `SnoopAgentStart`, invoked via `CreateRemoteThread`. Uses hostfxr/nethost to load CoreCLR and call the managed injection entry point without starting a second CLR instance. |
-| 2 | `SnoopWPF.Agent.Injection` | `SnoopWPF.Agent.Injection.dll` (net462/net6/net8) | Managed injection entry. `SnoopAgentEntryPoint.Start(settingsFile)` installs `AppDomain.AssemblyResolve` (Snoop-prefix filter), reads pipe name and token from the temp settings file, deletes the file, zeroes the token, then opens the pipe client and completes the HMAC-SHA256 handshake. |
-| 3 | `SnoopWPF.Agent.Engine` | Class library (multi-targeted) | Core WPF introspection engine. `SnoopInspector` is a partial class across Tree, Properties, Bindings, Resources, Triggers, Screenshots, Wait, and Input files. Owns `TypeConverterTable` (whitelist for mutation), `NodeRegistry`, and the `AuditLogWriter` (HMAC-chained JSONL, net6+ only). |
-| 4 | `SnoopWPF.Agent.Server` | Published as `InitialForce.SnoopAgent` NuGet | Public embedding API. `SnoopAgent.StartCoLocated()` redirects `Console.Out` to `TextWriter.Null` and starts the MCP server on stdio. `SnoopAgent.StartBrokeredServer()` opens a named pipe and atomically writes a session manifest. |
-| 5 | `SnoopWPF.Agent.Tools` | Class library | 29 `[McpServerTool]`-annotated classes (`wpf_*`). Each delegates to `ISnoopInspector`. Error mapping via `ToolExceptionMapper`. |
-| 6 | `SnoopWPF.Agent.Contracts` | Class library | Shared interfaces and DTOs: `ISnoopInspector`, `ISuggestionTranslator`, `HandshakeChallenge`, `HandshakeResponse`, `BrokerHandshakePayload`, `WpfLocator`, `SessionPolicy`, `SessionMode`, `SnoopAgentOptions`, `SnoopErrorCode`. No WPF dependency. |
-| 7 | `SnoopWPF.Agent.BrokerHost` | NuGet lib (broker-side) | `BrokerHost.Start(transport, opts, ct)` — starts a broker MCP server on an arbitrary transport and proxies all `wpf_*` calls across the named pipe to the agent. Consumed by external MCP servers (e.g. the MotionCatalyst UI host). |
-| 8 | `SnoopWPF.Agent.Remote` | Class library | Host/broker-side pipe proxy. `PipeSnoopInspectorProxy` implements `ISnoopInspector` by serialising calls over the pipe. `PipeConnection` owns pipe ACL setup, nonce generation, and HMAC verification. `FramedJsonTransport` handles length-prefixed JSON frames. |
-| 9 | `SnoopWPF.Agent.Host` | `snoop-mcp.exe` | MCP host for injection mode. Orchestrates injection (generates pipe name and token, writes settings file, invokes `Snoop.InjectorLauncher`), creates `PipeConnection`, then proxies MCP stdio to the injected agent. |
-| 10 | `SnoopWPF.Agent.Cli` | `snoop-cli.exe` | Human-facing CLI over the same pipeline. Verbs: `list`, `tree`, `props`, `inspect`, `find`, `diag`, `screenshot`. |
-| 11 | `SnoopWPF.Agent.Analyzers` | Roslyn analyzer NuGet | `SWPF0001` (Error: `Console.Write*` in an `[McpStdioEntrypoint]` type), `NodeId0010`, `PathLocator0011`. Enforced at compile time. |
-| 12 | `SnoopWPF.Agent.VeriGuiHarness` | CI test harness | Parses scenario `.md` files, executes against a live `SnoopAgent`, and measures action-success-rate, repeat-on-unchanged-state-rate, and p95 latency. Fails CI when thresholds are breached. |
+| # | Project | Artifact | Published | Role |
+|---|---------|----------|-----------|------|
+| 1 | `SnoopWPF.Agent.Bootstrap` | `SnoopWPF.Agent.Bootstrap.dll` (native x64 C++) | No | Native DLL whose `DllMain` is a no-op. Exports `SnoopAgentStart`, invoked via `CreateRemoteThread`. Uses hostfxr/nethost to load CoreCLR and call the managed injection entry point without starting a second CLR instance. |
+| 2 | `SnoopWPF.Agent.Injection` | `SnoopWPF.Agent.Injection.dll` (net462/net6/net8) | No | Managed injection entry. `SnoopAgentEntryPoint.Start(settingsFile)` installs `AppDomain.AssemblyResolve` (Snoop-prefix filter), reads pipe name and token from the temp settings file, deletes the file, zeroes the token, then opens the pipe client and completes the HMAC-SHA256 handshake. |
+| 3 | `SnoopWPF.Agent.Engine` | Class library (multi-targeted) | **No** (`IsPackable=false`) | Core WPF introspection engine. `SnoopInspector` is a partial class across Tree, Properties, Bindings, Resources, Triggers, Screenshots, Wait, and Input files. Owns `TypeConverterTable` (whitelist for mutation), `NodeRegistry`, and the `AuditLogWriter` (HMAC-chained JSONL, net6+ only). |
+| 4 | `SnoopWPF.Agent.Server` | Published as `InitialForce.SnoopAgent` NuGet | **Yes** | Public embedding API. `SnoopAgent.StartCoLocated()` redirects `Console.Out` to `TextWriter.Null` and starts the MCP server on stdio. `SnoopAgent.StartBrokeredServerAsync()` opens a named pipe and atomically writes a session manifest. `SnoopAgent.StartBrokered()` is the spawn variant (broker creates pipe, target reads token from stdin). |
+| 5 | `SnoopWPF.Agent.Tools` | Class library | **No** (`IsPackable=false`) | 33 `[McpServerTool]`-annotated classes (`wpf_*`). Each delegates to `ISnoopInspector`. Error mapping via `ToolExceptionMapper`. |
+| 6 | `SnoopWPF.Agent.Contracts` | Class library | **Yes** | Shared interfaces and DTOs: `ISnoopInspector`, `ISuggestionTranslator`, `HandshakeChallenge`, `HandshakeResponse`, `BrokerHandshakePayload`, `WpfLocator`, `SessionPolicy`, `SessionMode`, `SnoopAgentOptions`, `SnoopErrorCode`. No WPF dependency. |
+| 7 | `SnoopWPF.Agent.BrokerHost` | NuGet lib (broker-side) | **Yes** | `BrokerHost.Start(transport, opts, ct)` — starts a broker MCP server on an arbitrary transport and proxies all `wpf_*` calls across the named pipe to the agent. Consumed by external MCP servers (e.g. the MotionCatalyst UI host). |
+| 8 | `SnoopWPF.Agent.Remote` | Class library | **Yes** | Host/broker-side pipe proxy. `PipeSnoopInspectorProxy` implements `ISnoopInspector` by serialising calls over the pipe. `PipeConnection` owns pipe ACL setup, nonce generation, and HMAC verification. `FramedJsonTransport` handles length-prefixed JSON frames. |
+| 9 | `SnoopWPF.Agent.Host` | `snoop-mcp.exe` | No | MCP host for injection mode. Orchestrates injection (generates pipe name and token, writes settings file, invokes `Snoop.InjectorLauncher`), creates `PipeConnection`, then proxies MCP stdio to the injected agent. |
+| 10 | `SnoopWPF.Agent.Cli` | `snoop-cli.exe` | No | Human-facing CLI over the same pipeline. Verbs: `list`, `tree`, `props`, `inspect`, `find`, `diag`, `screenshot`. |
+| 11 | `SnoopWPF.Agent.Analyzers` | Roslyn analyzer NuGet | **Yes** | `SWPF0001` (Error: `Console.Write*` in an `[McpStdioEntrypoint]` type), `NodeId0010`, `PathLocator0011`. Enforced at compile time. |
+| 12 | `SnoopWPF.Agent.VeriGuiHarness` | CI test harness | No | Parses scenario `.md` files, executes against a live `SnoopAgent`, and measures action-success-rate, repeat-on-unchanged-state-rate, and p95 latency. Fails CI when thresholds are breached. |
+
+**Published NuGet packages (5):** `InitialForce.SnoopAgent` (Server), `InitialForce.SnoopAgent.Contracts`, `InitialForce.SnoopAgent.BrokerHost`, `InitialForce.SnoopAgent.Remote`, `InitialForce.SnoopAgent.Analyzers`. Engine and Tools are `IsPackable=false` — they ship only as transitive dependencies inside the Server package.
 
 ---
 
-## C4 Container Diagram
+## Container Diagram {#container-diagram}
 
 ```mermaid
-%%{init: {"theme": "dark", "themeVariables": {"fontSize": "14px"}}}%%
-C4Container
-    title SnoopWPF.Agent — Container View
+flowchart LR
+  subgraph Broker["Broker process (e.g. UiMcpHost / snoop-mcp.exe)"]
+    BH[BrokerHost.dll]
+    Remote[Remote.dll<br/>PipeSnoopInspectorProxy]
+    Client([MCP client: Claude Code, Cursor, Claude Desktop])
+    Client -- stdio JSON-RPC --> BH
+    BH --> Remote
+  end
 
-    Person(mcpClient, "MCP Client", "Claude Code / LLM agent\nissuing wpf_* tool calls")
+  subgraph Target["Target WPF process"]
+    Server[Server.dll<br/>SnoopAgent.Start*]
+    Engine[Engine.dll<br/>SnoopInspector]
+    Tools[Tools.dll<br/>33 wpf_* tool classes]
+    Injection[Injection.dll<br/>entry for attached mode]
+    Server --> Engine
+    Engine --> Tools
+    Server -. attached mode .-> Injection
+  end
 
-    System_Boundary(brokerProc, "Broker Process") {
-        Container(brokerHost, "BrokerHost", "SnoopWPF.Agent.BrokerHost", "Starts MCP server on stdio.\nProxies wpf_* calls to target.")
-        Container(remote, "Remote / PipeProxy", "SnoopWPF.Agent.Remote", "PipeSnoopInspectorProxy +\nPipeConnection + FramedJsonTransport")
-        Container(mcShim, "mc_* lifecycle shims", "Consumer-supplied (e.g. MotionCatalyst)", "mc_launch, mc_attach, mc_connect\nadded on top of wpf_* surface")
-    }
+  Remote <-. "named pipe<br/>DACL+HMAC-SHA256" .-> Server
 
-    System_Boundary(targetProc, "Target WPF Process") {
-        Container(server, "Server", "SnoopWPF.Agent.Server", "SnoopAgent.StartBrokeredServer()\nor StartCoLocated().\nManifest writer. Pipe listener.")
-        Container(engine, "Engine", "SnoopWPF.Agent.Engine", "SnoopInspector — visual tree,\nproperties, bindings, screenshots.\nAuditLogWriter (net6+).")
-        Container(tools, "Tools", "SnoopWPF.Agent.Tools", "29 [McpServerTool] classes\ndelegating to ISnoopInspector")
-        Container(injection, "Injection", "SnoopWPF.Agent.Injection", "SnoopAgentEntryPoint.Start()\n[injection mode only]")
-        Container(bootstrap, "Bootstrap", "SnoopWPF.Agent.Bootstrap", "Native DLL. SnoopAgentStart\nvia CreateRemoteThread\n[injection mode only]")
-    }
+  Target -. atomic write .-> Manifest[("Session manifest<br/>%LOCALAPPDATA%/InitialForce/<br/>mcp-session/{pid}-{ticks}.json")]
+  Remote -. reads .-> Manifest
 
-    SystemDb(manifest, "Session Manifest", "%LOCALAPPDATA%\\InitialForce\\mcp-session\\{pid}-{ticks}.json\n[brokered mode only]")
-
-    Rel(mcpClient, brokerHost, "MCP stdio (JSON-RPC 2.0)")
-    Rel(mcpClient, server, "MCP stdio [co-located mode]")
-    Rel(brokerHost, mcShim, "delegates lifecycle tools")
-    Rel(brokerHost, remote, "calls ISnoopInspector methods")
-    Rel(remote, server, "Named pipe (DACL + HMAC)\nFramedJsonTransport")
-    Rel(server, engine, "creates SnoopInspector")
-    Rel(server, tools, "registers McpServerTool")
-    Rel(tools, engine, "ISnoopInspector calls")
-    Rel(server, manifest, "atomic write [brokered]")
-    Rel(remote, manifest, "reads + validates [brokered]")
-    Rel(bootstrap, injection, "hostfxr load_assembly_and_get_function_pointer [injection]")
-    Rel(injection, server, "delegates to PipeAgentServer [injection]")
+  classDef pipe fill:#e7f0ff,stroke:#3b5999,stroke-width:2px
+  classDef manifest fill:#fffaea,stroke:#8a7100,stroke-width:2px
+  class Manifest manifest
 ```
 
 ---
@@ -97,7 +92,7 @@ flowchart LR
         direction TB
         B["BrokerHost\nSnoopWPF.Agent.BrokerHost"]
         C["PipeSnoopInspectorProxy\nSnoopWPF.Agent.Remote"]
-        D["Manifest Reader\nSnoopWPF.Agent.Remote"]
+        D["Manifest Discovery\n(broker consumer)"]
     end
 
     subgraph TD_Pipe ["Named-Pipe Transport\n(DACL-gated — PipeOptions.CurrentUserOnly)"]
@@ -134,9 +129,9 @@ flowchart LR
     I -- "safe value" --> J
     I -- "[REDACTED]" --> H
 
-    style F fill:#c0392b,color:#fff
-    style I fill:#c0392b,color:#fff
-    style X1 fill:#7f8c8d,color:#fff
+    style F fill:#5b7ed8,color:#fff
+    style I fill:#5b7ed8,color:#fff
+    style X1 fill:#aab3c3,color:#000
     style TD_Pipe fill:#2c3e50,color:#ecf0f1
 ```
 
@@ -149,7 +144,24 @@ flowchart LR
 
 ## Sequence Diagram: Brokered Handshake {#brokered-handshake}
 
+### Brokered sub-modes {#brokered-sub-modes}
+
+The brokered deployment mode has three API entry points:
+
+| API | Who starts pipe | Token delivery | Use-case |
+|-----|-----------------|----------------|----------|
+| `StartBrokeredServerAsync` | Target (server) | Manifest file → broker reads | Warm-attach: target starts first, broker discovers it |
+| `StartBrokered` | Broker (server) | stdin line → target reads | Spawn: broker launches the target process |
+| `StartBrokeredClient` | Target (client) | Legacy — see source comments | Legacy compatibility only |
+
+---
+
+### Sub-mode: `StartBrokeredServerAsync` (warm-attach, target=server) {#handshake-warm-attach}
+
 Full 15-step flow from target startup through the first successful tool call.
+
+Note: This is the manifest-discovered warm-attach path. See the next section for the
+`StartBrokered` spawn variant.
 
 ```mermaid
 sequenceDiagram
@@ -160,7 +172,10 @@ sequenceDiagram
     participant Remote as "PipeConnection\n(SnoopWPF.Agent.Remote)"
     participant MCP as "MCP Client\n(Claude Code)"
 
-    App->>App: SnoopAgent.StartBrokeredServer(opts)<br/>Console.SetOut(TextWriter.Null)
+    Note over App,Broker: Sub-mode: StartBrokeredServerAsync (target=server, manifest-discovered). See §Brokered sub-modes for the spawn variant.
+
+    App->>App: SnoopAgent.StartBrokeredServerAsync(opts)
+    Note over App: Console.Out is NOT redirected in brokered mode — target owns its own stdout.
     App->>App: Generate 256-bit token via<br/>RandomNumberGenerator.GetBytes(32)
     App->>App: Generate pipe name "snoop-agent-{guid}"
     App->>App: Open NamedPipeServerStream<br/>(PipeOptions.CurrentUserOnly)<br/>Begin WaitForConnection
@@ -170,7 +185,7 @@ sequenceDiagram
 
     Broker->>FS: Poll %LOCALAPPDATA%/InitialForce/mcp-session/
     FS-->>Broker: New manifest file detected
-    Broker->>Broker: ManifestReader.Read(targetPid, targetProcess)<br/>Validate: schemaVersion==1, pid, startTimeTicks,<br/>imagePath (case-insensitive), expiresAt > now
+    Broker->>Broker: Broker consumer validates manifest<br/>schemaVersion==1, pid, startTimeTicks,<br/>imagePath (case-insensitive), expiresAt > now
     Broker->>Remote: Connect as NamedPipeClientStream
     Remote->>App: Pipe connection established
     Broker->>Broker: GetNamedPipeServerProcessId()<br/>must equal manifest.pid → PIPE_SQUATTER guard
@@ -185,6 +200,30 @@ sequenceDiagram
     App-->>Remote: Framed JSON PipeResponse
     Remote-->>Broker: WindowDto[]
     Broker-->>MCP: MCP tool result
+```
+
+---
+
+### Sub-mode: `StartBrokered` (spawn variant, broker=server, target=client) {#handshake-spawn}
+
+10-step flow where the broker spawns the target process and delivers the token via stdin.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Broker as "Broker Process\n(SnoopWPF.Agent.BrokerHost)"
+    participant Target as "Target WPF App\n(SnoopWPF.Agent.Server)"
+
+    Broker->>Broker: Create NamedPipeServerStream<br/>Generate pipe name + 256-bit token
+    Broker->>Target: Spawn target process with --snoop-pipe=<name>
+    Broker->>Target: Write BrokerHandshakePayload{Pipe, Token}<br/>to target stdin as JSON line
+    Target->>Target: Read stdin line during OnStartup<br/>(before WPF dispatcher initializes)
+    Target->>Broker: NamedPipeClientStream.Connect(pipeName)
+    Broker->>Target: Send nonce (16 random bytes)
+    Target->>Target: Compute HMAC-SHA256(key=tokenBytes, data=nonce)
+    Target->>Broker: Send proof (32 bytes)
+    Broker->>Broker: CryptographicOperations.FixedTimeEquals(expected, proof)
+    Note over Broker,Target: Session ready — all wpf_* tools now available
 ```
 
 ---
@@ -230,7 +269,7 @@ sequenceDiagram
 stateDiagram-v2
     [*] --> Disconnected
 
-    Disconnected --> Connecting : StartBrokeredServer() opens pipe\nOR injection CreateRemoteThread fires
+    Disconnected --> Connecting : StartBrokeredServerAsync() opens pipe\nOR injection CreateRemoteThread fires
     Connecting --> Handshaking : Pipe client connects\n[injection: VerifyClientPid first]
     Handshaking --> Ready : FixedTimeEquals passes\nwithin 5-second timeout
     Handshaking --> Disconnected : HandshakeFailed\n(ProtocolMismatch / timeout)
@@ -243,22 +282,72 @@ stateDiagram-v2
 
     Disconnected --> [*] : Session handle disposed
 
-    note right of Connecting
-        Error states from Connecting:
-        • AlreadyAttached — second StartCoLocated() call
-        • PipeSquatter — GetNamedPipeServerProcessId ≠ manifest.pid
-        • ManifestExpired — expiresAt < now
-    end note
+    Connecting --> PipeSquatterError : [PIPE_SQUATTER]
+    Connecting --> ManifestStaleError : [MODE2_BROKEN_OR_STALE_MANIFEST]
+    Connecting --> HmacFailError : [HMAC_HANDSHAKE_FAILED]
+    Connecting --> AlreadyAttachedError : [ALREADY_ATTACHED]
+
+    state PipeSquatterError {
+        [*] --> [*] : GetNamedPipeServerProcessId ≠ manifest.pid\nA rogue process raced to bind the pipe name
+    }
+
+    state ManifestStaleError {
+        [*] --> [*] : expiresAt < now OR manifest validation failed\n(schemaVersion, pid, startTimeTicks, imagePath mismatch)
+    }
+
+    state HmacFailError {
+        [*] --> [*] : HMAC proof incorrect or 5-second handshake timeout exceeded
+    }
+
+    state AlreadyAttachedError {
+        [*] --> [*] : Second StartCoLocated() call without disposing the first handle
+    }
 
     note right of Ready
         Tools legal in Ready / ToolCallInFlight:
-        • All 29 wpf_* tools
+        • All 33 wpf_* tools
         • Read ops always allowed
         • Mutation: only if EnableMutation=true
           AND target is net6+ (UnsupportedOnNet462)
         • Redacted props: PropertyRedacted error returned
     end note
 ```
+
+---
+
+## Token Lifecycle (brokered vs injection) {#token-lifecycle}
+
+```mermaid
+sequenceDiagram
+  title Token lifecycle — brokered (warm-attach) vs injection
+  participant T as Token (in memory)
+  participant M as Manifest or Settings File
+  participant P as Named Pipe Wire
+  participant D as Destroyed
+
+  Note over T,D: BROKERED WARM-ATTACH — token minted in TARGET
+  T->>M: tokenB64 written to manifest (ACL-protected atomic rename)
+  M->>T: broker reads manifest → decodes tokenB64
+  Note over M: manifest lifetime: 24h lease; rotated every 6h
+  T-->>P: HMAC proof only (raw token NEVER on wire)
+  T->>D: token zeroed on BrokeredServerHandle.Dispose()
+
+  Note over T,D: INJECTION — token minted in INJECTOR HOST (snoop-mcp.exe)
+  T->>M: pipe+token written to temp file (owner-only DACL)
+  M->>T: injected Injection.dll reads file
+  M->>D: file deleted immediately after read
+  T-->>P: HMAC proof only (raw token NEVER on wire)
+  T->>D: token bytes zeroed via Array.Clear after HMAC computed
+```
+
+**Who mints the token:**
+- **Brokered warm-attach** (`StartBrokeredServerAsync`): the TARGET mints the token inside the WPF process and writes it to the manifest. The broker is a passive reader.
+- **Injection** (`snoop-mcp.exe`): the HOST process mints the token before injection and delivers it via a DACL-protected temp file.
+
+**File lifetime difference:**
+The manifest in warm-attach mode has a 24-hour expiry with 6-hour lease rotation — it persists as long as the session is alive. The injection settings file is deleted immediately after `Injection.dll` reads it (single-use, no rotation needed).
+
+**Shared invariant:** In both modes, raw token bytes never cross the named pipe. Only the 32-byte HMAC-SHA256 proof crosses the wire. Per-connection nonces prevent replay attacks.
 
 ---
 
@@ -321,7 +410,15 @@ Written as camelCase JSON to `%LOCALAPPDATA%\InitialForce\mcp-session\{pid}-{sta
 | `issuedAt` | `DateTimeOffset` | UTC instant the manifest was written. |
 | `expiresAt` | `DateTimeOffset` | `issuedAt + 24h`. Broker rejects stale manifests. |
 
-Broker validation sequence (`ManifestReader.Read(targetPid, targetProcess)`):
+Manifest validation contract (for broker consumers implementing discovery):
+
+> **Note:** `ManifestReader` (the reader side) is **not** part of snoopwpf.
+> Snoopwpf ships only the **writer** side (`SnoopWPF.Agent.Server/SessionManifestWriter.cs`).
+> Broker consumers implement their own discovery and validation. The reference
+> implementation lives in MotionCatalyst's `UiMcpHost` at
+> `Tools/ui-mcp-host/Brokered/Attach/ManifestReader.cs` in the
+> [wpf-mcp repo](https://github.com/InitialForce/wpf-mcp). The 6-step contract
+> below is the recommended validation sequence:
 
 1. `schemaVersion == 1` else `MANIFEST_SCHEMA_MISMATCH`
 2. `pid == targetPid`
@@ -460,15 +557,15 @@ regardless of what the settings file requests.
 **Who should use this:** Applications shipping Snoop as a first-class feature alongside
 a separate MCP host process (e.g. MotionCatalyst with its `UiMcpHost` broker).
 
-**Bootstrap steps:**
+**Bootstrap steps (warm-attach, `StartBrokeredServerAsync`):**
 
-1. At app startup, `SnoopAgent.StartBrokeredServer(opts)` is called.
+1. At app startup, `SnoopAgent.StartBrokeredServerAsync(opts)` is called.
 2. A 256-bit token is generated; pipe name `snoop-agent-{guid}` is resolved.
 3. `NamedPipeServerStream` (`PipeOptions.CurrentUserOnly`) is opened.
 4. `WaitForConnectionAsync` begins — pipe is now listening.
 5. Manifest is written atomically (see [Manifest Atomic-Write Invariant](#manifest-atomic-write)).
 6. The broker process polls `%LOCALAPPDATA%\InitialForce\mcp-session\` for new manifests.
-7. Broker reads and validates the manifest (6 steps listed above).
+7. Broker consumer reads and validates the manifest (6-step contract listed above).
 8. Broker calls `GetNamedPipeServerProcessId()` after connecting — PIPE_SQUATTER guard.
 9. Target sends `HandshakeChallenge{nonce=16B}`.
 10. Broker computes HMAC proof, sends `HandshakeResponse`.
