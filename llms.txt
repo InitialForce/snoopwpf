@@ -3,9 +3,9 @@
 > InitialForce fork of snoopwpf/snoopwpf. Adds an MCP server layer on top of Snoop's WPF
 > inspection engine. Exposes `wpf_*` tools to MCP-compatible AI coding agents via three
 > deployment modes: NuGet co-located (stdio, in-process), external injection (named pipe,
-> hostfxr-based CoreCLR bootstrap), and brokered (named pipe, target-as-client connecting to
-> a long-lived broker). Target audience: MCP-compatible AI coding agents that debug, inspect,
-> or automate running WPF applications.
+> hostfxr-based CoreCLR bootstrap), and brokered (in-process MCP server for a live WPF
+> target, optionally brokered via a long-lived external process). Target audience:
+> MCP-compatible AI coding agents that debug, inspect, or automate running WPF applications.
 
 # Note: downstream broker (MotionCatalyst/wpf-mcp) layers mc_* tools on top; those are documented separately.
 
@@ -31,7 +31,7 @@
 
 - mode: nuget-colocated
   transport: stdio
-  bootstrap: add `<PackageReference Include="SnoopWPF.Agent"/>` then call `SnoopAgent.StartCoLocated(options)` in `App.OnStartup`
+  bootstrap: add `<PackageReference Include="InitialForce.SnoopAgent"/>` then call `SnoopAgent.StartCoLocated(options)` in `App.OnStartup`
   target: .NET 8+
   security: process-boundary isolation; `Console.Out` redirected to `TextWriter.Null` to protect stdio transport
   token: not required when using stdio transport (process boundary is the security boundary)
@@ -45,18 +45,32 @@
   target: .NET Framework 4.6.2, .NET 6, .NET 8 (read-only on 4.6.2 if `EnableMutation=true` requested)
   notes: target process must be owned by the current Windows user; injection refused otherwise
 
-- mode: brokered
-  transport: named-pipe, `PipeOptions.CurrentUserOnly` DACL
-  bootstrap: target calls `SnoopAgent.StartBrokered(app, pipeName, token, options)` at startup; broker spawns target with `--snoop-pipe=NAME`; token delivered via single-line JSON `BrokerHandshakePayload` on target's stdin (never on command line)
-  manifest-path: `%LOCALAPPDATA%/InitialForce/mcp-session/{pid}-{startTimeTicks}.json`
-  manifest-acl: protected DACL, single ALLOW ACE for current-user SID
-  ordering-invariant: target MUST create the pipe server and enter `WaitForConnection` BEFORE the manifest file is atomically renamed into place
-  handshake: same HMAC-SHA256 nonce protocol as injection mode
+- mode: brokered-warm-attach  (RECOMMENDED for most integrations)
+  api: `SnoopAgent.StartBrokeredServerAsync(settings, ct)`
+  transport: named-pipe, CurrentUserOnly DACL
+  pipe-role: target=server (WaitForConnection); broker=client (Connect)
+  bootstrap: target writes session manifest at `%LOCALAPPDATA%/InitialForce/mcp-session/{pid}-{startTicks}.json` (ACL-protected atomic write); broker polls directory by pid and connects
+  handshake: HMAC-SHA256 nonce-response, 16-byte nonce, 5s timeout, FixedTimeEquals
+  token-delivery: token_b64 field inside the manifest
   target: .NET 8+
-  notes: broker owns the MCP stdio channel; target is the pipe server; broker connects as pipe client
+  use-when: broker attaches to an independently-started target; composes with `dotnet watch`; MotionCatalyst/wpf-mcp pattern
+
+- mode: brokered-spawned
+  api: `SnoopAgent.StartBrokered(app, pipeName, token, options)`
+  transport: named-pipe, CurrentUserOnly DACL
+  pipe-role: target=client (Connect); broker=server (WaitForConnection)
+  bootstrap: broker spawns target with `--snoop-pipe=<name>`; writes BrokerHandshakePayload JSON to target stdin immediately; target reads stdin before WPF dispatcher starts
+  handshake: HMAC-SHA256 nonce-response (same as warm-attach)
+  token-delivery: stdin single-line JSON (NEVER on command line)
+  target: .NET 8+
+  use-when: broker owns target lifecycle end-to-end
+
+- mode: brokered-legacy
+  api: `SnoopAgent.StartBrokeredClient(...)`
+  note: predecessor of brokered-spawned; delivers token via command-line arg; prefer brokered-spawned for new integrations
 
 
-## Session manifest schema (brokered mode)
+## Session manifest schema (brokered-warm-attach mode)
 
 Fields in `{pid}-{startTimeTicks}.json`:
 
@@ -93,9 +107,9 @@ SESSION group:
 TREE group:
 
   wpf_get_visual_tree([rootNodeId: string], [maxDepth: int=3], [treeType: "visual"|"logical"|"automation"="visual"], [includeProperties: string[]]) → {root: TreeNode, truncated: bool, returnedNodeCount: int}
-  wpf_get_children([nodeId: string], [treeType: string="visual"], [cursor: string], [take: int=50]) → {items:[TreeNode], nextCursor:string|null, totalCount:int, hasMore:bool, stale:bool}
+  wpf_get_children([nodeId: string], [treeType: "visual"|"logical"|"automation"="visual"], [cursor: string], [take: int=50]) → {items:[TreeNode], nextCursor:string|null, totalCount:int, hasMore:bool, stale:bool}
   wpf_get_ancestors(nodeId: string, [maxLevels: int]) → {ancestors:[{nodeId,typeName,name,dataContextType}]}
-  wpf_find_elements([typeName: string], [name: string], [rootNodeId: string], [propertyConditions:[{property,operator,value}]], [treeType:string="visual"], [maxResults:int=50]) → {results:[{node:TreeNode,path:string[]}], totalScanned:int, truncated:bool}
+  wpf_find_elements([typeName: string], [name: string], [rootNodeId: string], [propertyConditions:[{property,operator,value}]], [treeType:"visual"|"logical"|"automation"="visual"], [maxResults:int=50]) → {results:[{node:TreeNode,path:string[]}], totalScanned:int, truncated:bool}
   wpf_inspect_element(nodeId: string) → {nodeId,typeName,name,displayName,path,parentNodeId,childCount,depth,dispatcherId,isVisible,actualWidth,actualHeight,dataContextType,hasBindingErrors,bindingErrorCount,triggerCount:int|null,behaviorCount:int|null}
 
 PROPERTIES/BINDINGS group:
@@ -166,8 +180,22 @@ wpf_capture_screenshot — blob TTL is configured via `SnoopAgentOptions.BlobTtl
 
 wpf_diagnostics — self-health snapshot; call as a first step to verify agent is functional before starting an inspection session.
 
+wpf_get_session_info — MUST be called first. The `dispatchers[].windowNodeIds[]` values ARE the canonical bootstrap node IDs; they are the same IDs returned by `wpf_get_windows()`. An agent SHOULD use either source.
+
+
+## Error channels
+
+Errors are delivered via TWO DISTINCT CHANNELS. Agents MUST distinguish:
+
+- **SnoopErrorCode** — MCP error response (`ok:false` in ToolEnvelope). Session-level or handshake failures. Examples: `NO_ACTIVE_SESSION`, `HMAC_HANDSHAKE_FAILED`, `MANIFEST_SCHEMA_MISMATCH`, `UnsupportedOnNet462`.
+- **FailureReason** — success response with body field `success:false` (`ok:true` in envelope). Tool-specific action failure. Examples: `CannotExecuteCommand`, `PatternNotSupported`, `ElementDisabled`, `ElementOutsideViewport`, `NODE_NOT_FOUND`.
+
+Agent error handlers MUST branch on the envelope `ok` field first, then inspect the appropriate code.
+
 
 ## Error codes
+
+### SnoopErrorCode values (MCP error responses — `ok:false` in ToolEnvelope)
 
 | CODE | Meaning | When emitted | Recovery |
 |------|---------|--------------|----------|
@@ -176,12 +204,11 @@ wpf_diagnostics — self-health snapshot; call as a first step to verify agent i
 | `UnsupportedOnNet462` | `EnableMutation=true` attempted on .NET Framework 4.6.2 target | Session startup with mutation enabled on 4.6.2 | Use read-only tools; mutation not supported on 4.6.2 |
 | `HMAC_HANDSHAKE_FAILED` | HMAC proof did not match expected value | Handshake phase | Token mismatch; restart injection with correct token |
 | `PIPE_SQUATTER` | `GetNamedPipeServerProcessId` returned a PID other than the expected target | Handshake phase (injection mode) | Another process has claimed the pipe name; report as security event |
-| `MODE2_BROKEN_OR_STALE_MANIFEST` | Brokered manifest missing, expired, or field mismatch | Broker startup in brokered mode | Restart target; ensure manifest path and DACL are correct |
-| `MANIFEST_SCHEMA_MISMATCH` | `schemaVersion != 1` | Broker reading manifest | Update SnoopWPF.Agent packages to matching versions |
+| `MODE2_BROKEN_OR_STALE_MANIFEST` | Brokered manifest missing, expired, or field mismatch | Broker startup in brokered-warm-attach mode | Restart target; ensure manifest path and DACL are correct |
+| `MANIFEST_SCHEMA_MISMATCH` | `schemaVersion != 1` | Broker reading manifest | Update InitialForce.SnoopAgent packages to matching versions |
 | `ALREADY_ATTACHED` | Second client attempted to attach the same pipe | Second handshake attempt | Only one client per session; disconnect the existing client first |
 | `INJECTION_DISABLED` | Injection mode compiled out of this build | `snoop-mcp.exe` invocation | Use a build that includes injection support |
 | `SESSION_CRASHED` | Target process exited abnormally | Any tool call after target crash | Re-launch target; inspect `CrashInfo` in error payload |
-| `NODE_NOT_FOUND` | Node ID no longer exists (element garbage-collected or removed) | Any tool with `nodeId` arg | Call `wpf_get_windows` and re-navigate |
 | `DISPATCHER_BUSY` | WPF Dispatcher did not accept work within timeout | Any tree/property tool | Retry; call `wpf_pump_until_idle` first |
 | `OPERATION_TIMED_OUT` | Dispatcher accepted work but did not complete in time | Any tool with dispatcher dispatch | Reduce scope; retry when app is idle |
 | `PROPERTY_READ_ONLY` | Property cannot be set | `wpf_set_property` | Use `wpf_get_properties` to find writable properties |
@@ -193,6 +220,12 @@ wpf_diagnostics — self-health snapshot; call as a first step to verify agent i
 | `LOCATOR_AMBIGUOUS` | WpfLocator or item identifier matched more than one element | `wpf_wait_for_property`, `wpf_select_item` | Use `$name:`, `$id:`, or an index for an unambiguous match |
 | `LOCATOR_INVALID` | WpfLocator string could not be parsed | `wpf_wait_for_property` | Valid prefixes: `$name:`, `$type:`, `$id:` |
 | `PROTOCOL_MISMATCH` | Agent and host protocol versions differ | Handshake phase | Update packages to matching versions |
+
+### FailureReason values (success-response body codes — `ok:true`, `success:false` in body)
+
+| CODE | Meaning | When emitted | Recovery |
+|------|---------|--------------|----------|
+| `NODE_NOT_FOUND` | Node ID no longer exists (element garbage-collected or removed) | Any tool with `nodeId` arg | Call `wpf_get_windows` and re-navigate |
 | `CannotExecuteCommand` | `ICommand.CanExecute` returned `false` | `wpf_execute_command` | Check application state; verify preconditions before retrying |
 | `PatternNotSupported` | Element does not expose required UIA pattern | L1 input tools | Use appropriate L0 tool or verify element type with `wpf_inspect_element` |
 | `ElementDisabled` | UIA pattern present but element has `IsEnabled=false` | L1 input tools | Verify `IsEnabled` first; application may need to reach a different state |
@@ -206,8 +239,9 @@ wpf_diagnostics — self-health snapshot; call as a first step to verify agent i
        |
        | (spawn snoop-mcp.exe or target calls StartBrokered/StartCoLocated)
        v
-  Connecting ----[PIPE_SQUATTER]-----------> Error (terminal; pipe closed)
-       |          [INJECTION_DISABLED]------> Error (terminal)
+  Connecting ----[PIPE_SQUATTER]---------------------> Error (terminal; pipe closed)
+       |          [INJECTION_DISABLED]----------------> Error (terminal)
+       |          [MODE2_BROKEN_OR_STALE_MANIFEST]----> Error (terminal)
        |
        | (pipe opened; server sends HandshakeChallenge with 16-byte nonce)
        v
@@ -240,7 +274,8 @@ wpf_diagnostics — self-health snapshot; call as a first step to verify agent i
 
   Reconnect after SESSION_CRASHED:
     injection mode  → re-invoke snoop-mcp.exe with a new token
-    brokered mode   → wait for target to restart and re-write the session manifest
+    brokered-warm-attach → wait for target to restart and re-write the session manifest
+    brokered-spawned     → broker must re-spawn target with a new pipe name and token
     co-located mode → target process has exited; restart the application
 ```
 
@@ -303,19 +338,22 @@ Redacted if property name contains (case-insensitive): `password`, `passwd`, `pw
 
 Also redacted by structural type: `SecureString`, `NetworkCredential`, `DbConnectionStringBuilder`.
 
-Note: bare `auth` and `token` are NOT on the redaction list (would false-positive on `IsAuthorized`, `CancellationToken`).
+Note: bare `auth` and `token` are NOT on the redaction list.
 
 Redaction applies uniformly to: property values, trigger condition/setter values, and behavior property values.
 
 
 ## Packages
 
-- `InitialForce.SnoopAgent` — main package; ships MCP server and tool host
-- `InitialForce.SnoopAgent.Contracts` — `ISnoopInspector`, DTOs, protocol types (shared by all packages)
-- `InitialForce.SnoopAgent.BrokerHost` — broker-side library for brokered mode
-- `InitialForce.SnoopAgent.Remote` — named-pipe proxy layer (injection and brokered transport)
-- `InitialForce.SnoopAgent.Engine` — WPF inspection engine (consumed by Server and Injection)
-- `InitialForce.SnoopAgent.Tools` — wpf_* MCP tool implementations
+- `InitialForce.SnoopAgent` — main package; ships SnoopAgent.StartCoLocated / StartBrokered / StartBrokeredServerAsync APIs. References Engine + Tools internally.
+- `InitialForce.SnoopAgent.Contracts` — interfaces, DTOs, protocol types (ISnoopInspector, ISuggestionTranslator, HandshakeChallenge, HandshakeResponse, BrokerHandshakePayload, SessionManifest).
+- `InitialForce.SnoopAgent.BrokerHost` — broker-side library; consumed by external MCP servers (e.g. UiMcpHost) to proxy wpf_* calls across the named pipe.
+- `InitialForce.SnoopAgent.Remote` — host-side pipe-client proxy. PipeSnoopInspectorProxy implements ISnoopInspector by serializing over the named pipe.
+- `InitialForce.SnoopAgent.Analyzers` — Roslyn analyzers (SWPF0001 Console.* banned in [McpStdioEntrypoint]; NodeId0010; PathLocator0011).
+
+Not published as NuGets:
+- `InitialForce.SnoopAgent.Engine` — internal; consumed in-process via the main package.
+- `InitialForce.SnoopAgent.Tools` — internal; consumed in-process via the main package.
 
 
 ## WpfLocator syntax
@@ -360,8 +398,43 @@ Find and click a button by name:
 Virtualized list selection:
   1. wpf_get_windows() → get window nodeId
   2. wpf_find_elements(typeName:"ListBox") → get list nodeId
-  3. wpf_select_item_by_scroll(nodeId, targetIndex) [MUTATE] → scroll + select
+  3a. if you have the item text → wpf_select_item_by_scroll(listNodeId, text) [MUTATE] → scroll to text + select
+  3b. if you know the zero-based index → wpf_select_item(nodeId, identifier="<index>") [MUTATE] → BringIndexIntoView + select
+  Note: for non-virtualized lists, either works; prefer wpf_select_item for lower latency.
   4. wpf_get_list_items(nodeId) → confirm selection
+
+
+## Worked example — diagnose a silent binding failure
+
+Full sequence from cold session to root cause. Copy as a template for an agent debugging a bound property that renders blank.
+
+  1. wpf_get_session_info()
+     → dispatchers[0].windowNodeIds[0] = "0:1" (root window)
+     → mutationEnabled = false (read-only is fine for this workflow)
+
+  2. wpf_run_diagnostics(minLevel:"Error")
+     → items: [{name:"BindingError", nodeId:"0:88", area:"Binding", level:"Error"}]
+
+  3. wpf_get_binding_info(nodeId:"0:88", propertyName:"Text")
+     → {status:"PathError", path:"CurrentStride.ValueMetric",
+         error:"Cannot find 'ValueMetric' on type 'StrideReading'"}
+
+  4. wpf_resolve_binding(nodeId:"0:88", propertyName:"Text")
+     → pathSteps:[
+         {segment:"CurrentStride", value:"StrideReading{StepLength=1.2, CadenceRpm=84}"},
+         {segment:"ValueMetric",   value:null}
+       ]
+
+  5. Conclusion: "ValueMetric" is not a member of `StrideReading`. Candidate members
+     (from step 4's resolvedValue): `StepLength`, `CadenceRpm`. Agent reports
+     "rename binding path to `CurrentStride.StepLength`" and moves on.
+
+Invariants shown:
+  - wpf_get_session_info MUST be first (per Preconditions).
+  - nodeId values from wpf_run_diagnostics items are the same namespace as tree tools.
+  - wpf_resolve_binding is read-only — no EnableMutation required.
+  - No wpf_pump_until_idle needed for pure inspection chains.
+  - Node IDs are opaque and MUST NOT be reused after target restart.
 
 
 ## References
