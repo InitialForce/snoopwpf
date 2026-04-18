@@ -89,10 +89,10 @@ public class ToolSurfaceCoverageTests
     [Test]
     public void ToolCount_MatchesPrd()
     {
-        // PRD §5 + Addendum M4 (FX6-C4): 29 tools.
+        // PRD §5 + Addendum M4 (FX6-C4): 29 tools + 4 WS3 tools (bd-1a9.39/40/41/42) = 33.
         // Update this constant (and PRD.md + docs/prd-scope-addendum-m4.md + docs/mcp-tools-reference.md)
         // whenever a tool is added or removed.
-        const int PrdToolCount = 29;
+        const int PrdToolCount = 33;
 
         var toolAssembly = typeof(ClickTool).Assembly;
 

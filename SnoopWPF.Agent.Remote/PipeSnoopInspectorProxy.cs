@@ -674,6 +674,24 @@ public sealed class PipeSnoopInspectorProxy : ISnoopInspector, IAsyncDisposable,
             new { timeoutMs, resources },
             ct);
 
+    // ── WS3: wpf_double_click, wpf_select_item_by_scroll, wpf_select_item_by_index, wpf_get_list_items ──
+
+    /// <inheritdoc/>
+    public Task<StateDeltaDto> DoubleClickAsync(string nodeId, CancellationToken ct)
+        => this.InvokeAsync<StateDeltaDto>("DoubleClick", new { nodeId }, ct);
+
+    /// <inheritdoc/>
+    public Task<StateDeltaDto> SelectItemByScrollAsync(string nodeId, int targetIndex, CancellationToken ct)
+        => this.InvokeAsync<StateDeltaDto>("SelectItemByScroll", new { nodeId, targetIndex }, ct);
+
+    /// <inheritdoc/>
+    public Task<StateDeltaDto> SelectItemByIndexAsync(string nodeId, int index, CancellationToken ct)
+        => this.InvokeAsync<StateDeltaDto>("SelectItemByIndex", new { nodeId, index }, ct);
+
+    /// <inheritdoc/>
+    public Task<System.Collections.Generic.List<ListItemDto>> GetListItemsAsync(string nodeId, CancellationToken ct)
+        => this.InvokeAsync<System.Collections.Generic.List<ListItemDto>>("GetListItems", new { nodeId }, ct);
+
     // --------------------------------------------------------------------------
     // Inner types
     // --------------------------------------------------------------------------

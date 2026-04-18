@@ -665,6 +665,36 @@ public sealed class PipeAgentServer : IDisposable
                 var result = await this.inspector.PumpUntilIdleAsync(p.TimeoutMs, p.Resources, ct).ConfigureAwait(false);
                 return JsonFramedSerializer.SerializeToString(result);
             },
+
+            // ── WS3: wpf_double_click, wpf_select_item_by_scroll, wpf_select_item_by_index, wpf_get_list_items ──
+
+            ["DoubleClick"] = async (paramsJson, ct) =>
+            {
+                var p = JsonFramedSerializer.DeserializeString<NodeIdOnlyParams>(paramsJson);
+                var result = await this.inspector.DoubleClickAsync(p.NodeId, ct).ConfigureAwait(false);
+                return JsonFramedSerializer.SerializeToString(result);
+            },
+
+            ["SelectItemByScroll"] = async (paramsJson, ct) =>
+            {
+                var p = JsonFramedSerializer.DeserializeString<SelectItemByScrollParams>(paramsJson);
+                var result = await this.inspector.SelectItemByScrollAsync(p.NodeId, p.TargetIndex, ct).ConfigureAwait(false);
+                return JsonFramedSerializer.SerializeToString(result);
+            },
+
+            ["SelectItemByIndex"] = async (paramsJson, ct) =>
+            {
+                var p = JsonFramedSerializer.DeserializeString<SelectItemByIndexParams>(paramsJson);
+                var result = await this.inspector.SelectItemByIndexAsync(p.NodeId, p.Index, ct).ConfigureAwait(false);
+                return JsonFramedSerializer.SerializeToString(result);
+            },
+
+            ["GetListItems"] = async (paramsJson, ct) =>
+            {
+                var p = JsonFramedSerializer.DeserializeString<NodeIdOnlyParams>(paramsJson);
+                var result = await this.inspector.GetListItemsAsync(p.NodeId, ct).ConfigureAwait(false);
+                return JsonFramedSerializer.SerializeToString(result);
+            },
         };
     }
 
@@ -1245,4 +1275,26 @@ internal sealed class PumpUntilIdleParams
     [System.Runtime.Serialization.DataMember(Name = "resources")]
     public List<string>? Resources { get; set; }
 }
+
+[System.Runtime.Serialization.DataContract]
+internal sealed class SelectItemByScrollParams
+{
+    [System.Runtime.Serialization.DataMember(Name = "nodeId")]
+    public string NodeId { get; set; } = string.Empty;
+
+    [System.Runtime.Serialization.DataMember(Name = "targetIndex")]
+    public int TargetIndex { get; set; }
+}
+
+[System.Runtime.Serialization.DataContract]
+internal sealed class SelectItemByIndexParams
+{
+    [System.Runtime.Serialization.DataMember(Name = "nodeId")]
+    public string NodeId { get; set; } = string.Empty;
+
+    [System.Runtime.Serialization.DataMember(Name = "index")]
+    public int Index { get; set; }
+}
+
 #pragma warning restore CA1812
+

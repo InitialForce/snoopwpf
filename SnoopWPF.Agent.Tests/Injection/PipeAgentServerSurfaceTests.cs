@@ -81,6 +81,12 @@ public sealed class PipeAgentServerSurfaceTests
         "WaitForProperty",
         "PollChanges",
         "PumpUntilIdle",
+
+        // ── WS3: wpf_double_click, wpf_select_item_by_scroll, wpf_select_item_by_index, wpf_get_list_items ──
+        "DoubleClick",
+        "SelectItemByScroll",
+        "SelectItemByIndex",
+        "GetListItems",
     };
 
     [Test]

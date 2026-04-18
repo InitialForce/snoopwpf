@@ -373,4 +373,49 @@ public interface ISnoopInspector
         long sinceVersion,
         WpfLocator? rootLocator,
         CancellationToken ct);
+
+    // ── WS3-02: wpf_double_click ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Fires a WPF routed double-click event on the element identified by
+    /// <paramref name="nodeId"/> (L1, WS3-02). Primary path raises
+    /// <c>MouseLeftButtonDown</c> + <c>MouseLeftButtonUp</c> twice with
+    /// <c>ClickCount=2</c> on the second pair. When the primary path does
+    /// not set <c>Handled=true</c> and the control is not a known-good type,
+    /// a <c>SendInput</c> mouse fallback is used and a warning is emitted.
+    /// Returns <see cref="Dtos.StateDeltaDto"/> describing the outcome.
+    /// </summary>
+    Task<Dtos.StateDeltaDto> DoubleClickAsync(string nodeId, CancellationToken ct);
+
+    // ── WS3-03: wpf_select_item_by_scroll ────────────────────────────────────
+
+    /// <summary>
+    /// Scrolls the <c>ItemsControl</c> identified by <paramref name="nodeId"/>
+    /// until the item at <paramref name="targetIndex"/> is realized, then
+    /// selects it (WS3-03). Uses <c>BringIndexIntoView</c> to materialize
+    /// virtualized containers before selecting.
+    /// Returns <see cref="Dtos.StateDeltaDto"/> describing the outcome.
+    /// </summary>
+    Task<Dtos.StateDeltaDto> SelectItemByScrollAsync(string nodeId, int targetIndex, CancellationToken ct);
+
+    // ── WS3-04: wpf_select_item_by_index ─────────────────────────────────────
+
+    /// <summary>
+    /// Selects the item at the given zero-based <paramref name="index"/> in the
+    /// <c>Selector</c> identified by <paramref name="nodeId"/> by setting
+    /// <c>Selector.SelectedIndex</c> (L0, WS3-04). Does not force
+    /// materialization — use <c>wpf_select_item_by_scroll</c> for virtualized lists.
+    /// Returns <see cref="Dtos.StateDeltaDto"/> describing the outcome.
+    /// </summary>
+    Task<Dtos.StateDeltaDto> SelectItemByIndexAsync(string nodeId, int index, CancellationToken ct);
+
+    // ── WS3-06: wpf_get_list_items ────────────────────────────────────────────
+
+    /// <summary>
+    /// Enumerates the realized item containers in the <c>ItemsControl</c>
+    /// identified by <paramref name="nodeId"/> and returns their index,
+    /// node ID, display name, and selection state (WS3-06).
+    /// Virtualized items that have not yet been materialized are omitted.
+    /// </summary>
+    Task<System.Collections.Generic.List<Dtos.ListItemDto>> GetListItemsAsync(string nodeId, CancellationToken ct);
 }

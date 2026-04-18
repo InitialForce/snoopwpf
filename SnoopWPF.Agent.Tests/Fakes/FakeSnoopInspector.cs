@@ -69,6 +69,16 @@ public sealed class FakeSnoopInspector : ISnoopInspector
 
     public Func<int, IReadOnlyList<string>?, CancellationToken, Task<PumpUntilIdleResultDto>>? OnPumpUntilIdle { get; set; }
 
+    // ── WS3 delegates ────────────────────────────────────────────────────────
+
+    public Func<string, CancellationToken, Task<StateDeltaDto>>? OnDoubleClick { get; set; }
+
+    public Func<string, int, CancellationToken, Task<StateDeltaDto>>? OnSelectItemByScroll { get; set; }
+
+    public Func<string, int, CancellationToken, Task<StateDeltaDto>>? OnSelectItemByIndex { get; set; }
+
+    public Func<string, CancellationToken, Task<List<ListItemDto>>>? OnGetListItems { get; set; }
+
     /// <summary>
     /// When <see langword="true"/>, any call to a method whose delegate is null throws
     /// <see cref="InvalidOperationException"/> immediately, surfacing test vacuity at call time.
@@ -374,5 +384,67 @@ public sealed class FakeSnoopInspector : ISnoopInspector
         }
 
         return Task.FromResult(new PumpUntilIdleResultDto { IdleReached = true });
+    }
+
+    // ── WS3 implementations ───────────────────────────────────────────────────
+
+    public Task<StateDeltaDto> DoubleClickAsync(string nodeId, CancellationToken ct)
+    {
+        if (this.OnDoubleClick is not null)
+        {
+            return this.OnDoubleClick.Invoke(nodeId, ct);
+        }
+
+        if (this.StrictMode)
+        {
+            throw new InvalidOperationException("strict mode: OnDoubleClick not configured");
+        }
+
+        return Task.FromResult(new StateDeltaDto { Success = true, StateChanged = true });
+    }
+
+    public Task<StateDeltaDto> SelectItemByScrollAsync(string nodeId, int targetIndex, CancellationToken ct)
+    {
+        if (this.OnSelectItemByScroll is not null)
+        {
+            return this.OnSelectItemByScroll.Invoke(nodeId, targetIndex, ct);
+        }
+
+        if (this.StrictMode)
+        {
+            throw new InvalidOperationException("strict mode: OnSelectItemByScroll not configured");
+        }
+
+        return Task.FromResult(new StateDeltaDto { Success = true, StateChanged = true });
+    }
+
+    public Task<StateDeltaDto> SelectItemByIndexAsync(string nodeId, int index, CancellationToken ct)
+    {
+        if (this.OnSelectItemByIndex is not null)
+        {
+            return this.OnSelectItemByIndex.Invoke(nodeId, index, ct);
+        }
+
+        if (this.StrictMode)
+        {
+            throw new InvalidOperationException("strict mode: OnSelectItemByIndex not configured");
+        }
+
+        return Task.FromResult(new StateDeltaDto { Success = true, StateChanged = true });
+    }
+
+    public Task<List<ListItemDto>> GetListItemsAsync(string nodeId, CancellationToken ct)
+    {
+        if (this.OnGetListItems is not null)
+        {
+            return this.OnGetListItems.Invoke(nodeId, ct);
+        }
+
+        if (this.StrictMode)
+        {
+            throw new InvalidOperationException("strict mode: OnGetListItems not configured");
+        }
+
+        return Task.FromResult(new List<ListItemDto>());
     }
 }
