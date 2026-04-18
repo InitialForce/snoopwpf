@@ -398,8 +398,8 @@ Find and click a button by name:
 Virtualized list selection:
   1. wpf_get_windows() → get window nodeId
   2. wpf_find_elements(typeName:"ListBox") → get list nodeId
-  3a. if you have the item text → wpf_select_item_by_scroll(listNodeId, text) [MUTATE] → scroll to text + select
-  3b. if you know the zero-based index → wpf_select_item(nodeId, identifier="<index>") [MUTATE] → BringIndexIntoView + select
+  3a. if you have the item text → wpf_select_item(listNodeId, identifier="<text>") [MUTATE] → BringIndexIntoView + select
+  3b. if you know the zero-based index → wpf_select_item_by_scroll(listNodeId, targetIndex:int) [MUTATE] → scroll to index + select
   Note: for non-virtualized lists, either works; prefer wpf_select_item for lower latency.
   4. wpf_get_list_items(nodeId) → confirm selection
 

@@ -271,15 +271,17 @@ Call `wpf_get_session_info`. Expected response:
 
 ```mermaid
 sequenceDiagram
-    participant B as Broker
     participant T as WPF Target
+    participant FS as %LOCALAPPDATA%\InitialForce\mcp-session\
+    participant B as Broker
 
     Note over T,B: Sub-mode: StartBrokeredServerAsync (target=server, manifest-discovered).
-    B->>T: spawn process with --snoop-pipe=NAME
-    B->>T: write BrokerHandshakePayload to stdin (pipe + token)
-    T->>T: SnoopAgent.StartBrokered() — open NamedPipeServerStream(NAME, CurrentUserOnly)
+    T->>T: SnoopAgent.StartBrokeredServerAsync() — open NamedPipeServerStream(NAME, CurrentUserOnly); generate 256-bit token
+    T->>FS: write SessionManifest { pid, startTicks, pipeName, token, protocolVersion } → {pid}-{startTicks}.json
+    Note over T: Target waits for connection — app runs normally
+    B->>FS: ManifestReader.Read(pid) — locate + parse manifest
     B->>T: NamedPipeClientStream.Connect()
-    B->>B: GetNamedPipeServerProcessId() — verify peer PID
+    B->>B: GetNamedPipeServerProcessId() — verify peer PID matches manifest
     T->>B: HandshakeChallenge { nonce: 16 random bytes, protocolVersion: 2 }
     B->>B: ProofHmac = HMACSHA256(key=token, data=nonce)
     B->>T: HandshakeResponse { proofHmac, protocolVersion: 2 }
@@ -289,7 +291,7 @@ sequenceDiagram
     Note over B,T: Pipe ACL: PipeOptions.CurrentUserOnly (single ALLOW ACE for current user SID)
 ```
 
-Full 18-step diagram with injection bootstrap and failure paths: [docs/architecture.md](docs/architecture.md#brokered-handshake).
+Full diagrams for both warm-attach and spawn sub-modes, with injection bootstrap and failure paths: [docs/architecture.md](docs/architecture.md#brokered-handshake).
 
 </details>
 
@@ -411,7 +413,7 @@ All mutation tools require `EnableMutation = true` in `SnoopAgentOptions`.
 **Raw UIA3** — foundation everything else sits on; only sees rendered strings, no WPF-layer data.
 **WinAppDriver** — WebDriver-protocol UIA wrapper; works for cross-framework tests; no binding depth.
 
-See [docs/comparison.md](docs/comparison.md) for the full 8-way matrix including Accessibility Insights, Spy++, and Visual Studio XAML Live Preview.
+See [docs/comparison.md](docs/comparison.md) for the full 8-tool comparison matrix, covering Upstream Snoop, FlaUI, Raw UIA3, WinAppDriver, Appium Windows Driver, Playwright, TestStack/White, and this fork.
 
 ---
 
