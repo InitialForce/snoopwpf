@@ -2,6 +2,7 @@ namespace SnoopWPF.Agent.Engine.Diagnostics;
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 
 /// <summary>
@@ -36,6 +37,12 @@ public static class SnoopAgentContext
     /// Starts a new diagnostic scope for the current async call chain.
     /// Any warnings accumulated in a previous scope for this context are discarded.
     /// </summary>
+    /// <remarks>
+    /// Nesting is not supported. Each MCP tool invocation must call <see cref="BeginScope"/>
+    /// at the top level, and no re-entrant scopes must be opened while the outer scope is
+    /// still active. A <see cref="Debug.Assert"/> fires in Debug builds when nesting is
+    /// detected to catch this programming error early.
+    /// </remarks>
     /// <returns>
     /// An <see cref="IDisposable"/> that clears the scope on disposal.
     /// Disposing the scope is optional but recommended to avoid stale references in
@@ -43,6 +50,10 @@ public static class SnoopAgentContext
     /// </returns>
     public static IDisposable BeginScope()
     {
+        Debug.Assert(CurrentWarnings.Value is null,
+            "SnoopAgentContext.BeginScope does not support nesting. " +
+            "An outer scope is still active — dispose it before opening a new scope.");
+
         CurrentWarnings.Value = new List<AgentWarning>();
         return new ScopeHandle();
     }

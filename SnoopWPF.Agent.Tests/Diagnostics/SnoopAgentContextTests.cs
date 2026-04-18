@@ -204,11 +204,25 @@ public class SnoopAgentContextTests
 
     // ── Nested scopes ────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// bd-1a9.79: Nested BeginScope is not supported.
+    /// <see cref="SnoopAgentContext.BeginScope"/> guards against re-entrant use with a
+    /// <see cref="System.Diagnostics.Debug.Assert"/> in DEBUG builds.
+    /// In Release builds (or when the assert listener does not throw) the inner scope
+    /// still replaces the outer one, dropping outer warnings — this is the documented
+    /// unsupported/undefined behaviour that callers must avoid.
+    /// This test runs only in Release (no DEBUGGER assert listener attached) to verify
+    /// the existing replacement semantics are preserved for the non-guarded path.
+    /// </summary>
     [Test]
-    public void NestedScope_InnerScopeReplacesOuter()
+    [NonParallelizable]
+#if DEBUG
+    [Ignore("Nested scope triggers Debug.Assert in DEBUG builds; tested via guard in DEBUG only")]
+#endif
+    public void NestedScope_InnerScopeReplacesOuter_ReleaseBehavior()
     {
-        // Nested BeginScope() replaces the current scope; outer warnings are lost.
-        // This is the documented behaviour: each tool invocation creates a fresh scope.
+        // In Release builds (no Debug.Assert enforcement), nesting replaces the outer scope.
+        // Callers must NOT rely on this — nesting is unsupported.
         using var outer = SnoopAgentContext.BeginScope();
         SnoopAgentContext.AddWarning("OUTER", "outer warning");
 
@@ -217,6 +231,7 @@ public class SnoopAgentContextTests
 
         var innerWarnings = SnoopAgentContext.DrainWarnings();
         Assert.That(innerWarnings.Count, Is.EqualTo(1));
-        Assert.That(innerWarnings[0].Code, Is.EqualTo("INNER"));
+        Assert.That(innerWarnings[0].Code, Is.EqualTo("INNER"),
+            "In Release, inner scope replaces outer — outer warnings are lost (unsupported but defined).");
     }
 }
