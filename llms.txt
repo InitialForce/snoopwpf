@@ -1,0 +1,375 @@
+# InitialForce.SnoopAgent
+
+> InitialForce fork of snoopwpf/snoopwpf. Adds an MCP server layer on top of Snoop's WPF
+> inspection engine. Exposes `wpf_*` tools to MCP-compatible AI coding agents via three
+> deployment modes: NuGet co-located (stdio, in-process), external injection (named pipe,
+> hostfxr-based CoreCLR bootstrap), and brokered (named pipe, target-as-client connecting to
+> a long-lived broker). Target audience: MCP-compatible AI coding agents that debug, inspect,
+> or automate running WPF applications.
+
+# Note: downstream broker (MotionCatalyst/wpf-mcp) layers mc_* tools on top; those are documented separately.
+
+
+## Preconditions (RFC-2119)
+
+- An MCP client MUST complete the stdio transport handshake before any `wpf_*` call in NuGet co-located mode.
+- An MCP client MUST receive `handshake_ok` over the named pipe before any `wpf_*` call in injection or brokered modes.
+- A [MUTATE] tool call MUST NOT be issued unless `EnableMutation=true` was set in `SnoopAgentOptions` at session startup.
+- On .NET Framework 4.6.2 targets, setting `EnableMutation=true` MUST be rejected with error code `UnsupportedOnNet462`; the session proceeds in read-only mode.
+- A caller MUST NOT issue a [MUTATE] tool call when the active session is on a .NET Framework 4.6.2 target.
+- Caller SHOULD treat node IDs as opaque strings valid only within the session that produced them; node IDs MUST NOT be reused across sessions or process restarts.
+- A caller SHOULD call `wpf_get_session_info` or `wpf_diagnostics` as the first tool in any session to verify handshake completion and to retrieve dispatcher IDs and initial window node IDs.
+- A caller SHOULD call `wpf_pump_until_idle` after any [MUTATE] call before calling `wpf_poll_changes` or `wpf_wait_for_property`, to allow the Dispatcher queue and composition pipeline to settle.
+- A caller MUST NOT pass a node ID returned from a response with `stale: true` as input to subsequent tools without first re-navigating via `wpf_get_windows`.
+- A caller SHOULD call `wpf_inspect_element` to verify `isVisible=true` and the element type before issuing any input action tool.
+- A caller MUST use `wpf_fetch_blob` to retrieve image bytes after `wpf_capture_screenshot`; the `blobRef` key expires after the session-configured TTL (default 60 s).
+- Property redaction is enforced server-side regardless of client requests; a caller MUST NOT assume that a `[REDACTED]` value can be retrieved by any means.
+- A [AUTOMATION] tool call MUST NOT be issued unless `EnableAutomation=true` was set in `SnoopAgentOptions` at session startup.
+
+
+## Deployment modes
+
+- mode: nuget-colocated
+  transport: stdio
+  bootstrap: add `<PackageReference Include="SnoopWPF.Agent"/>` then call `SnoopAgent.StartCoLocated(options)` in `App.OnStartup`
+  target: .NET 8+
+  security: process-boundary isolation; `Console.Out` redirected to `TextWriter.Null` to protect stdio transport
+  token: not required when using stdio transport (process boundary is the security boundary)
+  notes: no injection, no cross-process IPC; Snoop GUI can run simultaneously
+
+- mode: injection
+  transport: named-pipe, `PipeOptions.CurrentUserOnly` DACL (single ALLOW ACE for current-user SID)
+  bootstrap: `snoop-mcp.exe --pid <n>` or `snoop-mcp.exe --window-title <t>` → hostfxr-based CoreCLR bootstrap DLL injected via `CreateRemoteThread` → `SnoopAgentEntryPoint.Start(settingsFile)`
+  handshake: HMAC-SHA256 nonce challenge/response; 16-byte random nonce per connection; constant-time compare via `CryptographicOperations.FixedTimeEquals`; 5-second timeout
+  token-delivery: owner-only temp file (DACL: single ALLOW ACE for current-user SID); deleted by agent immediately after reading; deleted by host on exit if agent never ran
+  target: .NET Framework 4.6.2, .NET 6, .NET 8 (read-only on 4.6.2 if `EnableMutation=true` requested)
+  notes: target process must be owned by the current Windows user; injection refused otherwise
+
+- mode: brokered
+  transport: named-pipe, `PipeOptions.CurrentUserOnly` DACL
+  bootstrap: target calls `SnoopAgent.StartBrokered(app, pipeName, token, options)` at startup; broker spawns target with `--snoop-pipe=NAME`; token delivered via single-line JSON `BrokerHandshakePayload` on target's stdin (never on command line)
+  manifest-path: `%LOCALAPPDATA%/InitialForce/mcp-session/{pid}-{startTimeTicks}.json`
+  manifest-acl: protected DACL, single ALLOW ACE for current-user SID
+  ordering-invariant: target MUST create the pipe server and enter `WaitForConnection` BEFORE the manifest file is atomically renamed into place
+  handshake: same HMAC-SHA256 nonce protocol as injection mode
+  target: .NET 8+
+  notes: broker owns the MCP stdio channel; target is the pipe server; broker connects as pipe client
+
+
+## Session manifest schema (brokered mode)
+
+Fields in `{pid}-{startTimeTicks}.json`:
+
+- `schemaVersion`: integer, MUST equal `1`; error `MANIFEST_SCHEMA_MISMATCH` if not
+- `sessionId`: string (GUID), unique per session
+- `pid`: integer, target process ID
+- `startTimeTicks`: long, UTC ticks at process start; defeats PID reuse attacks
+- `imagePath`: string, absolute path to target executable
+- `imageHash`: string, SHA-256 hex of target executable
+- `runtimeFamily`: string, `"CoreCLR"` or `"NetFramework"`
+- `runtimeVersion`: string, e.g. `"8.0.3"`
+- `bitness`: integer, `32` or `64`
+- `integrityLevel`: string, Windows integrity level of target process
+- `pipeName`: string, named pipe name (without `\\.\pipe\` prefix)
+- `tokenB64`: string, base64-encoded 256-bit session token
+- `leaseId`: string (GUID), unique per manifest issuance
+- `issuedAt`: string, ISO-8601 UTC datetime
+- `expiresAt`: string, ISO-8601 UTC datetime
+
+Manifest write sequence: write to temp path → apply protected DACL → `File.Move` to final path (atomic rename). Broker validates `pid`, `startTimeTicks`, `imageHash`, `schemaVersion`, and `expiresAt` before connecting.
+
+
+## Tool catalog
+
+One line per tool. Format: `name(required_params, [optional_params]) → return_shape [FLAGS]`
+FLAGS: [MUTATE] = requires `EnableMutation=true`; [AUTOMATION] = requires `EnableAutomation=true`
+
+SESSION group:
+
+  wpf_get_session_info() → {processName, pid, dotnetVersion, mutationEnabled, dispatchers:[{id,threadId,windowNodeIds[]}], capabilities:[]}
+  wpf_get_windows([includeHidden: bool=false]) → [{nodeId, title, typeName, width, height, dispatcherId}]
+  wpf_diagnostics() → {agentVersion, mode, dispatcherHealthy, blobStoreCount, blobStoreBytes, auditLogDepth, sessionPolicy:{enableMutation,enableAutomation,allowSensitiveRetention}, uptimeSeconds}
+
+TREE group:
+
+  wpf_get_visual_tree([rootNodeId: string], [maxDepth: int=3], [treeType: "visual"|"logical"|"automation"="visual"], [includeProperties: string[]]) → {root: TreeNode, truncated: bool, returnedNodeCount: int}
+  wpf_get_children([nodeId: string], [treeType: string="visual"], [cursor: string], [take: int=50]) → {items:[TreeNode], nextCursor:string|null, totalCount:int, hasMore:bool, stale:bool}
+  wpf_get_ancestors(nodeId: string, [maxLevels: int]) → {ancestors:[{nodeId,typeName,name,dataContextType}]}
+  wpf_find_elements([typeName: string], [name: string], [rootNodeId: string], [propertyConditions:[{property,operator,value}]], [treeType:string="visual"], [maxResults:int=50]) → {results:[{node:TreeNode,path:string[]}], totalScanned:int, truncated:bool}
+  wpf_inspect_element(nodeId: string) → {nodeId,typeName,name,displayName,path,parentNodeId,childCount,depth,dispatcherId,isVisible,actualWidth,actualHeight,dataContextType,hasBindingErrors,bindingErrorCount,triggerCount:int|null,behaviorCount:int|null}
+
+PROPERTIES/BINDINGS group:
+
+  wpf_get_properties(nodeId: string, [filter:string], [category:"all"|"layout"|"color"|"font"|"grid"="all"], [includeDefaults:bool=false], [cursor:string], [take:int=100]) → {items:[{name,typeName,value,valueSource,isLocallySet,isDataBound,hasBindingError,bindingError,isReadOnly,hasTypeConverter,isRedacted}], nextCursor,totalCount,hasMore,stale}
+  wpf_set_property(nodeId: string, propertyName: string, value: string) → {success:bool, previousValue:string|null, newValue:string|null, error:string|null} [MUTATE]
+  wpf_get_binding_info(nodeId: string, propertyName: string) → {hasBinding,bindingType,path,elementName,relativeSource,mode,updateSourceTrigger,converterTypeName,sourceType,status,error,dataContextIsNull,dataContextType,resolvedValue,childBindings}
+  wpf_resolve_binding(nodeId: string, propertyName: string) → {path,sourceTypeName,sourceValue,pathSteps:[{segment,value}],converterTypeName,converterParameter,mode,validationErrors,status:"OK"|"PathError"|"ValidationError"|"MissingDataContext"|"ConverterError"|"NoBinding"}
+
+DIAGNOSTICS group:
+
+  wpf_run_diagnostics([nodeId:string], [providers:string[]], [minLevel:"Info"|"Warning"|"Error"|"Critical"], [cursor:string], [take:int=50]) → {items:[{name,description,area,level,nodeId,nodePath}], nextCursor,totalCount,hasMore}
+  wpf_get_resources([nodeId:string], [resourceKey:string], [cursor:string], [take:int=50]) → {items:[{key,valueTypeName,valueSummary,origin,dictionarySource}], nextCursor,totalCount,hasMore}
+  wpf_get_triggers(nodeId: string) → [{triggerType,isActive,source:"Style"|"ControlTemplate"|"DataTemplate"|"Element",conditions:[{property,value}],setters:[{property,value}]}]
+  wpf_get_behaviors(nodeId: string) → [{typeName,assemblyName,properties:[{name,value}]}]
+
+SCREENSHOTS group:
+
+  wpf_capture_screenshot([nodeId:string]) → {width,height,nodeId,blobRef:string,sizeBytes,mimeType:"image/png"}
+  wpf_fetch_blob(key: string) → multi-content: [0]{key,mimeType,sizeBytes} [1]PNG ImageContent or UTF-8 TextContent
+
+SYNC group:
+
+  wpf_poll_changes([sinceVersion:long=0], [rootLocator:string]) → {added:[nodeId],removed:[nodeId],treeVersion:long,scannedNodeCount:int}
+  wpf_pump_until_idle([timeoutMs:int=5000], [resources:string[]]) → {idledAfterMs:int,resourcesPolled:string[]}
+  wpf_wait_for_property(locator:string, propertyName:string, [expectedValue:string], [timeoutMs:int=5000], [presenceExpected:"present"|"absent"="present"]) → {conditionMet:bool,actualValue:string|null,elapsedMs:int,pollCount:int}
+
+INPUT L1 — UIA group (all [AUTOMATION]):
+
+  wpf_click(nodeId: string) → {success:bool,stateChanged:bool,treeVersionDelta:int,failureReason:string|null,suggestion:string|null} [AUTOMATION]
+  wpf_double_click(nodeId: string) → {success:bool,stateChanged:bool,treeVersionDelta:int,chosenTier:string,warnings:string[],failureReason:string|null,suggestion:string|null} [AUTOMATION]
+  wpf_expand_collapse(nodeId:string, action:"expand"|"collapse") → {success:bool,stateChanged:bool,treeVersionDelta:int,failureReason:string|null,suggestion:string|null} [AUTOMATION]
+  wpf_toggle(nodeId: string) → {success:bool,stateChanged:bool,treeVersionDelta:int,failureReason:string|null,suggestion:string|null} [AUTOMATION]
+
+INPUT L0 — WPF-native group (all [MUTATE]):
+
+  wpf_execute_command(nodeId: string) → {success:bool,stateChanged:bool,treeVersionDelta:int,failureReason:string|null,suggestion:string|null} [MUTATE]
+  wpf_select_item(nodeId:string, identifier:string) → {success:bool,stateChanged:bool,treeVersionDelta:int,failureReason:string|null,suggestion:string|null} [MUTATE]
+  wpf_select_item_by_index(nodeId:string, index:int) → {success:bool,stateChanged:bool,treeVersionDelta:int,failureReason:string|null,suggestion:string|null} [MUTATE]
+  wpf_select_item_by_scroll(nodeId:string, targetIndex:int) → {success:bool,stateChanged:bool,treeVersionDelta:int,failureReason:string|null,suggestion:string|null} [MUTATE]
+  wpf_set_check_state(nodeId:string, state:"checked"|"unchecked"|"indeterminate") → {success:bool,stateChanged:bool,treeVersionDelta:int,failureReason:string|null,suggestion:string|null} [MUTATE]
+  wpf_set_slider_value(nodeId:string, value:number, [normalized:bool=false]) → {success:bool,stateChanged:bool,treeVersionDelta:int,failureReason:string|null,suggestion:string|null} [MUTATE]
+  wpf_set_text_value(nodeId:string, value:string) → {success:bool,stateChanged:bool,treeVersionDelta:int,failureReason:string|null,suggestion:string|null} [MUTATE]
+  wpf_get_list_items(nodeId: string) → [{index,nodeId,displayName,isSelected}]
+
+Tool count: 33 wpf_* tools total (SESSION:3, TREE:5, PROPERTIES/BINDINGS:4, DIAGNOSTICS:4, SCREENSHOTS:2, SYNC:3, INPUT L1:4, INPUT L0:8).
+
+
+## Tool notes
+
+wpf_double_click — primary path raises routed MouseLeftButtonDown+Up twice with ClickCount=2 then Control.MouseDoubleClickEvent; fallback uses Win32 SendInput when primary does not set Handled=true; response includes `chosenTier` and `warnings[]` when fallback was taken. Use for controls that open detail views or start edits on double-click (ListBoxItem, TreeViewItem, DataGrid row).
+
+wpf_select_item — identifier accepts: zero-based integer index ("0"), exact item text (case-insensitive), or unambiguous substring. Fails with `LOCATOR_AMBIGUOUS` when substring matches more than one item. Uses `DependencyObject.SetCurrentValue`; existing TwoWay bindings remain intact.
+
+wpf_select_item_by_scroll — forces realization of a virtualized item by scrolling before selecting. Use when the target item may not yet be in the visual tree. Prefer `wpf_select_item_by_index` for non-virtualized lists.
+
+wpf_get_list_items — returns only realized (materialized) containers; virtualized items not yet scrolled into view are omitted. For virtualized lists, call `wpf_select_item_by_scroll` first to force realization.
+
+wpf_set_text_value — for PasswordBox, `previousValue` is always `"[REDACTED]"` in the response. For RichTextBox, replaces the entire flow document with a single paragraph; existing formatting is discarded.
+
+wpf_resolve_binding — resolution is read-only and point-in-time; converter implementations are not invoked, only the type name is reported. Use `wpf_get_binding_info` for a lighter summary.
+
+wpf_poll_changes — hard cap of 5000 nodes per poll. On `sinceVersion=0`, returns all currently registered nodes as `added`. Does not wait for mutations to settle; call `wpf_pump_until_idle` first for deterministic results.
+
+wpf_pump_until_idle — AND-gate: requires both Dispatcher queue AND composition rendering pipeline to be simultaneously idle. Returns `DISPATCHER_BUSY` if the ceiling (max 5000 ms) is reached. Nested-pump guard: calling from within an active pump on the same thread is rejected immediately.
+
+wpf_capture_screenshot — blob TTL is configured via `SnoopAgentOptions.BlobTtl` (default 60 s). Returns `ELEMENT_NOT_RENDERABLE` for zero-size or fully hidden elements. Fallback: when `nodeId` omitted, captures main window; if not visible, first visible window.
+
+wpf_diagnostics — self-health snapshot; call as a first step to verify agent is functional before starting an inspection session.
+
+
+## Error codes
+
+| CODE | Meaning | When emitted | Recovery |
+|------|---------|--------------|----------|
+| `NO_ACTIVE_SESSION` | Tool called before handshake completed | Any tool called before pipe handshake | Wait for `handshake_ok`; re-attach if needed |
+| `MUTATION_DISABLED` | [MUTATE] tool called with `EnableMutation=false` | Any [MUTATE] tool | Set `EnableMutation=true` in `SnoopAgentOptions` at session startup |
+| `UnsupportedOnNet462` | `EnableMutation=true` attempted on .NET Framework 4.6.2 target | Session startup with mutation enabled on 4.6.2 | Use read-only tools; mutation not supported on 4.6.2 |
+| `HMAC_HANDSHAKE_FAILED` | HMAC proof did not match expected value | Handshake phase | Token mismatch; restart injection with correct token |
+| `PIPE_SQUATTER` | `GetNamedPipeServerProcessId` returned a PID other than the expected target | Handshake phase (injection mode) | Another process has claimed the pipe name; report as security event |
+| `MODE2_BROKEN_OR_STALE_MANIFEST` | Brokered manifest missing, expired, or field mismatch | Broker startup in brokered mode | Restart target; ensure manifest path and DACL are correct |
+| `MANIFEST_SCHEMA_MISMATCH` | `schemaVersion != 1` | Broker reading manifest | Update SnoopWPF.Agent packages to matching versions |
+| `ALREADY_ATTACHED` | Second client attempted to attach the same pipe | Second handshake attempt | Only one client per session; disconnect the existing client first |
+| `INJECTION_DISABLED` | Injection mode compiled out of this build | `snoop-mcp.exe` invocation | Use a build that includes injection support |
+| `SESSION_CRASHED` | Target process exited abnormally | Any tool call after target crash | Re-launch target; inspect `CrashInfo` in error payload |
+| `NODE_NOT_FOUND` | Node ID no longer exists (element garbage-collected or removed) | Any tool with `nodeId` arg | Call `wpf_get_windows` and re-navigate |
+| `DISPATCHER_BUSY` | WPF Dispatcher did not accept work within timeout | Any tree/property tool | Retry; call `wpf_pump_until_idle` first |
+| `OPERATION_TIMED_OUT` | Dispatcher accepted work but did not complete in time | Any tool with dispatcher dispatch | Reduce scope; retry when app is idle |
+| `PROPERTY_READ_ONLY` | Property cannot be set | `wpf_set_property` | Use `wpf_get_properties` to find writable properties |
+| `TYPE_CONVERSION_FAILED` | Value string could not be parsed for the target type | `wpf_set_property` | Check format table; use `InvariantCulture` decimal point |
+| `UNSUPPORTED_PROPERTY_TYPE` | Property type not in safe-settable whitelist | `wpf_set_property` | Only primitives and common WPF value types are settable |
+| `PROPERTY_REDACTED` | Property matches sensitive keyword list | Read or set of redacted property | Value cannot be retrieved or set by any means |
+| `ELEMENT_NOT_RENDERABLE` | Element has zero size or is not visible | `wpf_capture_screenshot` | Use `wpf_get_windows` for a full window screenshot |
+| `BLOB_NOT_FOUND` | `blobRef` key expired (default TTL 60 s) or never issued | `wpf_fetch_blob` | Re-run `wpf_capture_screenshot` for a fresh ref |
+| `LOCATOR_AMBIGUOUS` | WpfLocator or item identifier matched more than one element | `wpf_wait_for_property`, `wpf_select_item` | Use `$name:`, `$id:`, or an index for an unambiguous match |
+| `LOCATOR_INVALID` | WpfLocator string could not be parsed | `wpf_wait_for_property` | Valid prefixes: `$name:`, `$type:`, `$id:` |
+| `PROTOCOL_MISMATCH` | Agent and host protocol versions differ | Handshake phase | Update packages to matching versions |
+| `CannotExecuteCommand` | `ICommand.CanExecute` returned `false` | `wpf_execute_command` | Check application state; verify preconditions before retrying |
+| `PatternNotSupported` | Element does not expose required UIA pattern | L1 input tools | Use appropriate L0 tool or verify element type with `wpf_inspect_element` |
+| `ElementDisabled` | UIA pattern present but element has `IsEnabled=false` | L1 input tools | Verify `IsEnabled` first; application may need to reach a different state |
+| `ElementOutsideViewport` | Item could not be materialized after scroll budget exhausted | `wpf_select_item_by_scroll` | Item may be beyond the list's scroll extent; verify index |
+
+
+## State machine
+
+```
+  Disconnected
+       |
+       | (spawn snoop-mcp.exe or target calls StartBrokered/StartCoLocated)
+       v
+  Connecting ----[PIPE_SQUATTER]-----------> Error (terminal; pipe closed)
+       |          [INJECTION_DISABLED]------> Error (terminal)
+       |
+       | (pipe opened; server sends HandshakeChallenge with 16-byte nonce)
+       v
+  Handshaking ----[HMAC_HANDSHAKE_FAILED]--> Error (terminal; pipe closed)
+       |           [ALREADY_ATTACHED]-------> Error (terminal; pipe closed)
+       |           [5 s timeout]-----------> Error (terminal; pipe closed)
+       |           [PROTOCOL_MISMATCH]------> Error (terminal; pipe closed)
+       |
+       | (client sends HandshakeResponse with HMAC proof; server validates)
+       | (server sends handshake_ok)
+       v
+  Ready <--------------------------------------+
+       |                                       |
+       | (tool call issued)                    |
+       v                                       |
+  ToolCallInFlight                             |
+       |                                       |
+       |--[success]----------------------------> (pipe stays open)
+       |--[tool-level error]------------------>+
+       |
+       |--[SESSION_CRASHED / target exit]----> Disconnected (reconnect required)
+       |--[ALREADY_ATTACHED on reconnect]----> Error (terminal)
+
+  Legal tool calls by state:
+    Disconnected:       none
+    Connecting:         none
+    Handshaking:        none (protocol messages only; no wpf_* tools)
+    Ready:              all wpf_* tools
+    ToolCallInFlight:   none (calls are serial; one in-flight at a time per pipe)
+
+  Reconnect after SESSION_CRASHED:
+    injection mode  → re-invoke snoop-mcp.exe with a new token
+    brokered mode   → wait for target to restart and re-write the session manifest
+    co-located mode → target process has exited; restart the application
+```
+
+
+## Invariants (hard constraints)
+
+- Token MUST NOT appear on the command line in any mode; delivery is via stdin JSON payload (brokered) or owner-only temp file (injection).
+- Manifest write MUST follow: write to temp path → apply protected DACL → `File.Move` to final path (atomic rename).
+- Target MUST create the pipe server and enter `WaitForConnection` BEFORE atomically renaming the manifest into place.
+- Pipe DACL MUST be `PipeOptions.CurrentUserOnly` (protected, single ALLOW ACE for current-user SID) in all named-pipe modes.
+- `EnableMutation` scope is per-session and is not persisted; it resets on every new session.
+- `Console.Out` MUST be redirected to `TextWriter.Null` in co-located mode before the MCP server starts, to protect the stdio transport from WPF output.
+- Token MUST be zeroed from memory immediately after the handshake completes; it MUST NOT be written to logs or disk.
+- Session token generation MUST use `RandomNumberGenerator.GetBytes(32)` (256-bit); weaker PRNGs are not permitted.
+- HMAC nonce MUST be generated fresh per connection via `RandomNumberGenerator.GetBytes(16)`; nonce reuse breaks replay protection.
+- HMAC comparison MUST use `CryptographicOperations.FixedTimeEquals`; byte-by-byte comparison is not permitted.
+- Property getter MUST NOT be invoked for redacted properties; `"[REDACTED]"` is returned without calling the getter.
+- `TypeDescriptor.GetConverter()` MUST NOT be called for mutation operations; only the hardcoded internal converter table is used.
+- `AppDomain.AssemblyResolve` handler installed by injection MUST filter by `SnoopWPF.` / `Snoop.` prefix; all other requests pass through unmodified.
+- Injection MUST verify target process ownership (current-user SID match) before injecting; cross-user injection MUST be refused.
+- All Dispatcher calls MUST be wrapped in try/catch; exceptions MUST NOT propagate to the WPF message pump.
+- Pipe names and session tokens MUST NOT be written to log output, even in verbose mode.
+
+
+## wpf_set_property value formats
+
+Hardcoded safe-settable types (parsed with `InvariantCulture`):
+
+| Target type | Accepted format |
+|-------------|----------------|
+| `string` | literal string |
+| `bool` | `"True"` or `"False"` |
+| `int`, `long`, `float`, `double`, `decimal` | numeric literal; decimal point is `.` |
+| `Color` | `"#RRGGBB"`, `"#AARRGGBB"`, or named color (`"Red"`, `"Transparent"`) |
+| `Thickness` | single value (`"4"`) or L,T,R,B (`"4,8,4,8"`) |
+| `GridLength` | `"Auto"`, `"*"`, `"2*"`, or pixel count (`"100"`) |
+| `Visibility` | `"Visible"`, `"Hidden"`, `"Collapsed"` |
+| `HorizontalAlignment` | `"Left"`, `"Center"`, `"Right"`, `"Stretch"` |
+| `VerticalAlignment` | `"Top"`, `"Center"`, `"Bottom"`, `"Stretch"` |
+| `FontWeight` | `"Bold"`, `"Normal"`, etc. — case-sensitive (reflection lookup, no `IgnoreCase`) |
+| `FontStyle` | `"Normal"`, `"Italic"`, `"Oblique"` |
+| `TextAlignment` | `"Left"`, `"Center"`, `"Right"`, `"Justify"` |
+| `CornerRadius` | single value or L,T,R,B (`"4,4,0,0"`) |
+| `Point` | `"x,y"` |
+| `Size` | `"w,h"` |
+| `Rect` | `"x,y,w,h"` |
+| All `enum` types | enum member name, case-insensitive (except `FontWeight`) |
+
+Never settable: `Uri`, `ImageSource`, `BitmapSource`, `FontFamily`, `Style`, `ControlTemplate`, `DataTemplate`, `Binding`, `Type`, any `UIElement` subtype.
+
+Redacted properties cannot be set; attempt returns `PROPERTY_REDACTED`.
+
+
+## Sensitive property redaction
+
+Redacted if property name contains (case-insensitive): `password`, `passwd`, `pwd`, `secret`,
+`apikey`, `connectionstring`, `connstr`, `credential`, `privatekey`, `sharedkey`, `cookie`,
+`sessionkey`, `authorization`, `authtoken`, `authkey`, `accesstoken`, `bearertoken`,
+`refreshtoken`, `sessiontoken`, `sastoken`, `jwttoken`.
+
+Also redacted by structural type: `SecureString`, `NetworkCredential`, `DbConnectionStringBuilder`.
+
+Note: bare `auth` and `token` are NOT on the redaction list (would false-positive on `IsAuthorized`, `CancellationToken`).
+
+Redaction applies uniformly to: property values, trigger condition/setter values, and behavior property values.
+
+
+## Packages
+
+- `InitialForce.SnoopAgent` — main package; ships MCP server and tool host
+- `InitialForce.SnoopAgent.Contracts` — `ISnoopInspector`, DTOs, protocol types (shared by all packages)
+- `InitialForce.SnoopAgent.BrokerHost` — broker-side library for brokered mode
+- `InitialForce.SnoopAgent.Remote` — named-pipe proxy layer (injection and brokered transport)
+- `InitialForce.SnoopAgent.Engine` — WPF inspection engine (consumed by Server and Injection)
+- `InitialForce.SnoopAgent.Tools` — wpf_* MCP tool implementations
+
+
+## WpfLocator syntax
+
+Used by `wpf_wait_for_property` and `wpf_poll_changes` to scope queries to a subtree.
+
+| Prefix | Example | Matches |
+|--------|---------|---------|
+| `$name:` | `$name:submitButton` | Element with `x:Name` exactly equal to the value |
+| `$type:` | `$type:Button` | All elements whose type name contains the value (case-insensitive) |
+| `$id:` | `$id:0:42` | Element with exact node ID |
+
+Only one prefix per locator expression. Compound expressions are not supported. When a `$type:` locator matches multiple elements and the context requires a single element, the call fails with `LOCATOR_AMBIGUOUS`; use `$name:` or `$id:` for unambiguous targeting.
+
+
+## Common agent workflows
+
+Inspect binding errors:
+  1. wpf_get_session_info() → verify session + get window node IDs
+  2. wpf_run_diagnostics(minLevel:"Error") → get BindingError items with nodeIds
+  3. wpf_get_binding_info(nodeId, propertyName) → inspect specific failing binding
+  4. wpf_resolve_binding(nodeId, propertyName) → get full path-step chain for root cause
+
+Screenshot workflow:
+  1. wpf_get_windows() → get window nodeId
+  2. wpf_capture_screenshot(nodeId) → get blobRef
+  3. wpf_fetch_blob(key: blobRef) → retrieve PNG bytes
+
+Mutation + change detection:
+  1. wpf_poll_changes(sinceVersion:0) → baseline treeVersion
+  2. wpf_set_property(nodeId, propertyName, value) [MUTATE]
+  3. wpf_pump_until_idle() → wait for Dispatcher + composition to settle
+  4. wpf_poll_changes(sinceVersion: <baseline>) → delta of added/removed nodes
+
+Find and click a button by name:
+  1. wpf_find_elements(name:"submitButton") → get nodeId
+  2. wpf_inspect_element(nodeId) → verify isVisible=true, check for Command binding
+  3a. if Command binding present → wpf_execute_command(nodeId) [MUTATE preferred]
+  3b. if no Command → wpf_click(nodeId) [AUTOMATION]
+  4. wpf_pump_until_idle() → settle
+
+Virtualized list selection:
+  1. wpf_get_windows() → get window nodeId
+  2. wpf_find_elements(typeName:"ListBox") → get list nodeId
+  3. wpf_select_item_by_scroll(nodeId, targetIndex) [MUTATE] → scroll + select
+  4. wpf_get_list_items(nodeId) → confirm selection
+
+
+## References
+
+- `docs/architecture.md` — component diagram, process model, transport layers
+- `docs/security.md` — full threat model, HMAC protocol, redaction list, pipe ACL details
+- `docs/mcp-tools-reference.md` — full per-tool parameter tables and return schemas
+- `docs/recipes.md` — common agent workflows (find binding errors, screenshot loop, mutation patterns)
+- `docs/injection-mode.md` — step-by-step injection mode setup
+- `docs/nuget-mode.md` — NuGet co-located integration guide
+- `docs/brokered-mode-integration.md` — brokered mode target-side and broker-side integration
