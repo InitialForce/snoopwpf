@@ -220,26 +220,13 @@ result before proceeding.
 ```json
 // Tool: wpf_get_session_info
 // Parameters: (none)
+// Key field: "mutationEnabled": true
 ```
-
-<details>
-<summary>Example response</summary>
-
-```json
-{
-  "processName": "StrideAnalyzer",
-  "pid": 9120,
-  "dotnetVersion": "8.0.3",
-  "mutationEnabled": true,
-  "dispatchers": [{ "id": 0, "threadId": 1, "windowNodeIds": ["0:1"] }],
-  "capabilities": ["tree", "properties", "diagnostics", "resources", "screenshots"]
-}
-```
-</details>
 
 `mutationEnabled: true` is required. If it reads `false`, mutation tools will return
 `MUTATION_DISABLED` and the agent must ask the operator to restart the app with
-`EnableMutation = true` in `SnoopAgentOptions`.
+`EnableMutation = true` in `SnoopAgentOptions`. (See [Appendix](#appendix-full-json-responses),
+Recipe 2 Step 1 for the full response.)
 
 ### Step 2 — Find the feature toggle CheckBox
 
@@ -249,70 +236,24 @@ result before proceeding.
   "name": "ExportFeatureToggle",
   "treeType": "visual"
 }
+// Returns: nodeId "0:204", typeName "System.Windows.Controls.CheckBox"
 ```
-
-<details>
-<summary>Example response</summary>
-
-```json
-{
-  "results": [
-    {
-      "node": {
-        "nodeId": "0:204",
-        "typeName": "System.Windows.Controls.CheckBox",
-        "name": "ExportFeatureToggle",
-        "displayName": "ExportFeatureToggle",
-        "childCount": 1,
-        "hasBindingError": false,
-        "depth": 6
-      },
-      "path": ["MainWindow", "Grid", "SettingsPanel", "FeaturesGroup", "ExportSection", "ExportFeatureToggle"]
-    }
-  ],
-  "totalScanned": 312,
-  "truncated": false
-}
-```
-</details>
 
 ### Step 3 — Set the check state
 
 ```json
+// [MUTATE] — requires EnableMutation=true in SnoopAgentOptions
 // Tool: wpf_set_check_state
 {
   "nodeId": "0:204",
   "state": "checked"
 }
+// If EnableMutation is false, the call returns instead:
+// { "ok": false, "error": { "code": "MUTATION_DISABLED", "message": "..." } }
 ```
 
-<details>
-<summary>Example response (mutation enabled)</summary>
-
-```json
-{
-  "success": true,
-  "stateChanged": true,
-  "treeVersionDelta": 1,
-  "failureReason": null,
-  "suggestion": null
-}
-```
-</details>
-
-<details>
-<summary>Contrast: response when mutation is disabled</summary>
-
-```json
-{
-  "success": false,
-  "stateChanged": false,
-  "treeVersionDelta": 0,
-  "failureReason": "MUTATION_DISABLED",
-  "suggestion": "Set EnableMutation = true in SnoopAgentOptions before calling mutation tools"
-}
-```
-</details>
+Success response: `{ "success": true, "stateChanged": true, "treeVersionDelta": 1, ... }`.
+Disabled response: `{ "success": false, "failureReason": "MUTATION_DISABLED", ... }`.
 
 ### Step 4 — Wait for the property to confirm
 
@@ -325,52 +266,22 @@ result before proceeding.
   "timeoutMs": 5000,
   "presenceExpected": "present"
 }
+// Returns: { "conditionMet": true, "actualValue": "True", "elapsedMs": 18, "pollCount": 1 }
 ```
-
-<details>
-<summary>Example response</summary>
-
-```json
-{
-  "conditionMet": true,
-  "actualValue": "True",
-  "elapsedMs": 18,
-  "pollCount": 1
-}
-```
-</details>
 
 ### Step 5 — Capture a screenshot to confirm the UI state
 
 ```json
 // Tool: wpf_capture_screenshot
-{
-  "nodeId": "0:204"
-}
+{ "nodeId": "0:204" }
+// Returns: { "blobRef": "blob:screenshot:0:204:f9a3c1b7", "sizeBytes": 3214, ... }
 ```
-
-<details>
-<summary>Example response</summary>
-
-```json
-{
-  "width": 200,
-  "height": 28,
-  "nodeId": "0:204",
-  "blobRef": "blob:screenshot:0:204:f9a3c1b7",
-  "sizeBytes": 3214,
-  "mimeType": "image/png"
-}
-```
-</details>
 
 ### Step 6 — Fetch the image
 
 ```json
 // Tool: wpf_fetch_blob
-{
-  "key": "blob:screenshot:0:204:f9a3c1b7"
-}
+{ "key": "blob:screenshot:0:204:f9a3c1b7" }
 ```
 
 The response is a two-block MCP content response: block 0 is JSON metadata, block 1 is the
@@ -390,43 +301,27 @@ No input simulation required.
 select the record at index 500, which is far off-screen. Standard `wpf_find_elements` cannot
 find it because WPF's `VirtualizingStackPanel` has not yet materialized the item container.
 
+**Two tools handle virtualized selection.** `wpf_select_item_by_scroll(listNodeId, targetIndex)`
+is preferred when you need explicit scroll-then-select behaviour (it forces realization by
+scrolling to the target index before selecting); `wpf_select_item(nodeId, identifier="<index>")`
+is preferred when you have a stable zero-based integer index and want lower-latency direct
+selection via `BringIndexIntoView`. When you have the item text rather than an index, pass the
+text string as `identifier` to `wpf_select_item` — it accepts exact text or an unambiguous
+substring in addition to integer indices. This recipe uses the index path via `wpf_select_item`;
+swap in `wpf_select_item_by_scroll` if your use-case requires the explicit scroll-first
+guarantee (for example when targeting items near the scroll-budget boundary).
+
 ### Step 1 — Find the ListBox by type and automation ID
 
 ```json
 // Tool: wpf_find_elements
 {
   "typeName": "ListBox",
-  "propertyConditions": [
-    { "property": "Name", "operator": "Equals", "value": "SessionHistoryList" }
-  ],
+  "propertyConditions": [{ "property": "Name", "operator": "Equals", "value": "SessionHistoryList" }],
   "treeType": "visual"
 }
+// Returns: nodeId "0:55", childCount 12 (only 12 containers realized out of 800)
 ```
-
-<details>
-<summary>Example response</summary>
-
-```json
-{
-  "results": [
-    {
-      "node": {
-        "nodeId": "0:55",
-        "typeName": "System.Windows.Controls.ListBox",
-        "name": "SessionHistoryList",
-        "displayName": "SessionHistoryList",
-        "childCount": 12,
-        "hasBindingError": false,
-        "depth": 3
-      },
-      "path": ["MainWindow", "Grid", "SessionHistoryList"]
-    }
-  ],
-  "totalScanned": 312,
-  "truncated": false
-}
-```
-</details>
 
 `childCount: 12` — only 12 item containers are realized even though the list has 800 items.
 A direct `wpf_find_elements` search for an item at position 500 would fail.
@@ -437,51 +332,19 @@ A direct `wpf_find_elements` search for an item at position 500 would fail.
 // Tool: wpf_find_elements
 {
   "typeName": "ListBoxItem",
-  "propertyConditions": [
-    { "property": "Content", "operator": "Contains", "value": "Session #500" }
-  ],
+  "propertyConditions": [{ "property": "Content", "operator": "Contains", "value": "Session #500" }],
   "rootNodeId": "0:55"
 }
+// Returns: { "results": [], "totalScanned": 12 }  — item not yet realized
 ```
-
-<details>
-<summary>Example response — item not found</summary>
-
-```json
-{
-  "results": [],
-  "totalScanned": 12,
-  "truncated": false
-}
-```
-</details>
-
-Only the 12 realized containers were scanned. The item at index 500 does not exist in the
-visual tree yet.
 
 ### Step 3 — Select by index to trigger BringIndexIntoView
 
 ```json
 // Tool: wpf_select_item
-{
-  "nodeId": "0:55",
-  "identifier": "500"
-}
+{ "nodeId": "0:55", "identifier": "500" }
+// Returns: { "success": true, "stateChanged": true, "treeVersionDelta": 14 }
 ```
-
-<details>
-<summary>Example response</summary>
-
-```json
-{
-  "success": true,
-  "stateChanged": true,
-  "treeVersionDelta": 14,
-  "failureReason": null,
-  "suggestion": null
-}
-```
-</details>
 
 `treeVersionDelta: 14` reflects the burst of new item containers added to the tree as WPF
 scrolled the panel to bring index 500 into view.
@@ -490,57 +353,19 @@ scrolled the panel to bring index 500 into view.
 
 ```json
 // Tool: wpf_pump_until_idle
-{
-  "timeoutMs": 3000
-}
+{ "timeoutMs": 3000 }
+// Returns: { "idledAfterMs": 84, "resourcesPolled": ["Dispatcher", "CompositionRendering"] }
 ```
-
-<details>
-<summary>Example response</summary>
-
-```json
-{
-  "idledAfterMs": 84,
-  "resourcesPolled": ["Dispatcher", "CompositionRendering"]
-}
-```
-</details>
 
 ```json
 // Tool: wpf_find_elements
 {
   "typeName": "ListBoxItem",
-  "propertyConditions": [
-    { "property": "IsSelected", "operator": "Equals", "value": "True" }
-  ],
+  "propertyConditions": [{ "property": "IsSelected", "operator": "Equals", "value": "True" }],
   "rootNodeId": "0:55"
 }
+// Returns: nodeId "0:621", displayName "Session #500 — 2026-03-14" (now materialized)
 ```
-
-<details>
-<summary>Example response — item now realized</summary>
-
-```json
-{
-  "results": [
-    {
-      "node": {
-        "nodeId": "0:621",
-        "typeName": "System.Windows.Controls.ListBoxItem",
-        "name": "",
-        "displayName": "Session #500 — 2026-03-14",
-        "childCount": 1,
-        "hasBindingError": false,
-        "depth": 4
-      },
-      "path": ["MainWindow", "Grid", "SessionHistoryList", "ListBoxItem"]
-    }
-  ],
-  "totalScanned": 18,
-  "truncated": false
-}
-```
-</details>
 
 The item is now materialized and can be inspected with `wpf_inspect_element` or
 `wpf_get_binding_info`.
@@ -561,71 +386,17 @@ The designer's intent is `#FF0078D4` (blue) for hover but the rendered color is 
 
 ```json
 // Tool: wpf_find_elements
-{
-  "name": "PrimaryActionButton",
-  "treeType": "visual"
-}
+{ "name": "PrimaryActionButton", "treeType": "visual" }
+// Returns: nodeId "0:180", typeName "System.Windows.Controls.Button"
 ```
-
-<details>
-<summary>Example response</summary>
-
-```json
-{
-  "results": [
-    {
-      "node": {
-        "nodeId": "0:180",
-        "typeName": "System.Windows.Controls.Button",
-        "name": "PrimaryActionButton",
-        "displayName": "PrimaryActionButton",
-        "childCount": 1,
-        "hasBindingError": false,
-        "depth": 4
-      },
-      "path": ["MainWindow", "Grid", "ActionBar", "PrimaryActionButton"]
-    }
-  ],
-  "totalScanned": 312,
-  "truncated": false
-}
-```
-</details>
 
 ### Step 2 — Inspect the element for trigger and behavior counts
 
 ```json
 // Tool: wpf_inspect_element
-{
-  "nodeId": "0:180"
-}
+{ "nodeId": "0:180" }
+// Key fields: triggerCount: null, behaviorCount: null
 ```
-
-<details>
-<summary>Example response</summary>
-
-```json
-{
-  "nodeId": "0:180",
-  "typeName": "System.Windows.Controls.Button",
-  "name": "PrimaryActionButton",
-  "displayName": "PrimaryActionButton",
-  "path": ["MainWindow", "Grid", "ActionBar", "PrimaryActionButton"],
-  "parentNodeId": "0:150",
-  "childCount": 1,
-  "depth": 4,
-  "dispatcherId": 0,
-  "isVisible": true,
-  "actualWidth": 140.0,
-  "actualHeight": 36.0,
-  "dataContextType": "StrideAnalyzer.ViewModel.MainViewModel",
-  "hasBindingErrors": false,
-  "bindingErrorCount": 0,
-  "triggerCount": null,
-  "behaviorCount": null
-}
-```
-</details>
 
 `triggerCount: null` means the count has not been evaluated yet. Call `wpf_get_triggers` to
 fetch them.
@@ -634,41 +405,18 @@ fetch them.
 
 ```json
 // Tool: wpf_get_triggers
+{ "nodeId": "0:180" }
+```
+
+Returns an array of trigger objects. The relevant one:
+```json
 {
-  "nodeId": "0:180"
+  "triggerType": "Trigger",
+  "source": "ControlTemplate",
+  "conditions": [{ "property": "IsMouseOver", "value": "True" }],
+  "setters": [{ "property": "Background", "value": "{DynamicResource HoverBackgroundBrushKey}" }]
 }
 ```
-
-<details>
-<summary>Example response</summary>
-
-```json
-[
-  {
-    "triggerType": "Trigger",
-    "isActive": false,
-    "source": "ControlTemplate",
-    "conditions": [
-      { "property": "IsMouseOver", "value": "True" }
-    ],
-    "setters": [
-      { "property": "Background", "value": "{DynamicResource HoverBackgroundBrushKey}" }
-    ]
-  },
-  {
-    "triggerType": "Trigger",
-    "isActive": false,
-    "source": "ControlTemplate",
-    "conditions": [
-      { "property": "IsPressed", "value": "True" }
-    ],
-    "setters": [
-      { "property": "Background", "value": "{DynamicResource PressedBackgroundBrushKey}" }
-    ]
-  }
-]
-```
-</details>
 
 The hover trigger sets `Background` via `{DynamicResource HoverBackgroundBrushKey}`. The
 resource key is the suspected location of the conflict.
@@ -677,39 +425,14 @@ resource key is the suspected location of the conflict.
 
 ```json
 // Tool: wpf_get_resources
-{
-  "nodeId": "0:180",
-  "resourceKey": "HoverBackgroundBrushKey"
-}
+{ "nodeId": "0:180", "resourceKey": "HoverBackgroundBrushKey" }
 ```
 
-<details>
-<summary>Example response — shadow revealed</summary>
-
+Returns two entries — closest scope wins:
 ```json
-{
-  "items": [
-    {
-      "key": "HoverBackgroundBrushKey",
-      "valueTypeName": "System.Windows.Media.SolidColorBrush",
-      "valueSummary": "#FF5C2D91",
-      "origin": "Local",
-      "dictionarySource": "ActionBar"
-    },
-    {
-      "key": "HoverBackgroundBrushKey",
-      "valueTypeName": "System.Windows.Media.SolidColorBrush",
-      "valueSummary": "#FF0078D4",
-      "origin": "Shadowed",
-      "dictionarySource": "App"
-    }
-  ],
-  "nextCursor": null,
-  "totalCount": 2,
-  "hasMore": false
-}
+{ "key": "HoverBackgroundBrushKey", "valueSummary": "#FF5C2D91", "origin": "Local",    "dictionarySource": "ActionBar" },
+{ "key": "HoverBackgroundBrushKey", "valueSummary": "#FF0078D4", "origin": "Shadowed", "dictionarySource": "App" }
 ```
-</details>
 
 The resource lookup shows two entries for `HoverBackgroundBrushKey`. The closest scope wins:
 the `ActionBar` control's local `ResourceDictionary` defines `#FF5C2D91` (purple), which
@@ -736,60 +459,17 @@ This keeps JSON responses under ~2 KB regardless of image size.
 
 ```json
 // Tool: wpf_find_elements
-{
-  "name": "SessionSummaryForm",
-  "treeType": "visual"
-}
+{ "name": "SessionSummaryForm", "treeType": "visual" }
+// Returns: nodeId "0:95", typeName "System.Windows.Controls.Grid"
 ```
-
-<details>
-<summary>Example response</summary>
-
-```json
-{
-  "results": [
-    {
-      "node": {
-        "nodeId": "0:95",
-        "typeName": "System.Windows.Controls.Grid",
-        "name": "SessionSummaryForm",
-        "displayName": "SessionSummaryForm",
-        "childCount": 8,
-        "hasBindingError": false,
-        "depth": 3
-      },
-      "path": ["MainWindow", "Grid", "SessionSummaryForm"]
-    }
-  ],
-  "totalScanned": 312,
-  "truncated": false
-}
-```
-</details>
 
 ### Step 2 — Capture the screenshot (step 1 of 2: get the reference token)
 
 ```json
 // Tool: wpf_capture_screenshot
-{
-  "nodeId": "0:95"
-}
+{ "nodeId": "0:95" }
+// Returns: { "blobRef": "blob:screenshot:0:95:c3e7a912", "sizeBytes": 52840, "width": 640, "height": 480 }
 ```
-
-<details>
-<summary>Example response — note: no image bytes here</summary>
-
-```json
-{
-  "width": 640,
-  "height": 480,
-  "nodeId": "0:95",
-  "blobRef": "blob:screenshot:0:95:c3e7a912",
-  "sizeBytes": 52840,
-  "mimeType": "image/png"
-}
-```
-</details>
 
 The response is a small JSON object (~150 bytes). The 52 KB PNG is held in the in-process
 blob store under the key `blob:screenshot:0:95:c3e7a912`. The LLM's context window is not
@@ -802,30 +482,13 @@ expanded at this point.
 
 ```json
 // Tool: wpf_fetch_blob
-{
-  "key": "blob:screenshot:0:95:c3e7a912"
-}
+{ "key": "blob:screenshot:0:95:c3e7a912" }
 ```
 
-<details>
-<summary>Example response structure</summary>
-
-The response is a two-block MCP content response:
-
-**Block 0 — JSON metadata:**
-```json
-{
-  "key": "blob:screenshot:0:95:c3e7a912",
-  "mimeType": "image/png",
-  "sizeBytes": 52840
-}
-```
-
-**Block 1 — PNG ImageContent:**
-The actual PNG bytes are delivered as an MCP `ImageContent` block with `mediaType: "image/png"`.
-The MCP client passes this block to the model's vision capability as a native image, not as
-base64 embedded in a JSON string.
-</details>
+The response is a two-block MCP content response: **Block 0** is JSON metadata
+(`key`, `mimeType`, `sizeBytes`); **Block 1** is an MCP `ImageContent` block with
+`mediaType: "image/png"`. The MCP client passes block 1 to the model's vision capability as a
+native image, not as base64 embedded in a JSON string.
 
 ### Why the two-step protocol matters
 
@@ -856,6 +519,110 @@ pressure.
 | Find an element by name | `wpf_find_elements(name=...)` → `wpf_inspect_element(nodeId)` |
 | Diagnose blank/wrong value | `wpf_find_elements` → `wpf_get_binding_info` → `wpf_resolve_binding` |
 | Mutate a property safely | `wpf_get_session_info` (check `mutationEnabled`) → mutation tool → `wpf_wait_for_property` |
-| Select virtualized list item | `wpf_find_elements` (get list nodeId) → `wpf_select_item(identifier="N")` → `wpf_pump_until_idle` → `wpf_find_elements` |
+| Select virtualized list item (by index) | `wpf_find_elements` (get list nodeId) → `wpf_select_item(identifier="N")` → `wpf_pump_until_idle` → `wpf_find_elements` |
+| Select virtualized list item (scroll-first) | `wpf_find_elements` (get list nodeId) → `wpf_select_item_by_scroll(nodeId, targetIndex)` → `wpf_find_elements` |
 | Audit style / resource conflict | `wpf_inspect_element` → `wpf_get_triggers` → `wpf_get_resources(resourceKey=...)` |
 | Capture form state | `wpf_capture_screenshot(nodeId)` → `wpf_fetch_blob(blobRef)` |
+
+---
+
+## Appendix — Full JSON responses
+
+Expanded tool response examples for recipes where the recipe body shows only key fields.
+
+### Recipe 2 — Step 1: wpf_get_session_info (mutation-enabled session)
+
+```json
+{
+  "processName": "StrideAnalyzer",
+  "pid": 9120,
+  "dotnetVersion": "8.0.3",
+  "mutationEnabled": true,
+  "dispatchers": [{ "id": 0, "threadId": 1, "windowNodeIds": ["0:1"] }],
+  "capabilities": ["tree", "properties", "diagnostics", "resources", "screenshots"]
+}
+```
+
+### Recipe 2 — Step 2: wpf_find_elements (ExportFeatureToggle)
+
+```json
+{
+  "results": [
+    {
+      "node": {
+        "nodeId": "0:204",
+        "typeName": "System.Windows.Controls.CheckBox",
+        "name": "ExportFeatureToggle",
+        "displayName": "ExportFeatureToggle",
+        "childCount": 1,
+        "hasBindingError": false,
+        "depth": 6
+      },
+      "path": ["MainWindow", "Grid", "SettingsPanel", "FeaturesGroup", "ExportSection", "ExportFeatureToggle"]
+    }
+  ],
+  "totalScanned": 312,
+  "truncated": false
+}
+```
+
+### Recipe 4 — Step 2: wpf_inspect_element (PrimaryActionButton)
+
+```json
+{
+  "nodeId": "0:180",
+  "typeName": "System.Windows.Controls.Button",
+  "name": "PrimaryActionButton",
+  "displayName": "PrimaryActionButton",
+  "path": ["MainWindow", "Grid", "ActionBar", "PrimaryActionButton"],
+  "parentNodeId": "0:150",
+  "childCount": 1,
+  "depth": 4,
+  "dispatcherId": 0,
+  "isVisible": true,
+  "actualWidth": 140.0,
+  "actualHeight": 36.0,
+  "dataContextType": "StrideAnalyzer.ViewModel.MainViewModel",
+  "hasBindingErrors": false,
+  "bindingErrorCount": 0,
+  "triggerCount": null,
+  "behaviorCount": null
+}
+```
+
+### Recipe 4 — Step 3: wpf_get_triggers (full trigger array)
+
+```json
+[
+  {
+    "triggerType": "Trigger",
+    "isActive": false,
+    "source": "ControlTemplate",
+    "conditions": [{ "property": "IsMouseOver", "value": "True" }],
+    "setters": [{ "property": "Background", "value": "{DynamicResource HoverBackgroundBrushKey}" }]
+  },
+  {
+    "triggerType": "Trigger",
+    "isActive": false,
+    "source": "ControlTemplate",
+    "conditions": [{ "property": "IsPressed", "value": "True" }],
+    "setters": [{ "property": "Background", "value": "{DynamicResource PressedBackgroundBrushKey}" }]
+  }
+]
+```
+
+### Recipe 4 — Step 4: wpf_get_resources (shadow revealed)
+
+```json
+{
+  "items": [
+    { "key": "HoverBackgroundBrushKey", "valueTypeName": "System.Windows.Media.SolidColorBrush",
+      "valueSummary": "#FF5C2D91", "origin": "Local",    "dictionarySource": "ActionBar" },
+    { "key": "HoverBackgroundBrushKey", "valueTypeName": "System.Windows.Media.SolidColorBrush",
+      "valueSummary": "#FF0078D4", "origin": "Shadowed", "dictionarySource": "App" }
+  ],
+  "nextCursor": null,
+  "totalCount": 2,
+  "hasMore": false
+}
+```
