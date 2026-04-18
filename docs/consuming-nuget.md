@@ -1,15 +1,67 @@
-# Consuming InitialForce.SnoopAgent from NuGet.org
+# Consuming InitialForce.SnoopAgent (GitHub Packages)
+
+> **Feed location note.** 1.0.0-rc.x is published to the **GitHub Packages**
+> feed for the `InitialForce` org, *not* nuget.org. Publishing to nuget.org is
+> currently blocked by a pending prefix-reservation issue on the
+> `InitialForce.*` namespace. See the consumer setup below for how to wire up
+> the GitHub feed.
 
 ## Quick start
 
 ```bash
-dotnet add package InitialForce.SnoopAgent --version 1.0.0-rc.1 --prerelease
+# 1) Drop the feed entry into a nuget.config beside your .sln (see below).
+# 2) Add the package:
+dotnet add package InitialForce.SnoopAgent --version 1.0.0-rc.2 --prerelease
 ```
 
 `InitialForce.SnoopAgent` embeds an MCP server into your WPF application so any
 MCP-compatible AI agent (Claude Desktop, Claude Code, Cursor, etc.) can inspect
 the running UI without a debugger. See [`samples/minimal/`](../samples/minimal/)
 for a complete working example.
+
+## Feed + auth setup (GitHub Packages)
+
+GitHub Packages requires an authenticated feed even when the packages are
+public. Create a `nuget.config` next to your solution with the snippet below.
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <packageSources>
+    <clear />
+    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+    <add key="initialforce" value="https://nuget.pkg.github.com/InitialForce/index.json" />
+  </packageSources>
+  <packageSourceMapping>
+    <packageSource key="initialforce">
+      <package pattern="InitialForce.*" />
+    </packageSource>
+    <packageSource key="nuget.org">
+      <package pattern="*" />
+    </packageSource>
+  </packageSourceMapping>
+  <packageSourceCredentials>
+    <initialforce>
+      <add key="Username" value="%GITHUB_USER%" />
+      <add key="ClearTextPassword" value="%GITHUB_TOKEN%" />
+    </initialforce>
+  </packageSourceCredentials>
+</configuration>
+```
+
+Then set two environment variables in your shell (or your CI secrets):
+
+```bash
+export GITHUB_USER=<your-github-login>
+export GITHUB_TOKEN=<classic-PAT-with-read:packages-scope>
+```
+
+Create the PAT at <https://github.com/settings/tokens/new> with the
+`read:packages` scope. That's all it needs — no `repo` or `write:packages`.
+Tokens can be scoped to a single org via fine-grained PATs if you prefer.
+
+In GitHub Actions inside the `InitialForce` org, the built-in `GITHUB_TOKEN`
+already carries `read:packages`; just reference it instead of a PAT.
 
 ## Available packages
 
@@ -80,20 +132,15 @@ The `snoop-mcp` executable must be on your `PATH` or you can use its full path.
 
 ## Local development workflow
 
-### Installing from nuget.org
+### Installing from GitHub Packages
 
-No custom `NuGet.config` is needed for 1.0.0-rc.1 and later — the packages are
-published to the public nuget.org feed. Run:
-
-```bash
-dotnet add package InitialForce.SnoopAgent --version 1.0.0-rc.1 --prerelease
-```
-
-To update to a later prerelease:
+Configure the feed as shown at the top of this doc, then:
 
 ```bash
 dotnet add package InitialForce.SnoopAgent --version 1.0.0-rc.2 --prerelease
 ```
+
+To update to a later prerelease, bump the `--version` value.
 
 ### Debugging with symbols (snupkg)
 

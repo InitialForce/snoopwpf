@@ -11,8 +11,7 @@ concurrency:
 
 permissions:
   contents: write  # for gh release create
-  packages: read   # no longer publishing to GitHub Packages
-  id-token: write  # for NuGet Trusted Publishing (OIDC → temp API key)
+  packages: write  # publish nupkgs to GitHub Packages (github.com/InitialForce)
 
 jobs:
   pack-and-publish:
@@ -215,40 +214,33 @@ jobs:
           path: artifacts/nupkg/*.nupkg
 
       # ---------------------------------------------------------------------------
-      # Publish to nuget.org
+      # Publish to GitHub Packages (github.com/orgs/InitialForce/packages)
       #
-      # Bootstrap mode: we're using the NUGET_API_KEY repo secret for the very
-      # first publish. Trusted Publishing (OIDC) requires the account to already
-      # own the package IDs (or hold an ID-prefix reservation). Because this is
-      # the maiden release of the InitialForce.SnoopAgent.* IDs, the OIDC-scoped
-      # key returned by NuGet/login@v1 has no IDs it is allowed to create, and
-      # every PUT comes back as 409 Conflict.
+      # We publish to GitHub Packages (not nuget.org) because nuget.org currently
+      # rejects every push under the InitialForce.* prefix with 409 Conflict,
+      # regardless of auth method (OIDC Trusted Publishing, personal API key).
+      # Likely cause: a reserved-prefix claim not yet tied to our account, which
+      # is only resolvable through a nuget.org support ticket.
       #
-      # Once one version of each ID has landed on nuget.org, our account owns
-      # those IDs and we will switch back to Trusted Publishing for subsequent
-      # releases. See release-oidc-rollback.md (tracked follow-up) for the
-      # revert steps.
+      # GitHub Packages:
+      #   - Feed URL: https://nuget.pkg.github.com/InitialForce/index.json
+      #   - Auth: GITHUB_TOKEN with packages:write (granted at workflow level).
+      #   - Visibility: inherits from this repo (public once linked).
       #
-      # Secret setup (bootstrap):
-      #   repo settings → Secrets → Actions → NUGET_API_KEY
-      #     value: a personal nuget.org API key with scope
-      #            "Push new packages and package versions" on glob
-      #            InitialForce.SnoopAgent.* (delete after first successful push).
+      # Consumer config: see docs/consuming-nuget.md for nuget.config + PAT.
       # ---------------------------------------------------------------------------
-      - name: Publish to nuget.org
+      - name: Publish to GitHub Packages
         env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
         run: |
-          if (-not $env:NUGET_API_KEY) {
-            throw "NUGET_API_KEY secret is not set."
-          }
+          $source = "https://nuget.pkg.github.com/InitialForce/index.json"
           # Push nupkgs (snupkgs are picked up automatically when in the same folder).
           Get-ChildItem artifacts/nupkg/*.nupkg | ForEach-Object {
-            Write-Host "Pushing $($_.Name)"
+            Write-Host "Pushing $($_.Name) → $source"
             dotnet nuget push $_.FullName `
-              --source https://api.nuget.org/v3/index.json `
-              --api-key $env:NUGET_API_KEY `
+              --source $source `
+              --api-key $env:GH_TOKEN `
               --skip-duplicate
             if ($LASTEXITCODE -ne 0) { throw "dotnet nuget push failed for $($_.Name)" }
           }
