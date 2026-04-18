@@ -150,6 +150,14 @@ public static class ToolExceptionMapper
     /// <summary>
     /// Overload for tool handlers that return <see cref="CallToolResult"/>.
     /// </summary>
+    /// <remarks>
+    /// Before invoking <paramref name="handler"/> a fresh <see cref="SnoopAgentContext"/> scope
+    /// is opened.  After the handler returns successfully, accumulated warnings are drained and,
+    /// when non-empty, injected into the returned <see cref="CallToolResult.Content"/> as an
+    /// additional <see cref="TextContentBlock"/> containing a JSON object with a top-level
+    /// <c>warnings</c> array.  Each element is a string of the form <c>[CODE] message</c>.
+    /// When no warnings were emitted the result is returned unchanged.
+    /// </remarks>
     public static async Task<CallToolResult> WrapCallToolResult(Func<Task<CallToolResult>> handler)
     {
         if (handler is null)
@@ -157,9 +165,12 @@ public static class ToolExceptionMapper
             throw new ArgumentNullException(nameof(handler));
         }
 
+        using var scope = SnoopAgentContext.BeginScope();
+
         try
         {
-            return await handler().ConfigureAwait(false);
+            var result = await handler().ConfigureAwait(false);
+            return AttachWarnings(result, SnoopAgentContext.DrainWarnings());
         }
         catch (McpException)
         {
@@ -199,6 +210,32 @@ public static class ToolExceptionMapper
         {
             throw MapAggregateException(aex);
         }
+    }
+
+    /// <summary>
+    /// Injects accumulated <paramref name="warnings"/> into the <see cref="CallToolResult"/>
+    /// as an additional <see cref="TextContentBlock"/> with a top-level <c>warnings</c> JSON
+    /// array.  Returns <paramref name="result"/> unchanged when <paramref name="warnings"/>
+    /// is empty.
+    /// </summary>
+    internal static CallToolResult AttachWarnings(CallToolResult result, IReadOnlyList<AgentWarning> warnings)
+    {
+        if (warnings.Count == 0)
+        {
+            return result;
+        }
+
+        var warningStrings = new JsonArray();
+        foreach (var w in warnings)
+        {
+            warningStrings.Add(JsonValue.Create($"[{w.Code}] {w.Message}"));
+        }
+
+        var warningsObj = new JsonObject { ["warnings"] = warningStrings };
+        var warningsBlock = new TextContentBlock { Text = warningsObj.ToJsonString(ToolSerializerOptions.Default) };
+
+        var content = new List<ContentBlock>(result.Content ?? new List<ContentBlock>()) { warningsBlock };
+        return new CallToolResult { Content = content, IsError = result.IsError };
     }
 
     private static Exception MapAggregateException(AggregateException aex)
