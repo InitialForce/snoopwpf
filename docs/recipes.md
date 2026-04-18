@@ -5,8 +5,8 @@ concrete debugging or automation task, the tool-call sequence, real example inpu
 kind of response to expect.
 
 All examples assume the agent is connected to a running WPF app via one of the three modes
-(NuGet co-located, injection, or brokered). See [Getting Started](getting-started.md) for
-connection setup.
+(NuGet co-located, injection, or brokered). See the [README quickstart](../README.md#30-second-quickstart)
+for connection setup and mode selection.
 
 ---
 
@@ -224,7 +224,7 @@ result before proceeding.
 ```
 
 `mutationEnabled: true` is required. If it reads `false`, mutation tools will return
-`MUTATION_DISABLED` and the agent must ask the operator to restart the app with
+`MutationDisabled` and the agent must ask the operator to restart the app with
 `EnableMutation = true` in `SnoopAgentOptions`. (See [Appendix](#appendix-full-json-responses),
 Recipe 2 Step 1 for the full response.)
 
@@ -249,11 +249,11 @@ Recipe 2 Step 1 for the full response.)
   "state": "checked"
 }
 // If EnableMutation is false, the call returns instead:
-// { "ok": false, "error": { "code": "MUTATION_DISABLED", "message": "..." } }
+// { "ok": false, "error": { "code": "MutationDisabled", "message": "..." } }
 ```
 
 Success response: `{ "success": true, "stateChanged": true, "treeVersionDelta": 1, ... }`.
-Disabled response: `{ "success": false, "failureReason": "MUTATION_DISABLED", ... }`.
+Disabled response: `{ "success": false, "failureReason": "MutationDisabled", ... }`.
 
 ### Step 4 — Wait for the property to confirm
 

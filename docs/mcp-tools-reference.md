@@ -391,7 +391,7 @@ On failure:
   "success": false,
   "previousValue": "#FFFFFFFF",
   "newValue": null,
-  "error": "MUTATION_DISABLED"
+  "error": "MutationDisabled"
 }
 ```
 
@@ -1138,7 +1138,7 @@ All tool errors return a structured object:
 | `PROPERTY_READ_ONLY` | The property cannot be set. | Use `wpf_get_properties` to find writable properties. |
 | `TYPE_CONVERSION_FAILED` | The value string could not be converted. | Check value format; see the `wpf_set_property` format table. |
 | `UNSUPPORTED_PROPERTY_TYPE` | The property type is not in the safe-settable list. | Only primitive and common WPF value types are settable. |
-| `MUTATION_DISABLED` | `wpf_set_property` called but mutations are disabled. | Set `EnableMutation = true` in `SnoopAgentOptions`. |
+| `MutationDisabled` | `wpf_set_property` called but mutations are disabled. | Set `EnableMutation = true` in `SnoopAgentOptions`. |
 | `PROPERTY_REDACTED` | The property is sensitive and redacted. | Its value cannot be read or set. |
 | `SESSION_NOT_FOUND` | No active session (target process likely exited). | Re-attach with a new `snoop-mcp` invocation. |
 | `PROTOCOL_MISMATCH` | Agent and host protocol versions differ. | Update to matching versions. |

@@ -207,7 +207,7 @@ example responses.
 ## Security Model
 
 - **Localhost only.** The server binds to `127.0.0.1`. No configurable hostname.
-- **Mutations disabled by default.** `wpf_set_property` returns `MUTATION_DISABLED`
+- **Mutations disabled by default.** `wpf_set_property` returns `MutationDisabled`
   unless `EnableMutation = true` in `SnoopAgentOptions`.
 - **Sensitive property redaction.** Properties containing keywords like `password`,
   `secret`, `apikey`, `connectionstring`, etc. (21 keywords total) are never read —

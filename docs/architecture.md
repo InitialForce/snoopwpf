@@ -370,12 +370,15 @@ resulting in a confusing `FileNotFoundException` rather than a clean retry.
                                               ← broker can now see the manifest
 ```
 
-> **Invariant (R4):** `File.Move` (step 6) MUST execute after
-> `WaitForConnectionAsync` (step 2) completes. The pipe server must be in a
-> listening state before the manifest is visible to the broker. This is enforced
-> by code ordering in `SnoopAgent.StartBrokeredServerAsync`
-> (`SnoopWPF.Agent.Server/SnoopAgent.cs`) and documented in the comment header of
-> `SessionManifestWriter.cs`.
+> **Invariant (R4):** `File.Move` (step 6) MUST execute only after
+> `WaitForConnectionAsync` (step 2) has been **issued and the pipe is in the
+> listening state**. The Task returned by `WaitForConnectionAsync` only
+> completes when a client connects — which is *after* the manifest rename by
+> design. The invariant is about the listening-state precondition, not Task
+> completion. Code ordering in `SnoopAgent.StartBrokeredServerAsync`
+> (`SnoopWPF.Agent.Server/SnoopAgent.cs`) begins the wait and *then* performs
+> the rename; the comment header of `SessionManifestWriter.cs` documents the
+> same precondition.
 
 Why does the ACL precede the rename? If the file were renamed first and the ACL
 applied second, a racing broker on a multi-user machine could open the file in the

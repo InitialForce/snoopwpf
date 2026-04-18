@@ -9,7 +9,7 @@ document describes the security controls in place and the threat model.
 
 1. **Localhost only.** The server is hardcoded to `127.0.0.1`. No configurable
    hostname parameter.
-2. **Mutations disabled by default.** `wpf_set_property` returns `MUTATION_DISABLED`
+2. **Mutations disabled by default.** `wpf_set_property` returns `MutationDisabled`
    unless `EnableMutation = true` is explicitly set.
 3. **Sensitive property redaction.** Properties whose names match security-sensitive
    keywords are never read — the getter is not invoked.

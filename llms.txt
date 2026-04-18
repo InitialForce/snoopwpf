@@ -15,8 +15,8 @@
 - An MCP client MUST complete the stdio transport handshake before any `wpf_*` call in NuGet co-located mode.
 - An MCP client MUST receive `handshake_ok` over the named pipe before any `wpf_*` call in injection or brokered modes.
 - A [MUTATE] tool call MUST NOT be issued unless `EnableMutation=true` was set in `SnoopAgentOptions` at session startup.
-- On .NET Framework 4.6.2 targets, setting `EnableMutation=true` MUST be rejected with error code `UnsupportedOnNet462`; the session proceeds in read-only mode.
-- A caller MUST NOT issue a [MUTATE] tool call when the active session is on a .NET Framework 4.6.2 target.
+- On .NET Framework 4.6.2 targets, passing `EnableMutation=true` to `SnoopAgent.StartCoLocated` or the injection entrypoint aborts session startup with `SnoopException(UnsupportedOnNet462)`; there is no audit log on net462 (the session does NOT degrade silently to read-only — it fails to start). To run read-only on net462, leave `EnableMutation=false`.
+- A caller MUST NOT issue a [MUTATE] tool call when the active session is on a .NET Framework 4.6.2 target (such a target only ever has `EnableMutation=false`).
 - Caller SHOULD treat node IDs as opaque strings valid only within the session that produced them; node IDs MUST NOT be reused across sessions or process restarts.
 - A caller SHOULD call `wpf_get_session_info` or `wpf_diagnostics` as the first tool in any session to verify handshake completion and to retrieve dispatcher IDs and initial window node IDs.
 - A caller SHOULD call `wpf_pump_until_idle` after any [MUTATE] call before calling `wpf_poll_changes` or `wpf_wait_for_property`, to allow the Dispatcher queue and composition pipeline to settle.
@@ -42,7 +42,7 @@
   bootstrap: `snoop-mcp.exe --pid <n>` or `snoop-mcp.exe --window-title <t>` → hostfxr-based CoreCLR bootstrap DLL injected via `CreateRemoteThread` → `SnoopAgentEntryPoint.Start(settingsFile)`
   handshake: HMAC-SHA256 nonce challenge/response; 16-byte random nonce per connection; constant-time compare via `CryptographicOperations.FixedTimeEquals`; 5-second timeout
   token-delivery: owner-only temp file (DACL: single ALLOW ACE for current-user SID); deleted by agent immediately after reading; deleted by host on exit if agent never ran
-  target: .NET Framework 4.6.2, .NET 6, .NET 8 (read-only on 4.6.2 if `EnableMutation=true` requested)
+  target: .NET Framework 4.6.2, .NET 6, .NET 8 (.NET 4.6.2 MUST be read-only — passing `EnableMutation=true` aborts startup with `UnsupportedOnNet462`)
   notes: target process must be owned by the current Windows user; injection refused otherwise
 
 - mode: brokered-warm-attach  (RECOMMENDED for most integrations)
@@ -51,7 +51,7 @@
   pipe-role: target=server (WaitForConnection); broker=client (Connect)
   bootstrap: target writes session manifest at `%LOCALAPPDATA%/InitialForce/mcp-session/{pid}-{startTicks}.json` (ACL-protected atomic write); broker polls directory by pid and connects
   handshake: HMAC-SHA256 nonce-response, 16-byte nonce, 5s timeout, FixedTimeEquals
-  token-delivery: token_b64 field inside the manifest
+  token-delivery: tokenB64 field inside the manifest
   target: .NET 8+
   use-when: broker attaches to an independently-started target; composes with `dotnet watch`; MotionCatalyst/wpf-mcp pattern
 
@@ -200,7 +200,7 @@ Agent error handlers MUST branch on the envelope `ok` field first, then inspect 
 | CODE | Meaning | When emitted | Recovery |
 |------|---------|--------------|----------|
 | `NO_ACTIVE_SESSION` | Tool called before handshake completed | Any tool called before pipe handshake | Wait for `handshake_ok`; re-attach if needed |
-| `MUTATION_DISABLED` | [MUTATE] tool called with `EnableMutation=false` | Any [MUTATE] tool | Set `EnableMutation=true` in `SnoopAgentOptions` at session startup |
+| `MutationDisabled` | [MUTATE] tool called with `EnableMutation=false` | Any [MUTATE] tool | Set `EnableMutation=true` in `SnoopAgentOptions` at session startup. Canonical name from `SnoopErrorCode.cs` and `FailureReason.cs`; serialized identically on the wire. |
 | `UnsupportedOnNet462` | `EnableMutation=true` attempted on .NET Framework 4.6.2 target | Session startup with mutation enabled on 4.6.2 | Use read-only tools; mutation not supported on 4.6.2 |
 | `HMAC_HANDSHAKE_FAILED` | HMAC proof did not match expected value | Handshake phase | Token mismatch; restart injection with correct token |
 | `PIPE_SQUATTER` | `GetNamedPipeServerProcessId` returned a PID other than the expected target | Handshake phase (injection mode) | Another process has claimed the pipe name; report as security event |
@@ -288,7 +288,7 @@ Agent error handlers MUST branch on the envelope `ok` field first, then inspect 
 - Pipe DACL MUST be `PipeOptions.CurrentUserOnly` (protected, single ALLOW ACE for current-user SID) in all named-pipe modes.
 - `EnableMutation` scope is per-session and is not persisted; it resets on every new session.
 - `Console.Out` MUST be redirected to `TextWriter.Null` in co-located mode before the MCP server starts, to protect the stdio transport from WPF output.
-- Token MUST be zeroed from memory immediately after the handshake completes; it MUST NOT be written to logs or disk.
+- Token MUST be zeroed at the earliest point consistent with its mode. Injection: zeroed via `Array.Clear` immediately after the HMAC proof is computed (token is single-use per connection). Brokered warm-attach: zeroed on `BrokeredServerHandle.Dispose()` (the manifest holds a base64 copy for the session's lifetime; rotation is opt-in via the 6h lease). Under no mode is the raw token ever written to logs or to the pipe wire.
 - Session token generation MUST use `RandomNumberGenerator.GetBytes(32)` (256-bit); weaker PRNGs are not permitted.
 - HMAC nonce MUST be generated fresh per connection via `RandomNumberGenerator.GetBytes(16)`; nonce reuse breaks replay protection.
 - HMAC comparison MUST use `CryptographicOperations.FixedTimeEquals`; byte-by-byte comparison is not permitted.

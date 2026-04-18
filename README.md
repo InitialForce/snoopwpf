@@ -28,7 +28,7 @@ This is [InitialForce](https://github.com/InitialForce)'s fork of [snoopwpf/snoo
 | **Security boundary** | Process boundary (stdio) | Owner-DACL temp file + HMAC handshake | Pipe DACL (current user only) + HMAC-SHA256 |
 | **Hot-reload friendly** | Yes — survives `dotnet watch` restart | No — must re-inject on restart | Yes — broker reconnects on target restart |
 | **CI-friendly** | Yes — spawn app as subprocess | Requires PID discovery | Best choice for orchestrated test runs |
-| **Mutation support** | Yes (.NET 8+ only) | Yes | Yes (.NET Framework 4.6.2: refused) |
+| **Mutation support** | Yes (.NET 8+ only) | Yes | Yes (.NET Framework 4.6.2 target + `EnableMutation=true` aborts startup — no audit log) |
 
 ---
 
@@ -203,27 +203,32 @@ protected override async void OnStartup(StartupEventArgs e)
         settings,
         CancellationToken.None);
 
-    // handle.PipeName and handle.SessionToken — caller is responsible for manifest write;
-    // SnoopWPF.Agent.Server handles the atomic write for you via BrokeredServerHandle.
+    // BrokeredServerHandle owns the pipe + token + manifest lifecycle.
+    // The atomic manifest write (temp → DACL → File.Move) is performed by
+    // SnoopWPF.Agent.Server before StartBrokeredServerAsync returns, so the
+    // broker can discover this session immediately via manifest scan.
+    // Dispose on shutdown to zero the token and delete the manifest.
 }
 ```
 
 **3. Broker-side startup**
 
 ```csharp
-string pipeName = "myapp-" + Guid.NewGuid().ToString("N")[..8];
-string tokenHex = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+// The target (WPF app) is already running — do NOT spawn it here.
+// The broker discovers the target via its session manifest.
+int targetPid = /* PID of the already-running WPF app, e.g. from user input or CLI arg */;
 
-var process = BrokerTargetSpawner.Spawn(
-    exe: @"C:\path\to\MyApp.exe",
-    args: Array.Empty<string>(),
-    pipeName: pipeName,
-    tokenHex: tokenHex);
+// ManifestReader lives in the downstream consumer (e.g. InitialForce/wpf-mcp).
+// It locates %LOCALAPPDATA%/InitialForce/mcp-session/{pid}-{ticks}.json.
+SessionManifest manifest = ManifestReader.ReadForPid(targetPid)
+    ?? throw new InvalidOperationException(
+        $"No active SnoopAgent session manifest for PID {targetPid}. " +
+        "Confirm the target was started with StartBrokeredServerAsync.");
 
 await BrokerHost.Start(transport, new BrokerOptions
 {
-    PipeName = pipeName,
-    SessionToken = tokenHex,
+    PipeName = manifest.PipeName,
+    SessionToken = manifest.TokenB64,  // base64 of the session token
 }, cts.Token);
 ```
 
@@ -337,7 +342,7 @@ All tree tools accept a `treeType` parameter: `"visual"` (default), `"logical"`,
 | `wpf_get_binding_info` | Binding type, path, mode, converter, status for one property | — | — | ✓ |
 | `wpf_resolve_binding` | Full Source → Path (per segment) → Converter → Value chain in one call | — | — | ✓ |
 
-`wpf_set_property` requires `EnableMutation = true`. On .NET Framework 4.6.2 targets, mutations are refused (`MUTATION_DISABLED`) to protect the audit-log invariant.
+`wpf_set_property` requires `EnableMutation = true`. Without it, any `[MUTATE]` tool returns `FailureReason.MutationDisabled`. On .NET Framework 4.6.2 targets, passing `EnableMutation = true` aborts session startup with `SnoopException(UnsupportedOnNet462)` — there is no `AuditLogWriter` on net462, and audit-log absence breaks the mutation security contract (invariant FX6-Z1).
 
 `wpf_resolve_binding` is the key differentiator vs. UIA/FlaUI — it walks the binding path step by step and returns each intermediate value, including converter type names and validation errors.
 

@@ -74,7 +74,7 @@ Ship with an OTLP exporter opt-in via `SnoopAgentOptions.EnableOpenTelemetry`. N
 
 **Proposal.** A new `snoop-dap.exe` that implements DAP against a brokered session:
 
-- **Breakpoints:** "stop when this element's `IsEnabled` changes," "stop on next `MUTATION_DISABLED` error," "stop on first `wpf_click` against node `0:42`."
+- **Breakpoints:** "stop when this element's `IsEnabled` changes," "stop on next `MutationDisabled` error," "stop on first `wpf_click` against node `0:42`."
 - **Step-over:** step one `wpf_*` call at a time; inspect tree deltas between steps.
 - **Variables pane:** shows the current visual tree, bindings, recent tool responses.
 - **Call stack:** most recent N tool calls with their arguments.
