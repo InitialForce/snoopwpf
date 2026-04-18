@@ -1,9 +1,9 @@
 # Snoop — WPF Inspection Engine for AI Coding Agents
 
-Inspect, mutate, and drive any live WPF application from an AI coding agent via 29 typed MCP tools.
+Inspect, mutate, and drive any live WPF application from an AI coding agent via 33 typed MCP tools.
 This is [InitialForce](https://github.com/InitialForce)'s fork of [snoopwpf/snoopwpf](https://github.com/snoopwpf/snoopwpf): the Snoop desktop UI is preserved unchanged, and the same inspection engine is now also exposed as a Model Context Protocol server so Claude Code, Cursor, and Claude Desktop can observe and interact with a running WPF process.
 
-> **Measured capability:** `wpf_resolve_binding` returns the full Source → Path → Converter → current Value chain in one call — information that UI Automation and FlaUI cannot surface because they only see the rendered string.
+> **Measured capability:** `wpf_resolve_binding` returns the full Source → Path → Converter → current Value chain in one call — information that UI Automation and FlaUI cannot surface because they only see the rendered string. (see [docs/recipes.md](docs/recipes.md) Recipe 1 for the end-to-end workflow)
 
 [![Upstream CI](https://img.shields.io/appveyor/ci/batzen/snoopwpf/master?style=flat-square&label=upstream-ci)](https://ci.appveyor.com/project/batzen/snoopwpf/branch/master)
 [![Fork CI](https://github.com/InitialForce/snoopwpf/actions/workflows/agent-ci.yml/badge.svg?branch=develop)](https://github.com/InitialForce/snoopwpf/actions/workflows/agent-ci.yml)
@@ -14,62 +14,7 @@ This is [InitialForce](https://github.com/InitialForce)'s fork of [snoopwpf/snoo
 
 ## Three deployment modes at a glance
 
-```svg
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 220" font-family="ui-monospace,monospace" font-size="13">
-  <!-- Background -->
-  <rect width="760" height="220" fill="#0f0f13" rx="10"/>
-
-  <!-- AI Client box -->
-  <rect x="20" y="70" width="140" height="80" rx="8" fill="oklch(0.25 0.06 250)" stroke="oklch(0.72 0.18 250)" stroke-width="1.5"/>
-  <text x="90" y="107" text-anchor="middle" fill="oklch(0.92 0.04 250)" font-weight="bold">AI Client</text>
-  <text x="90" y="124" text-anchor="middle" fill="oklch(0.72 0.18 250)" font-size="11">Claude Code</text>
-  <text x="90" y="138" text-anchor="middle" fill="oklch(0.72 0.18 250)" font-size="11">Cursor / Desktop</text>
-
-  <!-- Mode 1: NuGet co-located -->
-  <rect x="210" y="20" width="160" height="55" rx="8" fill="oklch(0.22 0.06 190)" stroke="oklch(0.68 0.14 190)" stroke-width="1.5"/>
-  <text x="290" y="44" text-anchor="middle" fill="oklch(0.90 0.04 190)" font-weight="bold" font-size="12">NuGet co-located</text>
-  <text x="290" y="60" text-anchor="middle" fill="oklch(0.68 0.14 190)" font-size="10">WPF App + MCP server</text>
-  <text x="290" y="73" text-anchor="middle" fill="oklch(0.68 0.14 190)" font-size="10">same process (stdio)</text>
-
-  <!-- Mode 2: External injection -->
-  <rect x="210" y="95" width="160" height="55" rx="8" fill="oklch(0.22 0.07 80)" stroke="oklch(0.82 0.12 80)" stroke-width="1.5"/>
-  <text x="290" y="119" text-anchor="middle" fill="oklch(0.92 0.04 80)" font-weight="bold" font-size="12">External injection</text>
-  <text x="290" y="135" text-anchor="middle" fill="oklch(0.82 0.12 80)" font-size="10">snoop-mcp.exe --pid N</text>
-  <text x="290" y="148" text-anchor="middle" fill="oklch(0.82 0.12 80)" font-size="10">hostfxr bootstrap DLL</text>
-
-  <!-- Mode 3: Brokered -->
-  <rect x="210" y="165" width="160" height="48" rx="8" fill="oklch(0.22 0.06 340)" stroke="oklch(0.72 0.15 340)" stroke-width="1.5"/>
-  <text x="290" y="187" text-anchor="middle" fill="oklch(0.92 0.04 340)" font-weight="bold" font-size="12">Brokered pipe</text>
-  <text x="290" y="203" text-anchor="middle" fill="oklch(0.72 0.15 340)" font-size="10">BrokerHost + target pipe</text>
-
-  <!-- WPF Target boxes -->
-  <rect x="430" y="90" width="150" height="45" rx="8" fill="oklch(0.20 0.04 250)" stroke="oklch(0.55 0.10 250)" stroke-width="1.2"/>
-  <text x="505" y="111" text-anchor="middle" fill="oklch(0.85 0.04 250)" font-size="12">WPF Target</text>
-  <text x="505" y="126" text-anchor="middle" fill="oklch(0.55 0.10 250)" font-size="10">any running WPF process</text>
-
-  <!-- HMAC label -->
-  <rect x="600" y="100" width="140" height="30" rx="6" fill="oklch(0.18 0.04 80)" stroke="oklch(0.55 0.10 80)" stroke-width="1"/>
-  <text x="670" y="119" text-anchor="middle" fill="oklch(0.75 0.10 80)" font-size="11">HMAC-SHA256 handshake</text>
-
-  <!-- Arrows: AI → Mode boxes -->
-  <line x1="160" y1="100" x2="208" y2="50" stroke="oklch(0.72 0.18 250)" stroke-width="1.5" marker-end="url(#arr)"/>
-  <line x1="160" y1="110" x2="208" y2="122" stroke="oklch(0.72 0.18 250)" stroke-width="1.5" marker-end="url(#arr)"/>
-  <line x1="160" y1="120" x2="208" y2="185" stroke="oklch(0.72 0.18 250)" stroke-width="1.5" marker-end="url(#arr)"/>
-
-  <!-- Arrows: Mode 2 + 3 → WPF Target -->
-  <line x1="370" y1="122" x2="428" y2="112" stroke="oklch(0.82 0.12 80)" stroke-width="1.5" marker-end="url(#arr)"/>
-  <line x1="370" y1="185" x2="428" y2="128" stroke="oklch(0.72 0.15 340)" stroke-width="1.5" marker-end="url(#arr)"/>
-
-  <!-- 29 tools label -->
-  <text x="380" y="210" text-anchor="middle" fill="oklch(0.60 0.05 250)" font-size="11">29 wpf_* tools — same surface across all 3 modes</text>
-
-  <defs>
-    <marker id="arr" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-      <path d="M0,0 L0,6 L6,3 z" fill="oklch(0.65 0.10 250)"/>
-    </marker>
-  </defs>
-</svg>
-```
+![Three deployment modes: NuGet co-located, external injection, and brokered](docs/hero.svg)
 
 ---
 
@@ -79,7 +24,7 @@ This is [InitialForce](https://github.com/InitialForce)'s fork of [snoopwpf/snoo
 |---|---|---|---|
 | **Who it is for** | Apps you own and can recompile | Third-party or legacy WPF apps | CI/test harnesses; hot-reload; multi-instance |
 | **Prereqs** | .NET 8+; add `InitialForce.SnoopAgent` | `snoop-mcp.exe` on PATH; any .NET 6+ or .NET Framework 4.6.2 target | Both: `InitialForce.SnoopAgent` (target) + `InitialForce.SnoopAgent.BrokerHost` (broker) |
-| **First command** | `SnoopAgent.StartCoLocated()` in `App.OnStartup` | `snoop-mcp.exe --pid <n>` | `SnoopAgent.StartBrokered(…)` in target; broker reads manifest |
+| **First command** | `SnoopAgent.StartCoLocated()` in `App.OnStartup` | `snoop-mcp.exe --pid <n>` | `SnoopAgent.StartBrokered(…)` OR `SnoopAgent.StartBrokeredServerAsync(…)` depending on pipe role (see details) |
 | **Security boundary** | Process boundary (stdio) | Owner-DACL temp file + HMAC handshake | Pipe DACL (current user only) + HMAC-SHA256 |
 | **Hot-reload friendly** | Yes — survives `dotnet watch` restart | No — must re-inject on restart | Yes — broker reconnects on target restart |
 | **CI-friendly** | Yes — spawn app as subprocess | Requires PID discovery | Best choice for orchestrated test runs |
@@ -90,7 +35,7 @@ This is [InitialForce](https://github.com/InitialForce)'s fork of [snoopwpf/snoo
 ## 30-second quickstart
 
 <details>
-<summary><strong>NuGet co-located</strong> — apps you own (.NET 8+)</summary>
+<summary><strong>Quickstart — NuGet co-located (≈1 min)</strong> — apps you own (.NET 8+)</summary>
 
 **1. Add the feed and package**
 
@@ -161,7 +106,7 @@ Call `wpf_get_session_info`. Expected response:
 </details>
 
 <details>
-<summary><strong>External injection</strong> — any running WPF process, no source changes</summary>
+<summary><strong>Quickstart — External injection via snoop-mcp.exe (≈2 min)</strong> — any running WPF process, no source changes</summary>
 
 **1. Download `snoop-mcp.exe`** from the [GitHub releases page](https://github.com/InitialForce/snoopwpf/releases).
 
@@ -221,7 +166,17 @@ Call `wpf_get_session_info`. Expected response:
 </details>
 
 <details>
-<summary><strong>Brokered pipe</strong> — CI harnesses and hot-reload scenarios</summary>
+<summary><strong>Quickstart — Brokered warm-attach (≈5 min)</strong> — CI harnesses and hot-reload scenarios</summary>
+
+> **Brokered mode has three sub-modes** — pick based on who opens the pipe server and how the token reaches the target:
+>
+> | Sub-mode | API | Pipe role | Token delivery | Use when |
+> |----------|-----|-----------|----------------|----------|
+> | **Broker spawns target** | `SnoopAgent.StartBrokered` | target=client, broker=server | stdin JSON `BrokerHandshakePayload` | Broker owns target lifecycle (classic Mode-1-style MCP host) |
+> | **Target opens pipe; broker discovers** | `SnoopAgent.StartBrokeredServerAsync` | target=server, broker=client | Session manifest at `%LOCALAPPDATA%/InitialForce/mcp-session/` | Broker attaches to an independently-started target (warm-attach; `dotnet watch` friendly; MotionCatalyst pattern) |
+> | **Legacy: target connects to broker** | `SnoopAgent.StartBrokeredClient` | target=client, broker=server | Command-line arg | Consumer migrating from early brokered API |
+>
+> The quickstart below uses the **warm-attach** sub-mode (`StartBrokeredServerAsync`) because it composes cleanly with `dotnet watch` and long-lived broker processes. For the spawn-target variant, see [docs/brokered-mode-integration.md](docs/brokered-mode-integration.md).
 
 **1. Add packages**
 
@@ -237,22 +192,19 @@ dotnet add package InitialForce.SnoopAgent.BrokerHost --version 1.0.0-rc.2 --pre
 
 ```csharp
 // App.xaml.cs
-protected override void OnStartup(StartupEventArgs e)
+protected override async void OnStartup(StartupEventArgs e)
 {
     base.OnStartup(e);
 
-    string? pipeName = GetFlagValue(e.Args, "--snoop-pipe");
-    if (!string.IsNullOrEmpty(pipeName))
-    {
-        // Broker writes BrokerHandshakePayload (pipe + token) to this process's stdin.
-        string? line = Console.In.ReadLine();
-        var payload = System.Text.Json.JsonSerializer
-            .Deserialize<SnoopWPF.Agent.Contracts.Protocol.BrokerHandshakePayload>(line!);
+    // Brokered warm-attach: this target opens a pipe server and
+    // publishes a session manifest; any broker discovers by PID.
+    var settings = new BrokeredServerSettings(); // auto-generates pipe name + token
+    BrokeredServerHandle handle = await SnoopAgent.StartBrokeredServerAsync(
+        settings,
+        CancellationToken.None);
 
-        _agentHandle = SnoopAgent.StartBrokered(
-            this, payload!.Pipe!, payload.Token!,
-            new SnoopAgentOptions { EnableMutation = true });
-    }
+    // handle.PipeName and handle.SessionToken — caller is responsible for manifest write;
+    // SnoopWPF.Agent.Server handles the atomic write for you via BrokeredServerHandle.
 }
 ```
 
@@ -261,8 +213,6 @@ protected override void OnStartup(StartupEventArgs e)
 ```csharp
 string pipeName = "myapp-" + Guid.NewGuid().ToString("N")[..8];
 string tokenHex = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
-
-Console.SetOut(TextWriter.Null); // broker owns MCP stdio
 
 var process = BrokerTargetSpawner.Spawn(
     exe: @"C:\path\to\MyApp.exe",
@@ -316,11 +266,15 @@ Call `wpf_get_session_info`. Expected response:
 
 ## Brokered attach: HMAC-SHA256 handshake
 
+<details>
+<summary>HMAC-SHA256 handshake sequence (brokered warm-attach)</summary>
+
 ```mermaid
 sequenceDiagram
     participant B as Broker
     participant T as WPF Target
 
+    Note over T,B: Sub-mode: StartBrokeredServerAsync (target=server, manifest-discovered).
     B->>T: spawn process with --snoop-pipe=NAME
     B->>T: write BrokerHandshakePayload to stdin (pipe + token)
     T->>T: SnoopAgent.StartBrokered() — open NamedPipeServerStream(NAME, CurrentUserOnly)
@@ -335,17 +289,22 @@ sequenceDiagram
     Note over B,T: Pipe ACL: PipeOptions.CurrentUserOnly (single ALLOW ACE for current user SID)
 ```
 
+Full 18-step diagram with injection bootstrap and failure paths: [docs/architecture.md](docs/architecture.md#brokered-handshake).
+
+</details>
+
 ---
 
 ## Tool catalog
 
 <details>
-<summary><strong>Session &amp; Windows (2 tools)</strong> — verify connectivity and enumerate top-level windows</summary>
+<summary><strong>Session &amp; Windows (3 tools)</strong> — verify connectivity and enumerate top-level windows</summary>
 
 | Tool | What it does | 🔒 mutate | 🤖 automation req | 🎯 session req |
 |------|-------------|:---------:|:-----------------:|:--------------:|
 | `wpf_get_session_info` | Process name, PID, .NET version, dispatcher list, capability flags | — | — | — |
 | `wpf_get_windows` | Top-level WPF windows with nodeId, title, type, dimensions | — | — | ✓ |
+| `wpf_diagnostics` | Agent-health snapshot: transport, inspector, dispatcher queue depth. Distinct from `wpf_run_diagnostics` (visual-tree diagnostic providers) | — | — | ✓ |
 
 Call `wpf_get_session_info` first on every new connection. The returned `windowNodeIds` are the entry points for all tree-navigation tools.
 
@@ -412,7 +371,7 @@ Recommended mutation sequence: mutate → `wpf_pump_until_idle` → `wpf_poll_ch
 </details>
 
 <details>
-<summary><strong>Input &amp; Interaction (9 tools)</strong> — drive buttons, text fields, lists, sliders, and more</summary>
+<summary><strong>Input &amp; Interaction (12 tools)</strong> — drive buttons, text fields, lists, sliders, and more</summary>
 
 | Tool | What it does | 🔒 mutate | 🤖 automation req | 🎯 session req |
 |------|-------------|:---------:|:-----------------:|:--------------:|
@@ -420,13 +379,14 @@ Recommended mutation sequence: mutate → `wpf_pump_until_idle` → `wpf_poll_ch
 | `wpf_double_click` | Double-click via UIA (L1) | — | ✓ | ✓ |
 | `wpf_execute_command` | Execute bound `ICommand` directly (L0; no Win32 input) | ✓ | — | ✓ |
 | `wpf_expand_collapse` | Expand or collapse via `IExpandCollapseProvider` (L1) | — | ✓ | ✓ |
+| `wpf_toggle` | Flip ToggleButton state via UIA `IToggleProvider` (L1) | — | ✓ | ✓ |
 | `wpf_select_item` | Select by index, exact text, or unambiguous substring in any Selector | ✓ | — | ✓ |
 | `wpf_select_item_by_index` | Select by zero-based index (explicit, no ambiguity) | ✓ | — | ✓ |
+| `wpf_select_item_by_scroll` | Scroll a virtualized list to realize the target item, then select it (for WPF virtualization) | ✓ | — | ✓ |
 | `wpf_set_check_state` | Set CheckBox/RadioButton state deterministically (L0) | ✓ | — | ✓ |
 | `wpf_set_slider_value` | Set RangeBase.Value; accepts absolute or normalized [0,1] (L0) | ✓ | — | ✓ |
 | `wpf_set_text_value` | Set TextBox/PasswordBox/RichTextBox text via SetCurrentValue (L0) | ✓ | — | ✓ |
-
-Additional tools available: `wpf_toggle` (flip ToggleButton state via UIA), `wpf_get_list_items` (enumerate ComboBox/ListBox items for inspection).
+| `wpf_get_list_items` | Enumerate ComboBox/ListBox items for inspection | — | — | ✓ |
 
 All L0 tools use `DependencyObject.SetCurrentValue` — existing TwoWay bindings and triggers remain intact; the binding chain is not cleared.
 
@@ -443,7 +403,7 @@ All mutation tools require `EnableMutation = true` in `SnoopAgentOptions`.
 | Binding chain inspection | ✓ full chain | ✓ UI only | — | — | — |
 | DP mutation via typed API | ✓ | ✓ (manual) | — | — | — |
 | Screenshot (element-level) | ✓ | ✓ | ✓ | — | ✓ |
-| MCP-native (29 tools) | ✓ | — | — | — | — |
+| MCP-native (33 tools) | ✓ | — | — | — | — |
 | Visual + Logical + Automation trees | ✓ | ✓ | UIA only | UIA only | UIA only |
 
 **Upstream Snoop** — same inspection depth, no MCP surface; ideal for human-interactive debugging.
@@ -459,7 +419,7 @@ See [docs/comparison.md](docs/comparison.md) for the full 8-way matrix including
 
 - **Injection barrier.** `snoop-mcp.exe` cannot inject into processes protected by anti-tamper or anti-cheat mechanisms, elevated processes owned by a different user, or self-contained single-file WPF apps (same limitation as upstream Snoop).
 - **WPF only.** WinForms, WinUI 3, MAUI, and UWP are not supported. The engine depends on `System.Windows.DependencyObject` and the WPF Dispatcher; there is no plan to support non-WPF frameworks.
-- **Polling-based change detection.** `wpf_poll_changes` returns a structural diff on demand; it does not push events to the client. A push-event (WebSocket or SSE) transport is a future-work item tracked separately.
+- **Polling-based change detection.** `wpf_poll_changes` returns a structural diff on demand; it does not push events to the client. A push-event (WebSocket or SSE) transport is a future-work item tracked separately. → [docs/comparison.md](docs/comparison.md) explains push-event alternatives like FlaUI's `AddAutomationEventHandler`.
 
 ---
 
@@ -478,7 +438,7 @@ See [docs/comparison.md](docs/comparison.md) for the full 8-way matrix including
 
 ## Downstream consumer example
 
-The [MotionCatalyst/wpf-mcp broker](https://github.com/InitialForce/wpf-mcp) is a reference downstream consumer that adds lifecycle and navigation tools on top of the 29 `wpf_*` tools: `mc_launch`, `mc_attach`, `mc_navigate_to`, and others. Those tools live in the consuming application, not in this repository.
+The [MotionCatalyst/wpf-mcp broker](https://github.com/InitialForce/wpf-mcp) is a reference downstream consumer that adds lifecycle and navigation tools on top of the 33 `wpf_*` tools: `mc_launch`, `mc_attach`, `mc_navigate_to`, and others. Those tools live in the consuming application, not in this repository.
 
 ---
 
