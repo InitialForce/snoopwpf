@@ -1,28 +1,177 @@
-# Snoop (MCP Agent Fork)
+# Snoop — WPF Inspection Engine for AI Coding Agents
 
-> This is [InitialForce](https://github.com/InitialForce)'s fork of
-> [snoopwpf/snoopwpf](https://github.com/snoopwpf/snoopwpf), extending the canonical
-> Snoop WPF spying utility with a Model Context Protocol (MCP) server so AI coding
-> agents can inspect live WPF applications. The Snoop desktop UI is preserved
-> unchanged. If you want the classic Snoop experience,
-> use [upstream](https://github.com/snoopwpf/snoopwpf).
+Inspect, mutate, and drive any live WPF application from an AI coding agent via 29 typed MCP tools.
+This is [InitialForce](https://github.com/InitialForce)'s fork of [snoopwpf/snoopwpf](https://github.com/snoopwpf/snoopwpf): the Snoop desktop UI is preserved unchanged, and the same inspection engine is now also exposed as a Model Context Protocol server so Claude Code, Cursor, and Claude Desktop can observe and interact with a running WPF process.
 
-Snoop is an open source WPF spying utility originally created by [Pete Blois](https://github.com/peteblois) and is currently maintained by [Bastian Schmidt](https://github.com/batzen).
+> **Measured capability:** `wpf_resolve_binding` returns the full Source → Path → Converter → current Value chain in one call — information that UI Automation and FlaUI cannot surface because they only see the rendered string.
 
-It allows you to spy/browse the visual, logical and automation tree of any running WPF application (without the need for a debugger).  
-You can change property values, view triggers, set breakpoints on property changes and many more things.
+[![Upstream CI](https://img.shields.io/appveyor/ci/batzen/snoopwpf/master?style=flat-square&label=upstream-ci)](https://ci.appveyor.com/project/batzen/snoopwpf/branch/master)
+[![Fork CI](https://github.com/InitialForce/snoopwpf/actions/workflows/agent-ci.yml/badge.svg?branch=develop)](https://github.com/InitialForce/snoopwpf/actions/workflows/agent-ci.yml)
+[![NuGet](https://img.shields.io/badge/nuget-1.0.0--rc.2-blue?style=flat-square)](https://github.com/orgs/InitialForce/packages)
+[![MCP compatible](https://img.shields.io/badge/MCP-compatible-brightgreen?style=flat-square)](https://modelcontextprotocol.io/)
 
-[![Build status for master branch](https://img.shields.io/appveyor/ci/batzen/snoopwpf/master?style=flat-square&&label=upstream-master)](https://ci.appveyor.com/project/batzen/snoopwpf/branch/master)
-[![Build status for develop branch](https://img.shields.io/appveyor/ci/batzen/snoopwpf/develop?style=flat-square&&label=upstream-develop)](https://ci.appveyor.com/project/batzen/snoopwpf/branch/develop)
-[![Chocolatey version](http://img.shields.io/chocolatey/v/snoop.svg?style=flat-square)](https://chocolatey.org/packages/snoop)
+---
 
-[![Agent CI](https://github.com/InitialForce/snoopwpf/actions/workflows/agent-ci.yml/badge.svg?branch=develop)](https://github.com/InitialForce/snoopwpf/actions/workflows/agent-ci.yml)
+## Three deployment modes at a glance
 
-Badges above reflect the upstream build. Fork CI runs via GitHub Actions on the `develop` branch of this repository.
+```svg
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 220" font-family="ui-monospace,monospace" font-size="13">
+  <!-- Background -->
+  <rect width="760" height="220" fill="#0f0f13" rx="10"/>
 
-## Connect an AI agent in 60 seconds
+  <!-- AI Client box -->
+  <rect x="20" y="70" width="140" height="80" rx="8" fill="oklch(0.25 0.06 250)" stroke="oklch(0.72 0.18 250)" stroke-width="1.5"/>
+  <text x="90" y="107" text-anchor="middle" fill="oklch(0.92 0.04 250)" font-weight="bold">AI Client</text>
+  <text x="90" y="124" text-anchor="middle" fill="oklch(0.72 0.18 250)" font-size="11">Claude Code</text>
+  <text x="90" y="138" text-anchor="middle" fill="oklch(0.72 0.18 250)" font-size="11">Cursor / Desktop</text>
 
-**[Getting Started Guide](docs/getting-started.md)** — Claude Desktop and Claude Code setup with copy-paste config snippets.
+  <!-- Mode 1: NuGet co-located -->
+  <rect x="210" y="20" width="160" height="55" rx="8" fill="oklch(0.22 0.06 190)" stroke="oklch(0.68 0.14 190)" stroke-width="1.5"/>
+  <text x="290" y="44" text-anchor="middle" fill="oklch(0.90 0.04 190)" font-weight="bold" font-size="12">NuGet co-located</text>
+  <text x="290" y="60" text-anchor="middle" fill="oklch(0.68 0.14 190)" font-size="10">WPF App + MCP server</text>
+  <text x="290" y="73" text-anchor="middle" fill="oklch(0.68 0.14 190)" font-size="10">same process (stdio)</text>
+
+  <!-- Mode 2: External injection -->
+  <rect x="210" y="95" width="160" height="55" rx="8" fill="oklch(0.22 0.07 80)" stroke="oklch(0.82 0.12 80)" stroke-width="1.5"/>
+  <text x="290" y="119" text-anchor="middle" fill="oklch(0.92 0.04 80)" font-weight="bold" font-size="12">External injection</text>
+  <text x="290" y="135" text-anchor="middle" fill="oklch(0.82 0.12 80)" font-size="10">snoop-mcp.exe --pid N</text>
+  <text x="290" y="148" text-anchor="middle" fill="oklch(0.82 0.12 80)" font-size="10">hostfxr bootstrap DLL</text>
+
+  <!-- Mode 3: Brokered -->
+  <rect x="210" y="165" width="160" height="48" rx="8" fill="oklch(0.22 0.06 340)" stroke="oklch(0.72 0.15 340)" stroke-width="1.5"/>
+  <text x="290" y="187" text-anchor="middle" fill="oklch(0.92 0.04 340)" font-weight="bold" font-size="12">Brokered pipe</text>
+  <text x="290" y="203" text-anchor="middle" fill="oklch(0.72 0.15 340)" font-size="10">BrokerHost + target pipe</text>
+
+  <!-- WPF Target boxes -->
+  <rect x="430" y="90" width="150" height="45" rx="8" fill="oklch(0.20 0.04 250)" stroke="oklch(0.55 0.10 250)" stroke-width="1.2"/>
+  <text x="505" y="111" text-anchor="middle" fill="oklch(0.85 0.04 250)" font-size="12">WPF Target</text>
+  <text x="505" y="126" text-anchor="middle" fill="oklch(0.55 0.10 250)" font-size="10">any running WPF process</text>
+
+  <!-- HMAC label -->
+  <rect x="600" y="100" width="140" height="30" rx="6" fill="oklch(0.18 0.04 80)" stroke="oklch(0.55 0.10 80)" stroke-width="1"/>
+  <text x="670" y="119" text-anchor="middle" fill="oklch(0.75 0.10 80)" font-size="11">HMAC-SHA256 handshake</text>
+
+  <!-- Arrows: AI → Mode boxes -->
+  <line x1="160" y1="100" x2="208" y2="50" stroke="oklch(0.72 0.18 250)" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="160" y1="110" x2="208" y2="122" stroke="oklch(0.72 0.18 250)" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="160" y1="120" x2="208" y2="185" stroke="oklch(0.72 0.18 250)" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- Arrows: Mode 2 + 3 → WPF Target -->
+  <line x1="370" y1="122" x2="428" y2="112" stroke="oklch(0.82 0.12 80)" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="370" y1="185" x2="428" y2="128" stroke="oklch(0.72 0.15 340)" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- 29 tools label -->
+  <text x="380" y="210" text-anchor="middle" fill="oklch(0.60 0.05 250)" font-size="11">29 wpf_* tools — same surface across all 3 modes</text>
+
+  <defs>
+    <marker id="arr" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L6,3 z" fill="oklch(0.65 0.10 250)"/>
+    </marker>
+  </defs>
+</svg>
+```
+
+---
+
+## Choose your mode
+
+| | NuGet co-located | External injection | Brokered pipe |
+|---|---|---|---|
+| **Who it is for** | Apps you own and can recompile | Third-party or legacy WPF apps | CI/test harnesses; hot-reload; multi-instance |
+| **Prereqs** | .NET 8+; add `InitialForce.SnoopAgent` | `snoop-mcp.exe` on PATH; any .NET 6+ or .NET Framework 4.6.2 target | Both: `InitialForce.SnoopAgent` (target) + `InitialForce.SnoopAgent.BrokerHost` (broker) |
+| **First command** | `SnoopAgent.StartCoLocated()` in `App.OnStartup` | `snoop-mcp.exe --pid <n>` | `SnoopAgent.StartBrokered(…)` in target; broker reads manifest |
+| **Security boundary** | Process boundary (stdio) | Owner-DACL temp file + HMAC handshake | Pipe DACL (current user only) + HMAC-SHA256 |
+| **Hot-reload friendly** | Yes — survives `dotnet watch` restart | No — must re-inject on restart | Yes — broker reconnects on target restart |
+| **CI-friendly** | Yes — spawn app as subprocess | Requires PID discovery | Best choice for orchestrated test runs |
+| **Mutation support** | Yes (.NET 8+ only) | Yes | Yes (.NET Framework 4.6.2: refused) |
+
+---
+
+## 30-second quickstart
+
+<details>
+<summary><strong>NuGet co-located</strong> — apps you own (.NET 8+)</summary>
+
+**1. Add the feed and package**
+
+```xml
+<!-- nuget.config beside your .sln -->
+<configuration>
+  <packageSources>
+    <add key="initialforce" value="https://nuget.pkg.github.com/InitialForce/index.json" />
+  </packageSources>
+  <packageSourceCredentials>
+    <initialforce>
+      <add key="Username" value="%GITHUB_USER%" />
+      <add key="ClearTextPassword" value="%GITHUB_TOKEN%" />
+    </initialforce>
+  </packageSourceCredentials>
+</configuration>
+```
+
+```bash
+dotnet add package InitialForce.SnoopAgent --version 1.0.0-rc.2 --prerelease
+```
+
+**2. Start the agent at app startup**
+
+```csharp
+// App.xaml.cs
+protected override void OnStartup(StartupEventArgs e)
+{
+    base.OnStartup(e);
+    SnoopAgent.StartCoLocated(); // Console.Out is redirected to Null; MCP runs on stdio
+}
+```
+
+**3. MCP client config (Claude Code `.mcp.json`)**
+
+```json
+{
+  "mcpServers": {
+    "snoop-myapp": {
+      "command": "dotnet",
+      "args": ["run", "--project", "path/to/YourApp.csproj"]
+    }
+  }
+}
+```
+
+**4. Verify the connection**
+
+Call `wpf_get_session_info`. Expected response:
+
+```json
+{
+  "processName": "MyApp",
+  "pid": 12345,
+  "dotnetVersion": "8.0.3",
+  "mutationEnabled": false,
+  "dispatchers": [
+    {
+      "id": 0,
+      "threadId": 1,
+      "windowNodeIds": ["0:1", "0:2"]
+    }
+  ],
+  "capabilities": ["tree", "properties", "diagnostics", "resources", "screenshots"]
+}
+```
+
+</details>
+
+<details>
+<summary><strong>External injection</strong> — any running WPF process, no source changes</summary>
+
+**1. Download `snoop-mcp.exe`** from the [GitHub releases page](https://github.com/InitialForce/snoopwpf/releases).
+
+**2. Find the target PID**
+
+```powershell
+Get-Process MyWpfApp
+```
+
+**3. MCP client config (Claude Desktop `%APPDATA%\Claude\claude_desktop_config.json`)**
 
 ```json
 {
@@ -35,286 +184,324 @@ Badges above reflect the upstream build. Fork CI runs via GitHub Actions on the 
 }
 ```
 
-Add that block to `%APPDATA%\Claude\claude_desktop_config.json`, restart Claude Desktop, and start asking questions about your running WPF app.
+To avoid updating the PID on each restart, target by window title instead:
 
-## Install
+```json
+{
+  "mcpServers": {
+    "snoop-myapp": {
+      "command": "C:\\tools\\snoop-mcp.exe",
+      "args": ["--window-title", "My Application"]
+    }
+  }
+}
+```
 
-The packages are published to [nuget.org](https://www.nuget.org/packages/InitialForce.SnoopAgent):
+**4. Verify the connection**
+
+Call `wpf_get_session_info`. Expected response:
+
+```json
+{
+  "processName": "MyApp",
+  "pid": 12345,
+  "dotnetVersion": "8.0.3",
+  "mutationEnabled": false,
+  "dispatchers": [
+    {
+      "id": 0,
+      "threadId": 1,
+      "windowNodeIds": ["0:1", "0:2"]
+    }
+  ],
+  "capabilities": ["tree", "properties", "diagnostics", "resources", "screenshots"]
+}
+```
+
+</details>
+
+<details>
+<summary><strong>Brokered pipe</strong> — CI harnesses and hot-reload scenarios</summary>
+
+**1. Add packages**
 
 ```bash
-dotnet add package InitialForce.SnoopAgent --version 1.0.0-rc.1 --prerelease
+# Target-side (WPF app under test)
+dotnet add package InitialForce.SnoopAgent --version 1.0.0-rc.2 --prerelease
+
+# Broker-side (test harness / CI orchestrator)
+dotnet add package InitialForce.SnoopAgent.BrokerHost --version 1.0.0-rc.2 --prerelease
 ```
 
-For the full consumer guide — available packages, MCP config snippets, symbol debugging,
-and upgrade instructions from `SnoopWPF.Agent.*` 6.x — see
-**[docs/consuming-nuget.md](docs/consuming-nuget.md)**.
-
-## Why this fork exists
-
-Modern software engineering increasingly leans on AI coding agents (Claude Code,
-Claude Desktop, Cursor, etc.). These agents can read and write source code, run
-commands, and debug programs — but they cannot *observe the running UI* of a WPF
-application. Without runtime visibility, an agent debugging a WPF bug has to work
-from source alone; it can't see the element tree, inspect bindings, verify property
-values at runtime, or capture screenshots.
-
-This fork adds that missing piece. The Snoop engine that powers the Snoop desktop
-UI is exposed as an MCP server, so any MCP-compatible agent can drive tree
-navigation, property inspection, binding diagnostics, and screenshots through a
-typed tool surface — for the same app that a developer might be snooping
-interactively in another window.
-
-## Fork goals
-
-- **AI-agent inspection** via 29 MCP tools covering visual / logical / automation
-  trees, properties with binding and trigger detail, resources, behaviors,
-  screenshots, and diagnostics.
-- **Two deployment modes:**
-  - *NuGet (compile-in)* — reference `SnoopWPF.Agent` and call
-    `SnoopAgent.StartCoLocated()` at startup. Zero process-injection complexity. Intended
-    for apps you own and can recompile.
-  - *Injection (external host)* — `snoop-mcp.exe` injects into any running WPF
-    process via the existing Snoop injection pipeline. For third-party or legacy
-    apps.
-- **UI coexistence.** The MCP agent and the classic Snoop desktop UI can run in
-  the same process at the same time.
-- **Secure by default.** Read-only unless mutation is explicitly enabled;
-  mutations go through a hardcoded `TypeConverter` whitelist (never
-  `TypeDescriptor.GetConverter`); named-pipe communication is `CurrentUserOnly`
-  with a 256-bit session-token handshake and constant-time verification;
-  properties whose names match a sensitive-keyword list (passwords, tokens, API
-  keys, connection strings) are redacted on every read path, including trigger
-  and behavior inspection.
-- **Upstream compatibility.** The classic `Snoop` and `Snoop.Core` projects stay
-  compatible with upstream. New functionality lives in new `SnoopWPF.Agent.*`
-  projects so upstream merges stay clean. Non-AI bug fixes land here will be
-  offered back upstream.
-
-## Non-goals
-
-- Replacing the classic Snoop desktop UI.
-- Remote inspection over the network — pipes are localhost-only by design.
-- Supporting AI protocols other than MCP.
-- Self-contained single-file WPF apps on the injection path (same upstream limitation).
-
-## MCP Agent quick start
-
-**NuGet mode** (app you own):
-
-```xml
-<PackageReference Include="SnoopWPF.Agent" />
-```
+**2. Target-side startup**
 
 ```csharp
 // App.xaml.cs
 protected override void OnStartup(StartupEventArgs e)
 {
     base.OnStartup(e);
-    var agent = SnoopAgent.StartCoLocated();
-    // agent.PipeName + agent.SessionToken when using Pipe transport
+
+    string? pipeName = GetFlagValue(e.Args, "--snoop-pipe");
+    if (!string.IsNullOrEmpty(pipeName))
+    {
+        // Broker writes BrokerHandshakePayload (pipe + token) to this process's stdin.
+        string? line = Console.In.ReadLine();
+        var payload = System.Text.Json.JsonSerializer
+            .Deserialize<SnoopWPF.Agent.Contracts.Protocol.BrokerHandshakePayload>(line!);
+
+        _agentHandle = SnoopAgent.StartBrokered(
+            this, payload!.Pipe!, payload.Token!,
+            new SnoopAgentOptions { EnableMutation = true });
+    }
 }
 ```
 
-**Injection mode** (any running WPF process):
+**3. Broker-side startup**
+
+```csharp
+string pipeName = "myapp-" + Guid.NewGuid().ToString("N")[..8];
+string tokenHex = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+
+Console.SetOut(TextWriter.Null); // broker owns MCP stdio
+
+var process = BrokerTargetSpawner.Spawn(
+    exe: @"C:\path\to\MyApp.exe",
+    args: Array.Empty<string>(),
+    pipeName: pipeName,
+    tokenHex: tokenHex);
+
+await BrokerHost.Start(transport, new BrokerOptions
+{
+    PipeName = pipeName,
+    SessionToken = tokenHex,
+}, cts.Token);
+```
+
+**4. MCP client config**
 
 ```json
-// .mcp.json
 {
   "mcpServers": {
-    "snoop": { "command": "snoop-mcp", "args": ["--pid", "12345"] }
+    "snoop-myapp": {
+      "command": "C:\\path\\to\\MyBroker.exe"
+    }
   }
 }
 ```
 
-## Documentation
+**5. Verify the connection**
 
-- [MCP Agent Overview](docs/mcp-agent.md)
-- [NuGet Mode](docs/nuget-mode.md)
-- [Injection Mode](docs/injection-mode.md)
-- [MCP Tools Reference](docs/mcp-tools-reference.md)
-- [Security Model](docs/security.md)
+Call `wpf_get_session_info`. Expected response:
 
-## Design documents
+```json
+{
+  "processName": "MyApp",
+  "pid": 12345,
+  "dotnetVersion": "8.0.3",
+  "mutationEnabled": true,
+  "dispatchers": [
+    {
+      "id": 0,
+      "threadId": 1,
+      "windowNodeIds": ["0:1", "0:2"]
+    }
+  ],
+  "capabilities": ["tree", "properties", "diagnostics", "resources", "screenshots"]
+}
+```
 
-Planning artifacts for this fork live at the repository root:
-
-- [`PRD.md`](PRD.md) — product requirements document.
-- [`BEADS.md`](BEADS.md) — implementation specification, 30 beads (atomic work units), with global security and build rules.
-- [`TRANSFORMATION_PLAN.md`](TRANSFORMATION_PLAN.md) — rollout plan used to execute the beads.
-- Earlier planning drafts are retained for history: `PRD-v4-automation.md`, `PRD-v5-MVP.md`, `PRD-v5-ideal.md`, `PRD-v5-sota-research.md`, `PRD-v5-reviews-wave2.md`, `PRD-v5-reviews-wave3.md`.
-
-## Fork project layout
-
-| Project | Purpose |
-|---|---|
-| `SnoopWPF.Agent.Contracts` | Shared DTOs, `ISnoopInspector` interface, protocol types. `net462;net6.0-windows;net8.0-windows`. |
-| `SnoopWPF.Agent.Engine` | Core inspector implementation — tree, properties, bindings, diagnostics, resources, screenshots. Wraps `Snoop.Core`. |
-| `SnoopWPF.Agent.Tools` | 29 MCP tool handlers (one per tool). |
-| `SnoopWPF.Agent.Server` | NuGet-mode entry point: `SnoopAgent.StartCoLocated()`. Packs to `SnoopWPF.Agent` NuGet. |
-| `SnoopWPF.Agent.Remote` | Host-side pipe client (`PipeSnoopInspectorProxy` implementing `ISnoopInspector`). |
-| `SnoopWPF.Agent.Injection` | Injected-process DLL — hosts inspector, serves pipe, performs handshake. |
-| `SnoopWPF.Agent.Host` | `snoop-mcp.exe` — injects into target PID, speaks MCP on stdio. |
-| `SnoopWPF.Agent.Cli` | `snoop-cli.exe` — interactive CLI wrapper over the same engine. |
-| `Snoop.Injector` | Extracted injection logic (previously embedded in the Snoop GUI project). |
-| `Snoop.Core` / `Snoop` | Upstream projects, preserved. |
-| `Samples/SnoopWPF.SampleApp` | Demonstrates NuGet-mode integration and provides a fixture for manual testing. |
-| `SnoopWPF.Agent.Tests` / `.IntegrationTests` / `.InjectionTests` | Unit, WPF-dispatcher integration, and pipe-protocol tests respectively. |
+</details>
 
 ---
 
-## Contact
+## Brokered attach: HMAC-SHA256 handshake
 
-- [![Join the chat at https://gitter.im/snoopwpf/Lobby](https://img.shields.io/badge/GITTER-join%20chat-green.svg?style=flat-square)](https://gitter.im/snoopwpf/Lobby?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
-- [![Twitter](https://img.shields.io/badge/twitter-%40batzendev-blue.svg?style=flat-square)](https://twitter.com/batzendev)
+```mermaid
+sequenceDiagram
+    participant B as Broker
+    participant T as WPF Target
 
-## Where can i download Snoop?/How can i install Snoop?
+    B->>T: spawn process with --snoop-pipe=NAME
+    B->>T: write BrokerHandshakePayload to stdin (pipe + token)
+    T->>T: SnoopAgent.StartBrokered() — open NamedPipeServerStream(NAME, CurrentUserOnly)
+    B->>T: NamedPipeClientStream.Connect()
+    B->>B: GetNamedPipeServerProcessId() — verify peer PID
+    T->>B: HandshakeChallenge { nonce: 16 random bytes, protocolVersion: 2 }
+    B->>B: ProofHmac = HMACSHA256(key=token, data=nonce)
+    B->>T: HandshakeResponse { proofHmac, protocolVersion: 2 }
+    T->>T: FixedTimeEquals(expected, proofHmac) — constant-time compare
+    T->>B: HandshakeAck { sessionId }
+    Note over B,T: Session established — wpf_* tools now available
+    Note over B,T: Pipe ACL: PipeOptions.CurrentUserOnly (single ALLOW ACE for current user SID)
+```
 
-- [Chocolatey](https://chocolatey.org/packages/snoop) for stable and some preview versions
-- [GitHub releases](https://github.com/snoopwpf/snoopwpf/releases) for stable versions
-- [AppVeyor](https://ci.appveyor.com/project/batzen/snoopwpf/build/artifacts) for the latest preview versions (built on every code change)
-- You need at least .NET Framework 4.6.2 to run Snoop
+---
 
-## Supported .NET versions
+## Tool catalog
 
-- .NET Framework >= 4.6.2
-- .NET >= 6
-  - Tested with 6, 7, 8, 9 and 10. Future versions might just work.
-  - **Restrictions:** Self-Contained single file applications are not supported as there is no reliable way to get a handle to the .NET runtime
+<details>
+<summary><strong>Session &amp; Windows (2 tools)</strong> — verify connectivity and enumerate top-level windows</summary>
 
-## Versions
+| Tool | What it does | 🔒 mutate | 🤖 automation req | 🎯 session req |
+|------|-------------|:---------:|:-----------------:|:--------------:|
+| `wpf_get_session_info` | Process name, PID, .NET version, dispatcher list, capability flags | — | — | — |
+| `wpf_get_windows` | Top-level WPF windows with nodeId, title, type, dimensions | — | — | ✓ |
 
-You can read the [changelog](Changelog.md) for details on what changed in which version.
+Call `wpf_get_session_info` first on every new connection. The returned `windowNodeIds` are the entry points for all tree-navigation tools.
 
-### [6.0.0](../../releases/tag/v6.0.0)
+</details>
 
-Breaking:
+<details>
+<summary><strong>Tree Inspection (5 tools)</strong> — navigate visual, logical, and automation trees</summary>
 
-- Dropped support for all .NET Framework versions prior to .NET 4.6.2
-- Dropped support for .NET 3.1 and NET 5
+| Tool | What it does | 🔒 mutate | 🤖 automation req | 🎯 session req |
+|------|-------------|:---------:|:-----------------:|:--------------:|
+| `wpf_get_visual_tree` | Depth-limited tree snapshot; up to 5 000 nodes; cursor-paginated | — | — | ✓ |
+| `wpf_get_children` | Paginated direct children of a node (50/page, max 200) | — | — | ✓ |
+| `wpf_get_ancestors` | Ancestor chain from a node to the root; includes DataContext type | — | — | ✓ |
+| `wpf_find_elements` | Search by type name, x:Name, or property conditions | — | — | ✓ |
+| `wpf_inspect_element` | Rich single-element summary: bounds, DataContext type, binding-error count | — | — | ✓ |
 
-### [5.0.0](../../releases/tag/v5.0.0)
+All tree tools accept a `treeType` parameter: `"visual"` (default), `"logical"`, or `"automation"`.
 
-Highlights:
+</details>
 
-- Improved settings system that does not rely on `System.Configuration`  
-  The new system allows sharing of settings between different snooped applications.  
-  It also allows to define settings for whole directory trees.
-- It's now possible to hide properties from Snoop in it's default view.  
-  Just annotate your properties with `[System.ComponentModel.BrowsableAttribute(false)]`.
-- Added the ability to show browser dev tools on browser controls.  
-  `WebView2` and `CefSharp` are currently supported.
-- Added dark theme
+<details>
+<summary><strong>Properties &amp; Bindings (4 tools)</strong> — read and write dependency properties; trace binding chains</summary>
 
-Breaking:
+| Tool | What it does | 🔒 mutate | 🤖 automation req | 🎯 session req |
+|------|-------------|:---------:|:-----------------:|:--------------:|
+| `wpf_get_properties` | Paginated property list with value, source, binding status, redaction flag | — | — | ✓ |
+| `wpf_set_property` | Set a DP value via hardcoded TypeConverter whitelist (not TypeDescriptor) | ✓ | — | ✓ |
+| `wpf_get_binding_info` | Binding type, path, mode, converter, status for one property | — | — | ✓ |
+| `wpf_resolve_binding` | Full Source → Path (per segment) → Converter → Value chain in one call | — | — | ✓ |
 
-- Dropped support for all .NET Framework versions prior to .NET 4.5.2
-- Dropped support for .NET 3.0
-- Added support for .NET versions >= 6.0 (by not explicitly blocking versions greater than 6.0)
+`wpf_set_property` requires `EnableMutation = true`. On .NET Framework 4.6.2 targets, mutations are refused (`MUTATION_DISABLED`) to protect the audit-log invariant.
 
-### [4.0.0](../../releases/tag/v4.0.0)
+`wpf_resolve_binding` is the key differentiator vs. UIA/FlaUI — it walks the binding path step by step and returns each intermediate value, including converter type names and validation errors.
 
-Highlights:
+</details>
 
-- Support for .NET 6.0
-- Support for ARM/ARM64
-- New "Diagnostics" view
-- Settings for highlighting
-- Artifacts are digitally signed thanks to SignPath.io (MSI, Chocolatey NUPKG and zip)
+<details>
+<summary><strong>Diagnostics, Resources &amp; Screenshots (6 tools)</strong> — health checks, resource lookup, image capture</summary>
 
-Breaking:
+| Tool | What it does | 🔒 mutate | 🤖 automation req | 🎯 session req |
+|------|-------------|:---------:|:-----------------:|:--------------:|
+| `wpf_run_diagnostics` | Run built-in providers (BindingError, NonVirtualizedList, etc.); returns severity-sorted results | — | — | ✓ |
+| `wpf_get_resources` | Resource dictionary lookup with precedence ordering; shows shadowed resources | — | — | ✓ |
+| `wpf_get_triggers` | All triggers on an element: Style, ControlTemplate, DataTemplate, Element-level | — | — | ✓ |
+| `wpf_get_behaviors` | Blend behaviors and actions; supports both legacy SDK and modern package | — | — | ✓ |
+| `wpf_capture_screenshot` | PNG of an element or window; returns a `blobRef` key | — | — | ✓ |
+| `wpf_fetch_blob` | Retrieve PNG bytes from the in-process BlobStore (60 s TTL by default) | — | — | ✓ |
 
-- Dropped support for all .NET versions prior to .NET 4.5.1
+Screenshot workflow: call `wpf_capture_screenshot` → receive `blobRef` → pass to `wpf_fetch_blob` → receive PNG `ImageContent`. MCP clients that understand `ImageContent` (Claude Desktop, Claude Code) render the image inline.
 
-### [3.0.0](../../releases/tag/v3.0.0)
+</details>
 
-Highlights:
+<details>
+<summary><strong>Sync &amp; Polling (3 tools)</strong> — wait for UI state changes after mutations</summary>
 
-- Support for .NET Core (3.0, 3.1 and 5.0) (including self contained and single file applications)
-- Rewritten injector code
-- You no longer have to have installed any Microsoft Visual C++ Redistributable(s)
-- Snooping disabled controls when holding `CTRL + SHIFT` works now
-- Snoop now filters uncommon properties by default
-- Snoop is now able to show `MergedDictionaries` from `ResourceDictionary`
-- Snoop now has two tracking modes.
-  - Holding `CTRL` tries to skip template parts => this is changed to `CTRL + ALT` in newer versions
-  - Holding `CTRL + SHIFT` does not skip template parts
-- Drastically improved performance of `AppChooser.Refresh()` (thanks @mikel785)
-- Usability improvements for process dropdown (thanks @mikel785)
-- Support for displaying the logical tree and the tree of WPF automation peers
-- Ability to inspect `Popup` without opening it
-- `Snoop.exe` and the injector launcher now support commandline args
-- Global hotkey support (just start snoop, focus a WPF application and hit `CTRL + WIN + ALT + F12`)
+| Tool | What it does | 🔒 mutate | 🤖 automation req | 🎯 session req |
+|------|-------------|:---------:|:-----------------:|:--------------:|
+| `wpf_pump_until_idle` | Wait until Dispatcher queue AND composition pipeline are idle (AND-gate, max 5 s) | — | — | ✓ |
+| `wpf_poll_changes` | Non-blocking structural delta since a `treeVersion` baseline | — | — | ✓ |
+| `wpf_wait_for_property` | Poll a property until it equals an expected value or an element disappears | — | — | ✓ |
 
-Known issues:
+Recommended mutation sequence: mutate → `wpf_pump_until_idle` → `wpf_poll_changes` → read updated properties.
 
-- Trying to snoop a trimmed single file application might not work as trimming might have removed things Snoop relies on
+</details>
 
-### [2.11.0](../../releases/tag/2.11.0)
+<details>
+<summary><strong>Input &amp; Interaction (9 tools)</strong> — drive buttons, text fields, lists, sliders, and more</summary>
 
-Highlights:
+| Tool | What it does | 🔒 mutate | 🤖 automation req | 🎯 session req |
+|------|-------------|:---------:|:-----------------:|:--------------:|
+| `wpf_click` | Invoke via UIA `IInvokeProvider` (L1); suggest `wpf_execute_command` when Command is bound | — | ✓ | ✓ |
+| `wpf_double_click` | Double-click via UIA (L1) | — | ✓ | ✓ |
+| `wpf_execute_command` | Execute bound `ICommand` directly (L0; no Win32 input) | ✓ | — | ✓ |
+| `wpf_expand_collapse` | Expand or collapse via `IExpandCollapseProvider` (L1) | — | ✓ | ✓ |
+| `wpf_select_item` | Select by index, exact text, or unambiguous substring in any Selector | ✓ | — | ✓ |
+| `wpf_select_item_by_index` | Select by zero-based index (explicit, no ambiguity) | ✓ | — | ✓ |
+| `wpf_set_check_state` | Set CheckBox/RadioButton state deterministically (L0) | ✓ | — | ✓ |
+| `wpf_set_slider_value` | Set RangeBase.Value; accepts absolute or normalized [0,1] (L0) | ✓ | — | ✓ |
+| `wpf_set_text_value` | Set TextBox/PasswordBox/RichTextBox text via SetCurrentValue (L0) | ✓ | — | ✓ |
 
-- Support for multiple app domains
-- Auto elevation to enable spying of elevated processes without running Snoop as administrator
-- Persistent settings for various settings
-- Improved error dialog and issue reporting
-- Rewritten window finder
+Additional tools available: `wpf_toggle` (flip ToggleButton state via UIA), `wpf_get_list_items` (enumerate ComboBox/ListBox items for inspection).
 
-### [2.10.0](../../releases/tag/2.10.0)
+All L0 tools use `DependencyObject.SetCurrentValue` — existing TwoWay bindings and triggers remain intact; the binding chain is not cleared.
 
-Was released on September 19th, 2018.
-In this version we finally got rid of support for snooping WPF 3.5 applications.
-This allowed us to move the Snoop projects forward to Visual Studio 2017 which should make it much easier to work with Snoop's source code.
+All mutation tools require `EnableMutation = true` in `SnoopAgentOptions`.
 
-### [2.9.0](../../releases/tag/2.9.0)
+</details>
 
-Was released on July 27th, 2018.
-The big addition in this version was the inclusion of the triggers tab which was a useful feature of another WPF spying utility called WPF Inspector (written by [Christan Moser](https://github.com/ChristianMoser)).
-It was ported to Snoop by Bastian Schmidt.
+---
 
-## Documentation on how to use Snoop
+## Compared to the alternatives
 
-Unfortunately there isn't any exhaustive documentation on how to use Snoop and there are plenty of hidden features. If someone is willing to work on this, please let me know. On the bright side, it is a pretty easy utility to use and learn. I have made three videos which should get most people quick started.
+| Feature | **This fork** | Upstream Snoop | FlaUI | raw UIA3 | WinAppDriver |
+|---------|:---:|:---:|:---:|:---:|:---:|
+| Binding chain inspection | ✓ full chain | ✓ UI only | — | — | — |
+| DP mutation via typed API | ✓ | ✓ (manual) | — | — | — |
+| Screenshot (element-level) | ✓ | ✓ | ✓ | — | ✓ |
+| MCP-native (29 tools) | ✓ | — | — | — | — |
+| Visual + Logical + Automation trees | ✓ | ✓ | UIA only | UIA only | UIA only |
 
-Here are the links to the current Snoop Tips & Tricks:
+**Upstream Snoop** — same inspection depth, no MCP surface; ideal for human-interactive debugging.
+**FlaUI** — reliable UIA automation library; no binding-chain access; no MCP; good for UI test automation without AI.
+**Raw UIA3** — foundation everything else sits on; only sees rendered strings, no WPF-layer data.
+**WinAppDriver** — WebDriver-protocol UIA wrapper; works for cross-framework tests; no binding depth.
 
-- https://www.youtube.com/watch?v=n8EdRR0Tc1k
-- https://www.youtube.com/watch?v=98UEVCQHmVA
-- https://www.youtube.com/watch?v=frXAgGzZnrU
+See [docs/comparison.md](docs/comparison.md) for the full 8-way matrix including Accessibility Insights, Spy++, and Visual Studio XAML Live Preview.
 
-## Why can't I snoop my application?
+---
 
-Well, you can! You will just need to use an earlier version of Snoop, in order to do so.  
-The minimum versions are:
+## Honest weaknesses
 
-| Snoop | .NET Framework | .NET |
-|-------|----------------|------|
-| 3.0   | 4.0            | 3.0  |
-| 4.0   | 4.5.1          | 3.0  |
-| 5.0   | 4.5.2          | 3.1  |
-| 6.0   | 4.6.2          | 6.0  |
+- **Injection barrier.** `snoop-mcp.exe` cannot inject into processes protected by anti-tamper or anti-cheat mechanisms, elevated processes owned by a different user, or self-contained single-file WPF apps (same limitation as upstream Snoop).
+- **WPF only.** WinForms, WinUI 3, MAUI, and UWP are not supported. The engine depends on `System.Windows.DependencyObject` and the WPF Dispatcher; there is no plan to support non-WPF frameworks.
+- **Polling-based change detection.** `wpf_poll_changes` returns a structural diff on demand; it does not push events to the client. A push-event (WebSocket or SSE) transport is a future-work item tracked separately.
 
-## How do i build Snoop?
+---
 
-Just open `Snoop.sln` with Visual Studio and build it.
+## Where to go next
 
-Requirements:
+| Goal | Document |
+|------|----------|
+| Understand the internal architecture | [docs/architecture.md](docs/architecture.md) |
+| Full 8-way alternative comparison | [docs/comparison.md](docs/comparison.md) |
+| Common task recipes (binding debug, CI smoke test, screenshot diff) | [docs/recipes.md](docs/recipes.md) |
+| Security model in depth | [docs/security.md](docs/security.md) |
+| NuGet consumer guide (feed setup, auth, upgrade from 6.x) | [docs/consuming-nuget.md](docs/consuming-nuget.md) |
+| Machine-readable tool surface for AI consumers | [llms.txt](llms.txt) |
 
-- Visual Studio 2022 or later
-  - C++ payloads (x86/x64 and optionally ARM/ARM64)
-  - You can import the [.vsconfig](.vsconfig) file in the Visual Studio installer to let it install all required components
+---
+
+## Downstream consumer example
+
+The [MotionCatalyst/wpf-mcp broker](https://github.com/InitialForce/wpf-mcp) is a reference downstream consumer that adds lifecycle and navigation tools on top of the 29 `wpf_*` tools: `mc_launch`, `mc_attach`, `mc_navigate_to`, and others. Those tools live in the consuming application, not in this repository.
+
+---
+
+## Contributing and building
+
+Open `Snoop.sln` in Visual Studio 2022 or later. Required components:
+
 - .NET SDK 10.0.100 or later
+- C++ build tools (x86/x64; optionally ARM/ARM64) — import [.vsconfig](.vsconfig) in the VS installer
 
-## Contributors
+The `SnoopWPF.Agent.*` projects build independently of the Snoop GUI projects. Run `dotnet test` to execute unit and integration tests. The injection tests (`SnoopWPF.Agent.InjectionTests`) require a real WPF process and are skipped in headless CI by default.
 
-Over time contributions have been added by several people, most notably:
+---
 
-- [Bastian Schmidt](https://github.com/batzen), [batzen.dev](https://batzen.dev) (current maintainer)
-- [Cory Plotts](https://github.com/cplotts)
-- [Dan Hanan](http://blogs.interknowlogy.com/author/danhanan/)
-- [Andrei Kashcha](http://blog.yasiv.com/)
-- [Maciek Rakowski](https://github.com/MaciekRakowski)
-- [Bailey Ling](https://github.com/bling)
+## Credits and license
 
-## Code Signing
+Snoop was created by [Pete Blois](https://github.com/peteblois) and is currently maintained upstream by [Bastian Schmidt](https://github.com/batzen) at [batzen.dev](https://batzen.dev).
 
-Snoop uses free code signing provided by [SignPath.io](https://signpath.io?utm_source=foundation&utm_medium=github&utm_campaign=snoopwpf) and a free code signing certificate by the [SignPath Foundation](https://signpath.org?utm_source=foundation&utm_medium=github&utm_campaign=snoopwpf)
+This fork is maintained by [InitialForce](https://github.com/InitialForce). Non-AI bug fixes originating here will be offered back to upstream.
+
+Code signing for upstream releases is provided by [SignPath.io](https://signpath.io?utm_source=foundation&utm_medium=github&utm_campaign=snoopwpf) and the [SignPath Foundation](https://signpath.org?utm_source=foundation&utm_medium=github&utm_campaign=snoopwpf).
+
+License: see [License.txt](License.txt) — MS-PL, same as upstream.
+
+[![Gitter](https://img.shields.io/badge/GITTER-upstream%20community-green.svg?style=flat-square)](https://gitter.im/snoopwpf/Lobby)
+[![Twitter](https://img.shields.io/badge/twitter-%40batzendev-blue.svg?style=flat-square)](https://twitter.com/batzendev)
