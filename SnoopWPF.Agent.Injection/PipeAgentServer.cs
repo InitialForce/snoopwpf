@@ -252,7 +252,7 @@ public sealed class PipeAgentServer : IDisposable
                         Error = new PipeErrorPayload
                         {
                             Code = "InternalError",
-                            Message = $"An internal error occurred: {ex.GetType().Name}: {ex.Message}",
+                            Message = $"An internal error occurred: {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}",
                         },
                     };
                 }

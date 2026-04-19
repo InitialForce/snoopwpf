@@ -33,8 +33,12 @@ public sealed partial class SnoopInspector
             "Screenshot capture requires the .NET 6+ in-process agent.",
             suggestions: new[] { SnoopSuggestions.ElementNotRenderable });
 #else
-        // Phase 2: async WGC capture — entirely off the WPF UI thread.
-        var pngBytes = await WgcScreenshotCapture.CaptureAsPngAsync(
+        // Phase 2: synchronous Win32 PrintWindow capture. Fast (~10-50 ms),
+        // GPU-content aware via PW_RENDERFULLCONTENT (Win8.1+), and RDP-safe.
+        // Replaces WGC as primary path: WGC depends on DWM composition and
+        // fails inside Remote Desktop sessions with an InvalidCastException
+        // during GraphicsCaptureItem projection.
+        var pngBytes = await PrintWindowCapture.CaptureAsPngAsync(
             captureInfo.Hwnd,
             captureInfo.CropRect,
             ct).ConfigureAwait(false);

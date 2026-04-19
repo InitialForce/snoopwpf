@@ -329,9 +329,20 @@ internal static class WgcScreenshotCapture
                 int wrapHr = NativeMethods.CreateDirect3D11DeviceFromDXGIDevice(dxgiDevicePtr, out IntPtr rtPtr);
                 Marshal.ThrowExceptionForHR(wrapHr);
 
-                var device = (IDirect3DDevice)Marshal.GetObjectForIUnknown(rtPtr);
-                Marshal.Release(rtPtr);
-                return device;
+                try
+                {
+                    // .NET 5+ removed the built-in WinRT type projection that used to make
+                    // (IDirect3DDevice)Marshal.GetObjectForIUnknown(rtPtr) work. On modern
+                    // runtimes (including .NET 10) the raw cast throws InvalidCastException
+                    // when the injected-AppDomain RCW does not carry the WinRT projection.
+                    // Route through CsWinRT's MarshalInspectable, which is the supported
+                    // ABI-level conversion for WinRT IInspectable pointers.
+                    return global::WinRT.MarshalInspectable<IDirect3DDevice>.FromAbi(rtPtr);
+                }
+                finally
+                {
+                    Marshal.Release(rtPtr);
+                }
             }
             finally
             {
