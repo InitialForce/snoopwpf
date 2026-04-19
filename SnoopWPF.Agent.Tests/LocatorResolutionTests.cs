@@ -3,6 +3,7 @@ namespace SnoopWPF.Agent.Tests;
 using System;
 using System.Threading;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Threading;
 using NUnit.Framework;
@@ -298,5 +299,95 @@ public sealed class LocatorResolutionTests
             caught!.Code,
             Is.EqualTo(SnoopErrorCode.LocatorAmbiguous),
             $"Expected LocatorAmbiguous, got {caught.Code}.");
+    }
+
+    // -------------------------------------------------------------------------
+    // automationId= x:Name fallback — mirrors WPF FrameworkElementAutomationPeer
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// When <c>AutomationProperties.AutomationId</c> is NOT set but the element has
+    /// an <c>x:Name</c> (<see cref="FrameworkElement.Name"/>), the <c>automationId=</c>
+    /// locator must still match using the name as the fallback. This mirrors
+    /// <c>FrameworkElementAutomationPeer.GetAutomationIdCore()</c>, so the locator
+    /// form honours what real UIA clients (inspect.exe, FlaUI) see for the element.
+    /// </summary>
+    [Test]
+    public void AutomationId_FallsBackToXName_WhenPropertyUnset()
+    {
+        string? nodeId = null;
+        Exception? error = null;
+
+        this.dispatcher.Invoke(() =>
+        {
+            var panel = new StackPanel();
+            var button = new Button { Name = "MySentinel" };
+            panel.Children.Add(button);
+
+            var resolver = new LocatorResolver(this.registry);
+            var locator = WpfLocatorParser.Parse("automationId=MySentinel");
+
+            try
+            {
+                nodeId = resolver.Resolve(locator, panel);
+            }
+            catch (Exception ex)
+            {
+                error = ex;
+            }
+        });
+
+        Assert.That(error, Is.Null, $"Unexpected exception: {error}");
+        Assert.That(nodeId, Is.Not.Null.And.Not.Empty,
+            "automationId=MySentinel must resolve to the Button named MySentinel even without AutomationProperties.AutomationId set.");
+    }
+
+    /// <summary>
+    /// When both <c>AutomationProperties.AutomationId</c> and <c>x:Name</c> are set
+    /// and they differ, the explicit <c>AutomationProperties.AutomationId</c> wins —
+    /// the x:Name is only a fallback, never an override.
+    /// </summary>
+    [Test]
+    public void AutomationId_ExplicitProperty_WinsOverXName()
+    {
+        string? matchedViaProperty = null;
+        string? matchedViaName = null;
+
+        this.dispatcher.Invoke(() =>
+        {
+            var panel = new StackPanel();
+            var button = new Button { Name = "NameValue" };
+            AutomationProperties.SetAutomationId(button, "PropertyValue");
+            panel.Children.Add(button);
+
+            var resolver = new LocatorResolver(this.registry);
+
+            try
+            {
+                matchedViaProperty = resolver.Resolve(
+                    WpfLocatorParser.Parse("automationId=PropertyValue"),
+                    panel);
+            }
+            catch
+            {
+                matchedViaProperty = null;
+            }
+
+            try
+            {
+                matchedViaName = resolver.Resolve(
+                    WpfLocatorParser.Parse("automationId=NameValue"),
+                    panel);
+            }
+            catch
+            {
+                matchedViaName = null;
+            }
+        });
+
+        Assert.That(matchedViaProperty, Is.Not.Null.And.Not.Empty,
+            "Explicit AutomationProperties.AutomationId must match.");
+        Assert.That(matchedViaName, Is.Null,
+            "When AutomationProperties.AutomationId is set, x:Name must NOT match as fallback.");
     }
 }

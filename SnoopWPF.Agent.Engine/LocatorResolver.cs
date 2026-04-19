@@ -194,7 +194,17 @@ internal sealed class LocatorResolver
             return false;
         }
 
+        // Mirror WPF's stock UIA semantics (FrameworkElementAutomationPeer.GetAutomationIdCore):
+        // when AutomationProperties.AutomationId is unset, fall back to FrameworkElement.Name
+        // (x:Name). This is what inspect.exe, FlaUI and Accessibility Insights already see via
+        // IUIAutomationElement::CurrentAutomationId, so the locator form honours the same
+        // contract rather than diverging into a stricter attached-property-only view.
         var automationId = AutomationProperties.GetAutomationId(depObj);
+        if (string.IsNullOrEmpty(automationId) && depObj is FrameworkElement fe)
+        {
+            automationId = fe.Name;
+        }
+
         return string.Equals(automationId, locator.Value, StringComparison.Ordinal);
     }
 
