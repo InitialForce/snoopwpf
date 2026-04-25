@@ -444,6 +444,16 @@ public sealed class PipeAgentServer : IDisposable
                 return JsonFramedSerializer.SerializeToString(result);
             },
 
+            ["ExecuteActionSequence"] = async (paramsJson, ct) =>
+            {
+                var p = JsonFramedSerializer.DeserializeString<ExecuteActionSequenceParams>(paramsJson);
+                var result = await this.inspector.ExecuteActionSequenceAsync(
+                    p.Steps ?? new List<ActionStepDto>(),
+                    p.StopOnError,
+                    ct).ConfigureAwait(false);
+                return JsonFramedSerializer.SerializeToString(result);
+            },
+
             ["SetTextValue"] = async (paramsJson, ct) =>
             {
                 var p = JsonFramedSerializer.DeserializeString<SetTextValueParams>(paramsJson);
@@ -873,6 +883,16 @@ internal sealed class GetActionablesParams
 
     [System.Runtime.Serialization.DataMember(Name = "maxResults")]
     public int MaxResults { get; set; } = 100;
+}
+
+[System.Runtime.Serialization.DataContract]
+internal sealed class ExecuteActionSequenceParams
+{
+    [System.Runtime.Serialization.DataMember(Name = "steps")]
+    public List<ActionStepDto>? Steps { get; set; }
+
+    [System.Runtime.Serialization.DataMember(Name = "stopOnError")]
+    public bool StopOnError { get; set; } = true;
 }
 
 [System.Runtime.Serialization.DataContract]

@@ -110,6 +110,18 @@ public interface ISnoopInspector
         int maxResults,
         CancellationToken ct);
 
+    /// <summary>
+    /// Executes an ordered list of L0/L1 mutation primitives (<c>click</c>, <c>double_click</c>,
+    /// <c>execute_command</c>, <c>set_text</c>) in a single round-trip. When
+    /// <paramref name="stopOnError"/> is <see langword="true"/> the sequence aborts at the first
+    /// step that returns <c>StateDelta.Success=false</c>; otherwise all steps run and the result
+    /// reports per-step outcome.
+    /// </summary>
+    Task<ActionSequenceResultDto> ExecuteActionSequenceAsync(
+        List<ActionStepDto> steps,
+        bool stopOnError,
+        CancellationToken ct);
+
     // ── WpfLocator overloads (M1-06) ──────────────────────────────────────────
     // Each method that accepts a nodeId gains a parallel WpfLocator overload.
     // Existing nodeId overloads are retained for compatibility.

@@ -163,6 +163,12 @@ public sealed class FakeSnoopInspector : ISnoopInspector
         => (this.OnGetActionables ?? throw new NotImplementedException("OnGetActionables not set"))
             .Invoke(rootNodeId, maxResults, ct);
 
+    public Func<List<ActionStepDto>, bool, CancellationToken, Task<ActionSequenceResultDto>>? OnExecuteActionSequence { get; set; }
+
+    public Task<ActionSequenceResultDto> ExecuteActionSequenceAsync(List<ActionStepDto> steps, bool stopOnError, CancellationToken ct)
+        => (this.OnExecuteActionSequence ?? throw new NotImplementedException("OnExecuteActionSequence not set"))
+            .Invoke(steps, stopOnError, ct);
+
     // ── WpfLocator overloads (M1-06) ──
     //
     // FX5-fakesnoop-locator-guards: WpfLocator overloads used to return hardcoded defaults

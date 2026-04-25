@@ -208,6 +208,10 @@ public sealed class PipeSnoopInspectorProxy : ISnoopInspector, IAsyncDisposable,
     public Task<ActionablesResultDto> GetActionablesAsync(string? rootNodeId, int maxResults, CancellationToken ct)
         => this.InvokeAsync<ActionablesResultDto>("GetActionables", new { rootNodeId, maxResults }, ct);
 
+    /// <inheritdoc/>
+    public Task<ActionSequenceResultDto> ExecuteActionSequenceAsync(List<ActionStepDto> steps, bool stopOnError, CancellationToken ct)
+        => this.InvokeAsync<ActionSequenceResultDto>("ExecuteActionSequence", new { steps, stopOnError }, ct);
+
     // --------------------------------------------------------------------------
     // IDisposable / IAsyncDisposable
     // --------------------------------------------------------------------------
