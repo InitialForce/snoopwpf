@@ -99,6 +99,17 @@ public interface ISnoopInspector
     /// <summary>Returns all attached behaviors on the node identified by <paramref name="nodeId"/>.</summary>
     Task<List<BehaviorDto>> GetBehaviorsAsync(string nodeId, CancellationToken ct);
 
+    /// <summary>
+    /// Returns the visible, enabled controls in the visual subtree rooted at
+    /// <paramref name="rootNodeId"/> (or <see cref="System.Windows.Application.Current"/> when null) that an
+    /// LLM can interact with. Filtered to actionable types (buttons, inputs, checkboxes, menu items,
+    /// hyperlinks, list items, sliders, expanders, tabs); skips invisible / zero-size controls.
+    /// </summary>
+    Task<ActionablesResultDto> GetActionablesAsync(
+        string? rootNodeId,
+        int maxResults,
+        CancellationToken ct);
+
     // ── WpfLocator overloads (M1-06) ──────────────────────────────────────────
     // Each method that accepts a nodeId gains a parallel WpfLocator overload.
     // Existing nodeId overloads are retained for compatibility.

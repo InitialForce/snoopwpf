@@ -437,6 +437,13 @@ public sealed class PipeAgentServer : IDisposable
                 return JsonFramedSerializer.SerializeToString(result);
             },
 
+            ["GetActionables"] = async (paramsJson, ct) =>
+            {
+                var p = JsonFramedSerializer.DeserializeString<GetActionablesParams>(paramsJson);
+                var result = await this.inspector.GetActionablesAsync(p.RootNodeId, p.MaxResults, ct).ConfigureAwait(false);
+                return JsonFramedSerializer.SerializeToString(result);
+            },
+
             ["SetTextValue"] = async (paramsJson, ct) =>
             {
                 var p = JsonFramedSerializer.DeserializeString<SetTextValueParams>(paramsJson);
@@ -856,6 +863,16 @@ internal sealed class GetAncestorsParams
 
     [System.Runtime.Serialization.DataMember(Name = "maxLevels")]
     public int? MaxLevels { get; set; }
+}
+
+[System.Runtime.Serialization.DataContract]
+internal sealed class GetActionablesParams
+{
+    [System.Runtime.Serialization.DataMember(Name = "rootNodeId")]
+    public string? RootNodeId { get; set; }
+
+    [System.Runtime.Serialization.DataMember(Name = "maxResults")]
+    public int MaxResults { get; set; } = 100;
 }
 
 [System.Runtime.Serialization.DataContract]

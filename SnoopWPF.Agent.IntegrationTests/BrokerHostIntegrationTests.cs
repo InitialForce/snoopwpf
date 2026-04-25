@@ -310,6 +310,8 @@ public sealed class BrokerHostIntegrationTests
 
         public Task<List<BehaviorDto>> GetBehaviorsAsync(WpfLocator locator, CancellationToken ct) => throw new NotImplementedException();
 
+        public Task<ActionablesResultDto> GetActionablesAsync(string? rootNodeId, int maxResults, CancellationToken ct) => throw new NotImplementedException();
+
         public Task<StateDeltaDto> SelectItemAsync(string nodeId, string identifier, CancellationToken ct) => throw new NotImplementedException();
 
         public Task<StateDeltaDto> SelectItemAsync(WpfLocator locator, string identifier, CancellationToken ct) => throw new NotImplementedException();
