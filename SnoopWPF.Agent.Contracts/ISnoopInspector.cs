@@ -122,6 +122,17 @@ public interface ISnoopInspector
         bool stopOnError,
         CancellationToken ct);
 
+    /// <summary>
+    /// Fires one mutation primitive and then polls a property predicate on the target node
+    /// until the predicate is satisfied or <paramref name="timeoutMs"/> elapses. Replaces the
+    /// "click + wait_for_property" round-trip pair common in dialog-driven LLM nav flows.
+    /// </summary>
+    Task<ActUntilResultDto> ActUntilAsync(
+        ActionStepDto action,
+        ActUntilPredicateDto predicate,
+        int timeoutMs,
+        CancellationToken ct);
+
     // ── WpfLocator overloads (M1-06) ──────────────────────────────────────────
     // Each method that accepts a nodeId gains a parallel WpfLocator overload.
     // Existing nodeId overloads are retained for compatibility.

@@ -89,10 +89,10 @@ public class ToolSurfaceCoverageTests
     [Test]
     public void ToolCount_MatchesPrd()
     {
-        // PRD §5 + Addendum M4 (FX6-C4): 29 tools + 4 WS3 tools (bd-1a9.39/40/41/42) + 2 LLM-nav tools (wpf_get_actionables, wpf_act_sequence) = 35.
+        // PRD §5 + Addendum M4 (FX6-C4): 29 tools + 4 WS3 tools (bd-1a9.39/40/41/42) + 3 LLM-nav tools (wpf_get_actionables, wpf_act_sequence, wpf_act_until) = 36.
         // Update this constant (and PRD.md + docs/prd-scope-addendum-m4.md + docs/mcp-tools-reference.md)
         // whenever a tool is added or removed.
-        const int PrdToolCount = 35;
+        const int PrdToolCount = 36;
 
         var toolAssembly = typeof(ClickTool).Assembly;
 

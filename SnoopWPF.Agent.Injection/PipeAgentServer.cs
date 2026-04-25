@@ -454,6 +454,17 @@ public sealed class PipeAgentServer : IDisposable
                 return JsonFramedSerializer.SerializeToString(result);
             },
 
+            ["ActUntil"] = async (paramsJson, ct) =>
+            {
+                var p = JsonFramedSerializer.DeserializeString<ActUntilParams>(paramsJson);
+                var result = await this.inspector.ActUntilAsync(
+                    p.Action ?? new ActionStepDto(),
+                    p.Predicate ?? new ActUntilPredicateDto(),
+                    p.TimeoutMs,
+                    ct).ConfigureAwait(false);
+                return JsonFramedSerializer.SerializeToString(result);
+            },
+
             ["SetTextValue"] = async (paramsJson, ct) =>
             {
                 var p = JsonFramedSerializer.DeserializeString<SetTextValueParams>(paramsJson);
@@ -893,6 +904,19 @@ internal sealed class ExecuteActionSequenceParams
 
     [System.Runtime.Serialization.DataMember(Name = "stopOnError")]
     public bool StopOnError { get; set; } = true;
+}
+
+[System.Runtime.Serialization.DataContract]
+internal sealed class ActUntilParams
+{
+    [System.Runtime.Serialization.DataMember(Name = "action")]
+    public ActionStepDto? Action { get; set; }
+
+    [System.Runtime.Serialization.DataMember(Name = "predicate")]
+    public ActUntilPredicateDto? Predicate { get; set; }
+
+    [System.Runtime.Serialization.DataMember(Name = "timeoutMs")]
+    public int TimeoutMs { get; set; } = 5000;
 }
 
 [System.Runtime.Serialization.DataContract]

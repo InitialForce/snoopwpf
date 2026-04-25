@@ -212,6 +212,10 @@ public sealed class PipeSnoopInspectorProxy : ISnoopInspector, IAsyncDisposable,
     public Task<ActionSequenceResultDto> ExecuteActionSequenceAsync(List<ActionStepDto> steps, bool stopOnError, CancellationToken ct)
         => this.InvokeAsync<ActionSequenceResultDto>("ExecuteActionSequence", new { steps, stopOnError }, ct);
 
+    /// <inheritdoc/>
+    public Task<ActUntilResultDto> ActUntilAsync(ActionStepDto action, ActUntilPredicateDto predicate, int timeoutMs, CancellationToken ct)
+        => this.InvokeAsync<ActUntilResultDto>("ActUntil", new { action, predicate, timeoutMs }, ct);
+
     // --------------------------------------------------------------------------
     // IDisposable / IAsyncDisposable
     // --------------------------------------------------------------------------

@@ -314,6 +314,8 @@ public sealed class BrokerHostIntegrationTests
 
         public Task<ActionSequenceResultDto> ExecuteActionSequenceAsync(List<ActionStepDto> steps, bool stopOnError, CancellationToken ct) => throw new NotImplementedException();
 
+        public Task<ActUntilResultDto> ActUntilAsync(ActionStepDto action, ActUntilPredicateDto predicate, int timeoutMs, CancellationToken ct) => throw new NotImplementedException();
+
         public Task<StateDeltaDto> SelectItemAsync(string nodeId, string identifier, CancellationToken ct) => throw new NotImplementedException();
 
         public Task<StateDeltaDto> SelectItemAsync(WpfLocator locator, string identifier, CancellationToken ct) => throw new NotImplementedException();
