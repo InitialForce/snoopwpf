@@ -87,6 +87,11 @@ public sealed class PipeAgentServerSurfaceTests
         "SelectItemByScroll",
         "SelectItemByIndex",
         "GetListItems",
+
+        // ── LLM-nav tools (rc.6) ───────────────────────────────────────
+        "GetActionables",
+        "ExecuteActionSequence",
+        "ActUntil",
     };
 
     [Test]
