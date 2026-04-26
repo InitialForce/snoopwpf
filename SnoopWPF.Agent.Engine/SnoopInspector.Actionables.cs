@@ -15,7 +15,6 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Media;
-using Snoop.Data.Tree;
 using SnoopWPF.Agent.Contracts;
 using SnoopWPF.Agent.Contracts.Dtos;
 using SnoopWPF.Agent.Engine.Infrastructure;
@@ -35,24 +34,24 @@ public sealed partial class SnoopInspector
             var cap = Math.Min(maxResults <= 0 ? 100 : maxResults, 200);
 
             var root = this.ResolveRootTarget(rootNodeId);
-
-            // Visual tree is the right surface here: actionables care about what's actually
-            // rendered on screen, not the logical/automation projection.
-            using var treeService = TreeService.From(TreeType.Visual);
-            var rootItem = treeService.Construct(root, parent: null);
-            if (rootItem is null)
+            if (root is not DependencyObject rootDep)
             {
                 return new ActionablesResultDto();
             }
 
-            var items = new List<ActionableDto>();
+            // Visual tree is the right surface here: actionables care about what's actually
+            // rendered on screen, not the logical/automation projection. We walk via
+            // VisualTreeHelper directly instead of building Snoop's TreeItem wrappers — for
+            // a typical 2-3k-node MC view that saves 2-3k throwaway TreeItem allocations
+            // per call (rc.6 → rc.8 perf opt #2).
+            var items = new List<ActionableDto>(cap);
             var totalScanned = 0;
             var truncated = false;
 
-            var queue = new Queue<TreeItem>();
-            queue.Enqueue(rootItem);
+            var queue = new Queue<DependencyObject>();
+            queue.Enqueue(rootDep);
 
-            while (queue.Count > 0 && !truncated)
+            while (queue.Count > 0)
             {
                 var current = queue.Dequeue();
                 totalScanned++;
@@ -69,14 +68,15 @@ public sealed partial class SnoopInspector
                 }
 
                 // Skip subtrees of invisible / collapsed parents — they contain no actionables.
-                if (current.Target is UIElement ui && (!ui.IsVisible || ui.Visibility != Visibility.Visible))
+                if (current is UIElement ui && (!ui.IsVisible || ui.Visibility != Visibility.Visible))
                 {
                     continue;
                 }
 
-                foreach (var child in current.Children)
+                int childCount = VisualTreeHelper.GetChildrenCount(current);
+                for (int i = 0; i < childCount; i++)
                 {
-                    queue.Enqueue(child);
+                    queue.Enqueue(VisualTreeHelper.GetChild(current, i));
                 }
             }
 
@@ -90,18 +90,13 @@ public sealed partial class SnoopInspector
     }
 
     /// <summary>
-    /// Returns true and emits a populated <paramref name="dto"/> when <paramref name="item"/>
+    /// Returns true and emits a populated <paramref name="dto"/> when <paramref name="depObj"/>
     /// is a visible, enabled control that an LLM can interact with.
     /// Called only on the Dispatcher thread.
     /// </summary>
-    private static bool TryProjectActionable(TreeItem item, NodeRegistry nodeRegistry, out ActionableDto dto)
+    private static bool TryProjectActionable(DependencyObject depObj, NodeRegistry nodeRegistry, out ActionableDto dto)
     {
         dto = null!;
-
-        if (item.Target is not DependencyObject depObj)
-        {
-            return false;
-        }
 
         var kind = ClassifyKind(depObj);
         if (kind is null)
@@ -138,12 +133,12 @@ public sealed partial class SnoopInspector
 
         dto = new ActionableDto
         {
-            NodeId = nodeRegistry.GetOrCreateId(item.Target),
+            NodeId = nodeRegistry.GetOrCreateId(depObj),
             Kind = kind,
             Label = ResolveLabel(depObj),
             Name = xname,
             AutomationId = automationId,
-            TypeName = item.TargetType?.Name ?? depObj.GetType().Name,
+            TypeName = depObj.GetType().Name,
             IsEnabled = isEnabled,
             HasCommandBinding = HasCommandBindingFast(depObj),
         };
@@ -229,34 +224,23 @@ public sealed partial class SnoopInspector
     }
 
     /// <summary>
-    /// Cheap variant of <see cref="HasCommandBinding"/> for the actionables walk —
-    /// only checks the local value, not BindingExpression resolution.
+    /// Cheap command-binding probe for the actionables walk — only checks the local value.
     /// </summary>
+    /// <remarks>
+    /// The <see cref="System.Windows.Input.ICommand"/>-bearing types differ:
+    /// <see cref="ButtonBase.Command"/>, <see cref="MenuItem.Command"/>, and
+    /// <see cref="Hyperlink.Command"/> are independent DPs. We dispatch on type instead
+    /// of reading <see cref="ButtonBase.CommandProperty"/> on every <see cref="DependencyObject"/>
+    /// (which would silently return null for non-ButtonBase types).
+    /// </remarks>
     private static bool HasCommandBindingFast(DependencyObject d)
     {
-        if (d is not ButtonBase)
+        return d switch
         {
-            // Command property is declared on ButtonBase + MenuItem + Hyperlink.
-            // Fast path covers ButtonBase; fall through for the others.
-        }
-
-        var cmd = d.GetValue(ButtonBase.CommandProperty);
-        if (cmd != null)
-        {
-            return true;
-        }
-
-        // Some controls define their own Command DPs (MenuItem.Command, Hyperlink.Command).
-        if (d is MenuItem mi && mi.Command != null)
-        {
-            return true;
-        }
-
-        if (d is Hyperlink hl && hl.Command != null)
-        {
-            return true;
-        }
-
-        return false;
+            ButtonBase bb => bb.Command is not null,
+            MenuItem mi => mi.Command is not null,
+            Hyperlink hl => hl.Command is not null,
+            _ => false,
+        };
     }
 }

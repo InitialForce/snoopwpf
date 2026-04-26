@@ -18,7 +18,12 @@ using SnoopWPF.Agent.Contracts.Dtos;
 /// <content/>
 public sealed partial class SnoopInspector
 {
-    private const int ActUntilMinPollIntervalMs = 50;
+    // Adaptive polling cadence: a fast first beat catches predicates that match in <50ms
+    // (the common "click → IsEnabled flips immediately" case); subsequent intervals double
+    // up to a cap so a long wait doesn't burn CPU. With 25/50/100/100ms… cadence we hit the
+    // 1-second mark in 6 polls instead of 20, and after that match the previous flat 50ms.
+    private const int ActUntilFirstPollIntervalMs = 25;
+    private const int ActUntilMaxPollIntervalMs = 100;
 
     /// <inheritdoc/>
     public async Task<ActUntilResultDto> ActUntilAsync(
@@ -75,6 +80,10 @@ public sealed partial class SnoopInspector
 
         // Cache a weak reference once so subsequent polls don't re-walk the registry.
         WeakReference<object>? targetWeak = null;
+
+        // Adaptive cadence: starts at ActUntilFirstPollIntervalMs and doubles up to
+        // ActUntilMaxPollIntervalMs. The first poll fires immediately (no leading delay).
+        var pollInterval = ActUntilFirstPollIntervalMs;
 
         while (true)
         {
@@ -143,8 +152,12 @@ public sealed partial class SnoopInspector
             }
 
             var remaining = (int)(deadline - sw.Elapsed).TotalMilliseconds;
-            var delay = Math.Min(ActUntilMinPollIntervalMs, Math.Max(1, remaining - 1));
+            var delay = Math.Min(pollInterval, Math.Max(1, remaining - 1));
             await Task.Delay(delay, ct).ConfigureAwait(false);
+
+            // Back off the next interval: double up to ActUntilMaxPollIntervalMs.
+            // Cheap UIs match in 1-2 polls; long waits don't burn CPU on a tight 50ms loop.
+            pollInterval = Math.Min(pollInterval * 2, ActUntilMaxPollIntervalMs);
         }
     }
 
