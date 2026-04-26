@@ -175,7 +175,14 @@ public sealed partial class SnoopInspector
     private static readonly ConcurrentDictionary<Type, ConcurrentDictionary<string, PropertyAccessor>> AccessorCache
         = new();
 
-    private static bool TryReadStringValue(object target, string propertyName, out string? value)
+    /// <summary>
+    /// Test-visible direct-read implementation for the act_until poll loop.
+    /// Returns <see langword="true"/> when the property exists on <paramref name="target"/>
+    /// and was read successfully; <paramref name="value"/> mirrors
+    /// <c>PropertyInformation.StringValue</c> semantics (raw value's <see cref="object.ToString"/>
+    /// or <see cref="string.Empty"/> when the value is null).
+    /// </summary>
+    internal static bool TryReadStringValue(object target, string propertyName, out string? value)
     {
         var type = target.GetType();
         var perType = AccessorCache.GetOrAdd(type, static _
