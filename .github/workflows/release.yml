@@ -251,10 +251,16 @@ jobs:
         shell: pwsh
         run: |
           $tag = "${{ github.ref_name }}"
-          $isPrerelease = if ($tag -match '-(alpha|beta|rc)\.') { '--prerelease' } else { '' }
-          gh release create $tag `
-            artifacts/nupkg/*.nupkg `
-            artifacts/nupkg/*.snupkg `
-            --generate-notes `
-            $isPrerelease `
-            --title "$tag"
+          # Build args as an array so we can splat. Passing an empty string
+          # positionally (the previous "$isPrerelease = ''" pattern) is
+          # interpreted by gh as a glob and crashes with "no matches found".
+          $ghArgs = @(
+            'release', 'create', $tag,
+            'artifacts/nupkg/*.nupkg',
+            'artifacts/nupkg/*.snupkg',
+            '--generate-notes',
+            '--title', $tag
+          )
+          if ($tag -match '-(alpha|beta|rc)\.') { $ghArgs += '--prerelease' }
+          gh @ghArgs
+          if ($LASTEXITCODE -ne 0) { throw "gh release create failed for $tag" }
