@@ -319,6 +319,10 @@ class Build : NukeBuild
                 .SetProject(Solution.SnoopWPF_Agent_Host)
                 .SetConfiguration(Configuration)
                 .SetRuntime("win-x64")
+                // win-x64 introduces a RID the packages.lock.json has no assets for, so a
+                // locked-mode restore (CI=true) fails NU1004. The lock file gates the packed
+                // libraries, not these throwaway publish outputs — relax it for the publish.
+                .SetProperty("RestoreLockedMode", "false")
                 .SetSelfContained(false)
                 .SetOutput(snoopMcpPublishDir)
                 .SetAssemblyVersion(AssemblySemVer)
@@ -331,6 +335,7 @@ class Build : NukeBuild
                 .SetConfiguration(Configuration)
                 .SetRuntime("win-x64")
                 .SetFramework("net8.0-windows")
+                .SetProperty("RestoreLockedMode", "false")
                 .SetSelfContained(false)
                 .SetOutput(snoopCliPublishDir)
                 .SetAssemblyVersion(AssemblySemVer)
