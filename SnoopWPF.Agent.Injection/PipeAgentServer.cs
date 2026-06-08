@@ -9,6 +9,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using SnoopWPF.Agent.Contracts;
+using SnoopWPF.Agent.Contracts.Diagnostics;
 using SnoopWPF.Agent.Contracts.Dtos;
 using SnoopWPF.Agent.Contracts.Protocol;
 
@@ -320,8 +321,26 @@ public sealed class PipeAgentServer : IDisposable
             };
         }
 
+        // Open a per-request warning scope so engine-side diagnostics (e.g. MODAL_BLOCKED)
+        // accumulate here in the target process. They are drained onto the response frame
+        // below; the broker-side proxy re-emits them into its own scope so the tool
+        // dispatcher surfaces them in the top-level warnings array.
+        using var warningScope = SnoopAgentContext.BeginScope();
+
         var resultJson = await handler(request.ParamsJson, ct).ConfigureAwait(false);
-        return new PipeResponse { Id = request.Id, ResultJson = resultJson };
+
+        var drained = SnoopAgentContext.DrainWarnings();
+        PipeWarning[]? warnings = null;
+        if (drained.Count > 0)
+        {
+            warnings = new PipeWarning[drained.Count];
+            for (int i = 0; i < drained.Count; i++)
+            {
+                warnings[i] = new PipeWarning { Code = drained[i].Code, Message = drained[i].Message };
+            }
+        }
+
+        return new PipeResponse { Id = request.Id, ResultJson = resultJson, Warnings = warnings };
     }
 
     // -----------------------------------------------------------------

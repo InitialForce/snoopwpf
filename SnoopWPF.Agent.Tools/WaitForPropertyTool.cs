@@ -6,7 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using ModelContextProtocol.Server;
 using SnoopWPF.Agent.Contracts;
-using SnoopWPF.Agent.Engine.Diagnostics;
+using SnoopWPF.Agent.Contracts.Diagnostics;
 
 /// <summary>
 /// MCP tool: wpf_wait_for_property — poll a WPF element property until an expected condition is met.

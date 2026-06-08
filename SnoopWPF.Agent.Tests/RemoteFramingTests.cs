@@ -146,6 +146,51 @@ public sealed class RemoteFramingTests
     }
 
     // -------------------------------------------------------------------------
+    // Warnings frame round-trips so engine diagnostics survive the pipe boundary
+    // -------------------------------------------------------------------------
+
+    [Test]
+    public async Task Response_WarningsRoundTripAcrossPipe()
+    {
+        await using var pipes = new InProcessPipePair();
+        var clientTransport = new FramedJsonTransport(pipes.ClientStream);
+        var serverTransport = new FramedJsonTransport(pipes.ServerStream);
+
+        var response = new PipeResponse
+        {
+            Id = 7,
+            ResultJson = "{\"success\":true}",
+            Warnings = new[]
+            {
+                new PipeWarning { Code = "MODAL_BLOCKED", Message = "Target is behind a modal dialog." },
+            },
+        };
+        await serverTransport.SendAsync(response, CancellationToken.None);
+
+        var received = await clientTransport.ReceiveAsync<PipeResponse>(CancellationToken.None);
+        Assert.That(received, Is.Not.Null);
+        Assert.That(received!.Warnings, Is.Not.Null);
+        Assert.That(received.Warnings!.Length, Is.EqualTo(1));
+        Assert.That(received.Warnings[0].Code, Is.EqualTo("MODAL_BLOCKED"));
+        Assert.That(received.Warnings[0].Message, Is.EqualTo("Target is behind a modal dialog."));
+    }
+
+    [Test]
+    public async Task Response_NoWarnings_OmitsWarningsField()
+    {
+        await using var pipes = new InProcessPipePair();
+        var clientTransport = new FramedJsonTransport(pipes.ClientStream);
+        var serverTransport = new FramedJsonTransport(pipes.ServerStream);
+
+        var response = new PipeResponse { Id = 8, ResultJson = "{\"success\":true}" };
+        await serverTransport.SendAsync(response, CancellationToken.None);
+
+        var received = await clientTransport.ReceiveAsync<PipeResponse>(CancellationToken.None);
+        Assert.That(received, Is.Not.Null);
+        Assert.That(received!.Warnings, Is.Null, "Warnings must stay null when none were emitted.");
+    }
+
+    // -------------------------------------------------------------------------
     // In-order delivery under concurrent sends
     // -------------------------------------------------------------------------
 

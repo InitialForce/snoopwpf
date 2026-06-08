@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using SnoopWPF.Agent.Contracts;
-using SnoopWPF.Agent.Engine.Diagnostics;
+using SnoopWPF.Agent.Contracts.Diagnostics;
 
 /// <summary>
 /// Wraps tool-handler delegates to ensure that all exception types are mapped to

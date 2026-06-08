@@ -1,4 +1,4 @@
-namespace SnoopWPF.Agent.Engine.Diagnostics;
+namespace SnoopWPF.Agent.Contracts.Diagnostics;
 
 using System;
 using System.Collections.Generic;
@@ -19,6 +19,13 @@ using System.Threading;
 /// Handler code (or any helper it calls) accumulates non-fatal diagnostics via
 /// <see cref="AddWarning(string,string,object?)"/>.  The caller (dispatcher) reads them
 /// back with <see cref="DrainWarnings"/> and attaches them to the response envelope.
+/// </para>
+/// <para>
+/// This type lives in <c>Contracts</c> so that every layer on both sides of the brokered
+/// pipe can participate in the same warning channel: the engine accumulates warnings, the
+/// target-side pipe server drains them onto the response frame, and the broker-side proxy
+/// re-emits them into its own scope for the tool dispatcher to surface.  No layer needs a
+/// reference to the engine to take part.
 /// </para>
 /// <para>
 /// Empty-warnings behaviour: when the handler emits no warnings, <see cref="DrainWarnings"/>
