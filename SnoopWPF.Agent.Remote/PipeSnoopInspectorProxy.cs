@@ -8,6 +8,7 @@ using System.Runtime.Versioning;
 using System.Threading;
 using System.Threading.Tasks;
 using SnoopWPF.Agent.Contracts;
+using SnoopWPF.Agent.Contracts.Diagnostics;
 using SnoopWPF.Agent.Contracts.Dtos;
 using SnoopWPF.Agent.Contracts.Protocol;
 
@@ -322,6 +323,19 @@ public sealed class PipeSnoopInspectorProxy : ISnoopInspector, IAsyncDisposable,
                 // Caller cancelled — send cancel frame.
                 await this.SendCancelFrameAsync(id).ConfigureAwait(false);
                 throw;
+            }
+
+            // Re-emit engine-side warnings (accumulated in the target process and carried
+            // across the pipe) into the broker-side warning scope. The tool dispatcher
+            // (ToolExceptionMapper) opened that scope and drains it into the top-level
+            // warnings array, so a MODAL_BLOCKED emitted by the engine surfaces to the LLM
+            // exactly as it would in the in-process topology.
+            if (response.Warnings is { Length: > 0 } pipeWarnings)
+            {
+                foreach (var w in pipeWarnings)
+                {
+                    SnoopAgentContext.AddWarning(w.Code, w.Message);
+                }
             }
 
             // Handle error payload.

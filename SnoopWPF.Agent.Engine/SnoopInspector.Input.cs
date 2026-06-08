@@ -72,6 +72,7 @@ public sealed partial class SnoopInspector
 
             var target = this.ResolveNodeOrThrow(nodeId);
             this.VerifyElementConnectivity(target, nodeId);
+            WarnIfModallyBlocked(target);
 
             if (target is not System.Windows.Controls.Primitives.Selector selector)
             {
@@ -400,6 +401,7 @@ public sealed partial class SnoopInspector
 
             var target = this.ResolveNodeOrThrow(nodeId);
             this.VerifyElementConnectivity(target, nodeId);
+            WarnIfModallyBlocked(target);
 
             if (target is not System.Windows.DependencyObject depObj)
             {
@@ -557,6 +559,7 @@ public sealed partial class SnoopInspector
 
             var target = this.ResolveNodeOrThrow(nodeId);
             this.VerifyElementConnectivity(target, nodeId);
+            WarnIfModallyBlocked(target);
 
             if (target is not System.Windows.DependencyObject depObj)
             {
@@ -723,6 +726,7 @@ public sealed partial class SnoopInspector
 
             var target = this.ResolveNodeOrThrow(nodeId);
             this.VerifyElementConnectivity(target, nodeId);
+            WarnIfModallyBlocked(target);
 
             if (target is not System.Windows.Controls.Primitives.RangeBase rangeBase)
             {
@@ -823,6 +827,7 @@ public sealed partial class SnoopInspector
 
             var target = this.ResolveNodeOrThrow(nodeId);
             this.VerifyElementConnectivity(target, nodeId);
+            WarnIfModallyBlocked(target);
 
             if (target is not DependencyObject depObj)
             {
@@ -943,6 +948,7 @@ public sealed partial class SnoopInspector
 
             var target = this.ResolveNodeOrThrow(nodeId);
             this.VerifyElementConnectivity(target, nodeId);
+            WarnIfModallyBlocked(target);
 
             if (target is not System.Windows.UIElement uiElement)
             {
@@ -1077,6 +1083,7 @@ public sealed partial class SnoopInspector
 
             var target = this.ResolveNodeOrThrow(nodeId);
             this.VerifyElementConnectivity(target, nodeId);
+            WarnIfModallyBlocked(target);
 
             if (target is not System.Windows.UIElement uiElement)
             {
@@ -1235,6 +1242,7 @@ public sealed partial class SnoopInspector
 
             var target = this.ResolveNodeOrThrow(nodeId);
             this.VerifyElementConnectivity(target, nodeId);
+            WarnIfModallyBlocked(target);
 
             if (target is not System.Windows.UIElement uiElement)
             {

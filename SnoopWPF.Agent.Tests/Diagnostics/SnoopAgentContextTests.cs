@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using NUnit.Framework;
-using SnoopWPF.Agent.Engine.Diagnostics;
+using SnoopWPF.Agent.Contracts.Diagnostics;
 
 /// <summary>
 /// Unit tests for <see cref="SnoopAgentContext"/> — AsyncLocal scope correctness.

@@ -16,8 +16,8 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using SnoopWPF.Agent.Contracts;
+using SnoopWPF.Agent.Contracts.Diagnostics;
 using SnoopWPF.Agent.Contracts.Dtos;
-using SnoopWPF.Agent.Engine.Diagnostics;
 using SnoopWPF.Agent.Engine.Infrastructure;
 using SnoopWPF.Agent.Engine.StateDelta;
 
@@ -66,6 +66,7 @@ public sealed partial class SnoopInspector
 
             var target = this.ResolveNodeOrThrow(nodeId);
             this.VerifyElementConnectivity(target, nodeId);
+            WarnIfModallyBlocked(target);
 
             if (target is not UIElement uiElement)
             {
@@ -234,6 +235,7 @@ public sealed partial class SnoopInspector
 
             var target = this.ResolveNodeOrThrow(nodeId);
             this.VerifyElementConnectivity(target, nodeId);
+            WarnIfModallyBlocked(target);
 
             if (target is not Selector selector)
             {
@@ -348,6 +350,7 @@ public sealed partial class SnoopInspector
 
             var target = this.ResolveNodeOrThrow(nodeId);
             this.VerifyElementConnectivity(target, nodeId);
+            WarnIfModallyBlocked(target);
 
             if (target is not Selector selector)
             {

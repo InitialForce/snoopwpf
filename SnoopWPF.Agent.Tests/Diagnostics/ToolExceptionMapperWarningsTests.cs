@@ -6,7 +6,7 @@ using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using ModelContextProtocol.Protocol;
 using NUnit.Framework;
-using SnoopWPF.Agent.Engine.Diagnostics;
+using SnoopWPF.Agent.Contracts.Diagnostics;
 using SnoopWPF.Agent.Tools;
 
 /// <summary>

@@ -325,6 +325,7 @@ public sealed partial class SnoopInspector
 
             var target = this.ResolveNodeOrThrow(nodeId);
             this.VerifyElementConnectivity(target, nodeId);
+            WarnIfModallyBlocked(target);
 
             // Guard: redacted properties cannot be mutated.
             var isRedacted = this.options.EnableRedaction && RedactionFilter.IsRedacted(propertyName, null);

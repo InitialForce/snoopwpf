@@ -47,12 +47,14 @@
         <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
     </PropertyGroup>
 
-    <!-- Version: 1.0.0 — first stable public release under InitialForce.SnoopAgent.* package IDs.
+    <!-- Version: 1.1.0 — adds the modal-blocked agent-warning channel (PipeResponse.Warnings
+         + SnoopAgentContext in Contracts, server drain, broker proxy re-emit, engine MODAL_BLOCKED
+         detection). 1.0.0 was the first stable public release under InitialForce.SnoopAgent.*.
          UpdateVersionProperties=false prevents GitVersion.MsBuild from overwriting
          the explicitly declared Version. CI pipelines can re-enable GitVersion by
          setting UpdateVersionProperties=true on the build agent. -->
     <PropertyGroup>
-        <VersionPrefix>1.0.0</VersionPrefix>
+        <VersionPrefix>1.1.0</VersionPrefix>
         <VersionSuffix></VersionSuffix>
         <UpdateVersionProperties>false</UpdateVersionProperties>
     </PropertyGroup>
