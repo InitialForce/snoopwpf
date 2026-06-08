@@ -334,7 +334,6 @@ class Build : NukeBuild
                 .SetProject(Solution.SnoopWPF_Agent_Cli)
                 .SetConfiguration(Configuration)
                 .SetRuntime("win-x64")
-                .SetFramework("net8.0-windows")
                 .SetProperty("RestoreLockedMode", "false")
                 .SetSelfContained(false)
                 .SetOutput(snoopCliPublishDir)

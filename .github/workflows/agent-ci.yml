@@ -178,7 +178,9 @@ jobs:
       # and run locally. Under x64 we still gate the deterministic broker tests —
       # spawn-security, reconnect, broker-host — to catch x64-specific regressions.
       - name: Test SnoopWPF.Agent.IntegrationTests (broker, x64)
-        run: dotnet test SnoopWPF.Agent.IntegrationTests/SnoopWPF.Agent.IntegrationTests.csproj --configuration Release --framework net8.0-windows10.0.19041.0 --no-build --filter "FullyQualifiedName~Broker&Category!=RequiresWpf&Category!=MANUAL_VERIFICATION" --logger "trx;LogFileName=brokered-suite-${{ matrix.target }}-${{ matrix.arch }}.trx" --results-directory output/test-results
+        # Match the build's config+platform: CI_Release|x64 outputs to bin\CI_Release\,
+        # so --no-build must resolve the same path (Release|AnyCPU would look in bin\Release\).
+        run: dotnet test SnoopWPF.Agent.IntegrationTests/SnoopWPF.Agent.IntegrationTests.csproj --configuration CI_Release -p:Platform=${{ matrix.arch }} --framework net8.0-windows10.0.19041.0 --no-build --filter "FullyQualifiedName~Broker&Category!=RequiresWpf&Category!=MANUAL_VERIFICATION" --logger "trx;LogFileName=brokered-suite-${{ matrix.target }}-${{ matrix.arch }}.trx" --results-directory output/test-results
 
       - name: Upload test logs on failure
         if: failure()
