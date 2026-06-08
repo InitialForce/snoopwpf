@@ -70,8 +70,10 @@ jobs:
       # CI_Release excludes the native Snoop.GenericInjector.vcxproj (dotnet cannot
       # build C++) and each managed project builds its own declared TFM(s) — so no
       # single --framework can be passed across the heterogeneous solution.
+      # -m:1 serializes the build: the two-phase WPF markup compile writes a temp
+      # SampleApp.dll that collides under parallel project builds (CS2012).
       - name: Build Snoop.sln
-        run: dotnet build Snoop.sln --configuration CI_Release --no-incremental
+        run: dotnet build Snoop.sln --configuration CI_Release --no-incremental -m:1
 
       # Informational: check whether the native injector DLL carries an Authenticode
       # signature.  CI builds are not signed, so this step is allowed to fail.
@@ -168,8 +170,9 @@ jobs:
             ${{ runner.os }}-nuget-
 
       # CI_Release excludes the native vcxproj; -p:Platform exercises the x64 path.
+      # -m:1 serializes the build to avoid the parallel WPF markup-compile race (CS2012).
       - name: Build Snoop.sln
-        run: dotnet build Snoop.sln --configuration CI_Release --no-incremental -p:Platform=${{ matrix.arch }}
+        run: dotnet build Snoop.sln --configuration CI_Release --no-incremental -p:Platform=${{ matrix.arch }} -m:1
 
       # The end-to-end Brokered* round-trip tests are RequiresWpf (need a live desktop)
       # and run locally. Under x64 we still gate the deterministic broker tests —

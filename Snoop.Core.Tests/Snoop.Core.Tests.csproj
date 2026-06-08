@@ -10,6 +10,13 @@
     <OutputPath>$(MSBuildThisFileDirectory)\bin\$(Configuration)\</OutputPath>
   </PropertyGroup>
 
+  <!-- CI runners install only the global.json SDK (.NET 10). The net6.0-windows testhost
+       rolls forward onto the installed .NET 10 WindowsDesktop runtime so these tests run
+       without a separate .NET 6 runtime install. Ignored for net472 (.NET Framework). -->
+  <PropertyGroup Condition="'$(TargetFramework)' != 'net472'">
+    <RollForward>Major</RollForward>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="NUnit" />
     <PackageReference Include="NUnit3TestAdapter" />
