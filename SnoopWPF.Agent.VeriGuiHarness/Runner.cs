@@ -190,6 +190,12 @@ public static class Runner
                 WriteIndented = true,
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
             });
+            var outDir = Path.GetDirectoryName(opts.OutPath);
+            if (!string.IsNullOrEmpty(outDir))
+            {
+                Directory.CreateDirectory(outDir);
+            }
+
             File.WriteAllText(opts.OutPath, json);
             Console.WriteLine($"[VeriGUI] Report written to: {opts.OutPath}");
         }

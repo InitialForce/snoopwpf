@@ -260,18 +260,24 @@ class Build : NukeBuild
                 .EnableNoBuild()
                 .SetResultsDirectory(TestResultDirectory));
 
+            // RequiresWpf integration tests need a real rendered desktop and are flaky
+            // on CI runners; MANUAL_VERIFICATION covers the [Ignore]'d live-injection
+            // cases. The deterministic broker/security/fetch-blob tests still run.
             DotNetTest(s => s
                 .SetProjectFile(Solution.SnoopWPF_Agent_IntegrationTests)
                 .SetConfiguration(Configuration)
                 .SetVerbosity(DotNetVerbosity.normal)
+                .SetFilter("Category!=RequiresWpf&Category!=MANUAL_VERIFICATION")
                 .AddLoggers("trx")
                 .EnableNoBuild()
                 .SetResultsDirectory(TestResultDirectory));
 
+            // RequiresInjection tests spawn a live injected agent and run manually.
             DotNetTest(s => s
                 .SetProjectFile(Solution.SnoopWPF_Agent_InjectionTests)
                 .SetConfiguration(Configuration)
                 .SetVerbosity(DotNetVerbosity.normal)
+                .SetFilter("Category!=RequiresInjection")
                 .AddLoggers("trx")
                 .EnableNoBuild()
                 .SetResultsDirectory(TestResultDirectory));
@@ -313,6 +319,10 @@ class Build : NukeBuild
                 .SetProject(Solution.SnoopWPF_Agent_Host)
                 .SetConfiguration(Configuration)
                 .SetRuntime("win-x64")
+                // win-x64 introduces a RID the packages.lock.json has no assets for, so a
+                // locked-mode restore (CI=true) fails NU1004. The lock file gates the packed
+                // libraries, not these throwaway publish outputs — relax it for the publish.
+                .SetProperty("RestoreLockedMode", "false")
                 .SetSelfContained(false)
                 .SetOutput(snoopMcpPublishDir)
                 .SetAssemblyVersion(AssemblySemVer)
@@ -324,7 +334,11 @@ class Build : NukeBuild
                 .SetProject(Solution.SnoopWPF_Agent_Cli)
                 .SetConfiguration(Configuration)
                 .SetRuntime("win-x64")
-                .SetFramework("net8.0-windows")
+                // The Cli declares <TargetFrameworks> (plural, single entry), so it is a
+                // cross-targeting project and publish requires an explicit framework. Use the
+                // full platform moniker that matches the csproj, not the bare net8.0-windows.
+                .SetFramework("net8.0-windows10.0.19041.0")
+                .SetProperty("RestoreLockedMode", "false")
                 .SetSelfContained(false)
                 .SetOutput(snoopCliPublishDir)
                 .SetAssemblyVersion(AssemblySemVer)
