@@ -92,6 +92,14 @@ public sealed class PromptInjectionGuardWiringTests : IDisposable
         {
             throw new TimeoutException("STA Dispatcher did not start in time.");
         }
+
+        // Warm the dispatcher before any timed test runs. The first Send-priority
+        // InvokeAsync on a freshly started thread JITs the invoke path and begins
+        // pumping; on a cold/loaded CI runner that one-time cost can exceed the
+        // engine's 500 ms acceptance window and spuriously trip DispatcherBusy.
+        // Pay it here, once, with generous headroom.
+        this.staDispatcher!.InvokeAsync(() => { }, DispatcherPriority.Send)
+            .Task.Wait(TimeSpan.FromSeconds(10));
     }
 
     [OneTimeTearDown]
