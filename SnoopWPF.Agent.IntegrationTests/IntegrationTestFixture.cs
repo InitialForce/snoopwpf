@@ -37,7 +37,12 @@ public sealed class IntegrationTestFixture
     [OneTimeSetUp]
     public void OneTimeSetUp()
     {
-        sharedWpfApp = new TestWpfApp();
+        // Cold WPF init on a fresh CI runner (first-ever WPF Application in the process,
+        // milcore/native load not yet cached) can exceed the default 10 s — especially on
+        // the x64 brokered leg where this is the only test step, with no prior step to warm
+        // WPF. Allow generous headroom; startup returns the instant the app signals ready,
+        // so a warm machine pays nothing.
+        sharedWpfApp = new TestWpfApp(startupTimeoutMs: 60_000);
         sharedClient = new McpTestClient(sharedWpfApp);
     }
 
