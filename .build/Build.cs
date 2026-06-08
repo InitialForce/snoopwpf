@@ -260,18 +260,24 @@ class Build : NukeBuild
                 .EnableNoBuild()
                 .SetResultsDirectory(TestResultDirectory));
 
+            // RequiresWpf integration tests need a real rendered desktop and are flaky
+            // on CI runners; MANUAL_VERIFICATION covers the [Ignore]'d live-injection
+            // cases. The deterministic broker/security/fetch-blob tests still run.
             DotNetTest(s => s
                 .SetProjectFile(Solution.SnoopWPF_Agent_IntegrationTests)
                 .SetConfiguration(Configuration)
                 .SetVerbosity(DotNetVerbosity.normal)
+                .SetFilter("Category!=RequiresWpf&Category!=MANUAL_VERIFICATION")
                 .AddLoggers("trx")
                 .EnableNoBuild()
                 .SetResultsDirectory(TestResultDirectory));
 
+            // RequiresInjection tests spawn a live injected agent and run manually.
             DotNetTest(s => s
                 .SetProjectFile(Solution.SnoopWPF_Agent_InjectionTests)
                 .SetConfiguration(Configuration)
                 .SetVerbosity(DotNetVerbosity.normal)
+                .SetFilter("Category!=RequiresInjection")
                 .AddLoggers("trx")
                 .EnableNoBuild()
                 .SetResultsDirectory(TestResultDirectory));
