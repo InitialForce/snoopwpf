@@ -334,6 +334,10 @@ class Build : NukeBuild
                 .SetProject(Solution.SnoopWPF_Agent_Cli)
                 .SetConfiguration(Configuration)
                 .SetRuntime("win-x64")
+                // The Cli declares <TargetFrameworks> (plural, single entry), so it is a
+                // cross-targeting project and publish requires an explicit framework. Use the
+                // full platform moniker that matches the csproj, not the bare net8.0-windows.
+                .SetFramework("net8.0-windows10.0.19041.0")
                 .SetProperty("RestoreLockedMode", "false")
                 .SetSelfContained(false)
                 .SetOutput(snoopCliPublishDir)
