@@ -12,6 +12,7 @@ concurrency:
 permissions:
   contents: write  # for gh release create
   packages: write  # publish nupkgs to GitHub Packages (github.com/InitialForce)
+  id-token: write  # OIDC token for nuget.org Trusted Publishing
 
 jobs:
   pack-and-publish:
@@ -214,13 +215,40 @@ jobs:
           path: artifacts/nupkg/*.nupkg
 
       # ---------------------------------------------------------------------------
+      # Publish to nuget.org via Trusted Publishing (OIDC)
+      #
+      # NuGet/login exchanges this workflow's GitHub OIDC token for a short-lived
+      # nuget.org API key, so no long-lived key is stored in repo secrets. The
+      # trusted-publisher policy on nuget.org (package owner: oystein-if) authorizes
+      # the InitialForce/snoopwpf repository + release.yml workflow to push packages
+      # owned by that account. Requires permissions: id-token: write (workflow level).
+      # ---------------------------------------------------------------------------
+      - name: NuGet login (OIDC Trusted Publishing)
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: oystein-if
+
+      - name: Publish to nuget.org
+        shell: pwsh
+        run: |
+          $source = "https://api.nuget.org/v3/index.json"
+          # snupkgs are picked up automatically when in the same folder.
+          Get-ChildItem artifacts/nupkg/*.nupkg | ForEach-Object {
+            Write-Host "Pushing $($_.Name) → $source"
+            dotnet nuget push $_.FullName `
+              --source $source `
+              --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }} `
+              --skip-duplicate
+            if ($LASTEXITCODE -ne 0) { throw "dotnet nuget push failed for $($_.Name)" }
+          }
+
+      # ---------------------------------------------------------------------------
       # Publish to GitHub Packages (github.com/orgs/InitialForce/packages)
       #
-      # We publish to GitHub Packages (not nuget.org) because nuget.org currently
-      # rejects every push under the InitialForce.* prefix with 409 Conflict,
-      # regardless of auth method (OIDC Trusted Publishing, personal API key).
-      # Likely cause: a reserved-prefix claim not yet tied to our account, which
-      # is only resolvable through a nuget.org support ticket.
+      # Retained as a transitional fallback alongside nuget.org while consumers
+      # migrate off the private feed. Remove this step once every consumer resolves
+      # the InitialForce.SnoopAgent.* packages from nuget.org.
       #
       # GitHub Packages:
       #   - Feed URL: https://nuget.pkg.github.com/InitialForce/index.json
