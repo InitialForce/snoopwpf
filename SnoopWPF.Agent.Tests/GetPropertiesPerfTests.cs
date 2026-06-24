@@ -68,6 +68,9 @@ public sealed class GetPropertiesPerfTests : IDisposable
             options: new SnoopInspectorOptions
             {
                 TimeoutMs = 10_000,
+                // Generous acceptance window so a contended CI runner does not trip a
+                // spurious DispatcherBusy with the 500 ms production default.
+                DispatcherAcceptanceTimeoutMs = 5_000,
                 EnableMutation = false,
                 EnableRedaction = false,
             });

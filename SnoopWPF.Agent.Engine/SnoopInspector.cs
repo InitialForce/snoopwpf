@@ -31,9 +31,6 @@ using SnoopWPF.Agent.Engine.Sync;
 /// </summary>
 public sealed partial class SnoopInspector : ISnoopInspector, IDisposable
 {
-    // Acceptance timeout: if the Dispatcher won't even accept work within this window, it's DispatcherBusy.
-    private const int DispatcherAcceptanceTimeoutMs = 500;
-
     private readonly Dispatcher dispatcher;
     private readonly object? rootTarget;
     private readonly SnoopInspectorOptions options;
@@ -189,7 +186,7 @@ public sealed partial class SnoopInspector : ISnoopInspector, IDisposable
     /// <summary>
     /// Runs a synchronous action on the WPF Dispatcher with concurrency limiting and timeout.
     /// Two-phase timeout:
-    ///   Phase 1 (500ms): Dispatcher acceptance — DispatcherBusy if exceeded.
+    ///   Phase 1 (DispatcherAcceptanceTimeoutMs): Dispatcher acceptance — DispatcherBusy if exceeded.
     ///   Phase 2 (TimeoutMs): Execution — OperationTimedOut if exceeded.
     /// </summary>
     private async Task<T> RunOnDispatcherAsync<T>(Func<T> action, CancellationToken ct)
@@ -241,7 +238,7 @@ public sealed partial class SnoopInspector : ISnoopInspector, IDisposable
             var sw = Stopwatch.StartNew();
 
             // Phase 1: Did the Dispatcher accept (start) the work within the acceptance window?
-            var acceptanceDeadline = Task.Delay(DispatcherAcceptanceTimeoutMs, timeoutCts.Token);
+            var acceptanceDeadline = Task.Delay(this.options.DispatcherAcceptanceTimeoutMs, timeoutCts.Token);
             var firstToFinish = await Task.WhenAny(dispatcherTask, acceptanceDeadline).ConfigureAwait(false);
 
             if (firstToFinish == acceptanceDeadline && !dispatcherTask.IsCompleted)
