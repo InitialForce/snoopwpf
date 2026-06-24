@@ -365,7 +365,7 @@ public sealed partial class SnoopInspector
                 }
             }
 
-            return new CursorPage<NodeDto>
+            var resultPage = new CursorPage<NodeDto>
             {
                 Items = childDtos,
                 NextCursor = childPage.NextCursor,
@@ -373,6 +373,34 @@ public sealed partial class SnoopInspector
                 HasMore = childPage.HasMore,
                 Stale = childPage.Stale,
             };
+
+            // VCOUNT (DESKTOP-11837): when the target is an ItemsControl, the visual
+            // tree only contains realized containers, so TotalCount can look "complete"
+            // while logical items remain unrealized under virtualization. Surface the
+            // true logical item count and, when it exceeds the realized container count,
+            // point the caller at wpf_get_list_items (which returns stable per-item
+            // nodeIds for the full item set). This is advisory only — the page's
+            // pagination fields keep describing the realized visual children exactly.
+            if (target is System.Windows.Controls.ItemsControl ic)
+            {
+                var logicalItemCount = ic.Items.Count;
+                resultPage.ItemHostCount = logicalItemCount;
+
+                // childIds is the full realized child set (every container in the visual
+                // tree), independent of the requested page size.
+                var realizedChildCount = childIds.Count;
+                if (logicalItemCount > realizedChildCount)
+                {
+                    // Static advisory string — no untrusted data, so no PromptInjectionGuard quoting.
+                    resultPage.Advisory =
+                        $"This ItemsControl has {logicalItemCount} logical items but only {realizedChildCount} " +
+                        "are realized in the visual tree (the control is virtualized). " +
+                        "Use wpf_get_list_items for the full item set with stable per-item nodeIds; " +
+                        "wpf_select_item_by_index (ScrollMaterializeItem) can realize a specific item.";
+                }
+            }
+
+            return resultPage;
         }, ct);
     }
 

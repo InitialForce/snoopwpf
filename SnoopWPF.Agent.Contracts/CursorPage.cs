@@ -32,4 +32,23 @@ public sealed class CursorPage<T>
     /// <summary><see langword="true"/> when the page was cut short due to an internal size cap.</summary>
     [DataMember(Name = "truncated")]
     public bool Truncated { get; set; }
+
+    /// <summary>
+    /// When the resolved node is an <c>ItemsControl</c>, the true logical item count
+    /// (<c>ItemsControl.Items.Count</c>); <see langword="null"/> otherwise. This is the
+    /// number of logical items, which may exceed the visual children returned in this
+    /// page when the control is virtualized (only realized containers appear in the
+    /// visual tree). <see cref="TotalCount"/>, <see cref="HasMore"/> and
+    /// <see cref="NextCursor"/> continue to describe the realized visual-children page.
+    /// </summary>
+    [DataMember(Name = "itemHostCount")]
+    public int? ItemHostCount { get; set; }
+
+    /// <summary>
+    /// Optional free-text guidance for the caller; <see langword="null"/> when none.
+    /// For a virtualized item host this points at <c>wpf_get_list_items</c> to enumerate
+    /// the full item set with stable per-item nodeIds.
+    /// </summary>
+    [DataMember(Name = "advisory")]
+    public string? Advisory { get; set; }
 }
