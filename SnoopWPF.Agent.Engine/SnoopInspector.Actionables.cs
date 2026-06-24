@@ -39,6 +39,13 @@ public sealed partial class SnoopInspector
                 return new ActionablesResultDto();
             }
 
+            // When the root's owning window is disabled by an open modal dialog the walk below
+            // finds no enabled controls, so the result is empty and indistinguishable from a
+            // genuinely empty screen. Emit a MODAL_BLOCKED warning through the same channel the
+            // interaction sites use so callers can tell the two apart. No modal => no warning,
+            // preserving empty-vs-empty semantics for an actually-empty screen.
+            WarnIfModallyBlocked(rootDep);
+
             // Visual tree is the right surface here: actionables care about what's actually
             // rendered on screen, not the logical/automation projection. We walk via
             // VisualTreeHelper directly instead of building Snoop's TreeItem wrappers — for
