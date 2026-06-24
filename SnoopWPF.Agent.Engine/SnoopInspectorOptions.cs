@@ -12,6 +12,14 @@ public sealed class SnoopInspectorOptions
     public int TimeoutMs { get; set; } = 5000;
 
     /// <summary>
+    /// Dispatcher acceptance timeout in milliseconds (default 500 ms).
+    /// This is Phase 1 of the two-phase timeout: if the Dispatcher does not even accept (start)
+    /// queued work within this window, <c>DispatcherBusy</c> is thrown. Raise this in test
+    /// environments where the STA dispatcher thread may be starved under CPU contention.
+    /// </summary>
+    public int DispatcherAcceptanceTimeoutMs { get; set; } = 500;
+
+    /// <summary>
     /// Whether mutation operations (SetProperty) are allowed (default false).
     /// </summary>
     public bool EnableMutation { get; set; } = false;

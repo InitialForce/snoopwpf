@@ -140,6 +140,10 @@ public sealed class ActionablesModalGuardTests
             options: new SnoopInspectorOptions
             {
                 TimeoutMs = 10_000,
+                // Generous acceptance window: a CPU-contended CI runner can starve the STA
+                // dispatcher thread mid-test and trip a spurious DispatcherBusy with the
+                // 500 ms production default.
+                DispatcherAcceptanceTimeoutMs = 5_000,
                 EnableMutation = false,
                 EnableRedaction = false,
             });

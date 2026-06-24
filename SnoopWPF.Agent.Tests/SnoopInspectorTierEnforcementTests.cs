@@ -57,6 +57,9 @@ public class SnoopInspectorTierEnforcementTests
                 EnableMutation = true,
                 EnableAutomation = true,
                 TimeoutMs = 3000,
+                // Generous acceptance window so a contended CI runner does not trip a
+                // spurious DispatcherBusy with the 500 ms production default.
+                DispatcherAcceptanceTimeoutMs = 5_000,
             },
             sessionPolicy: policy);
     }

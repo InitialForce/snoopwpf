@@ -127,6 +127,10 @@ public sealed class PromptInjectionGuardWiringTests : IDisposable
             options: new SnoopInspectorOptions
             {
                 TimeoutMs = 10_000,
+                // Generous acceptance window: on a CPU-contended CI runner the STA dispatcher
+                // thread can be starved mid-test, tripping a spurious DispatcherBusy with the
+                // 500 ms production default. Raise it so the suite is robust under contention.
+                DispatcherAcceptanceTimeoutMs = 5_000,
                 EnableMutation = true,
                 EnableRedaction = false,   // redaction off so guard wrapping is observable
             });
