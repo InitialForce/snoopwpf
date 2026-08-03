@@ -222,7 +222,7 @@ internal static class Program
         var services = new ServiceCollection();
         services.AddSingleton<SnoopWPF.Agent.Contracts.ISnoopInspector>(inspector);
 
-        var toolsAssembly = typeof(SnoopWPF.Agent.Tools.SessionInfoTool).Assembly;
+        var toolsAssembly = typeof(SnoopWPF.Agent.Tools.WpfDiagnosticsTool).Assembly;
         services
             .AddMcpServer()
             .WithToolsFromAssembly(toolsAssembly);

@@ -23,8 +23,8 @@ public sealed class GetListItemsTool(ISnoopInspector inspector)
         "\n\nGuidelines: " +
         "Use this tool to inspect list contents, determine which item is selected, or obtain " +
         "nodeIds for individual item containers for follow-up inspection tools. " +
-        "For virtualized lists, call wpf_select_item_by_scroll first to force realization " +
-        "of specific items before calling this tool. " +
+        "For virtualized lists, call wpf_select_item with an index and scrollToRealize=true first " +
+        "to force realization of specific items before calling this tool. " +
         "\n\nLimitations: " +
         "Only realized items are included (virtualized items appear as gaps in the index sequence). " +
         "The element must be an ItemsControl (ListBox, ListView, ComboBox, TreeView, etc.). " +

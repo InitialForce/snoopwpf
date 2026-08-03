@@ -1,14 +1,15 @@
 # MCP Tools Reference
 
-All 29 tools exposed by SnoopWPF.Agent. Tool names are prefixed with `wpf_`.
+All 32 tools exposed by SnoopWPF.Agent. Tool names are prefixed with `wpf_`.
 
 Error responses follow a common schema — see [Error Codes](#error-codes) at the bottom.
 
 ---
 
-## wpf_get_session_info
+## wpf_diagnostics
 
-Get information about the inspected process.
+Self-health snapshot of the running agent, with the inspected process's session info
+folded into the `sessionInfo` field.
 
 **Parameters:** none
 
@@ -16,23 +17,45 @@ Get information about the inspected process.
 
 ```json
 {
-  "processName": "MyApp",
-  "pid": 12345,
-  "dotnetVersion": "8.0.3",
-  "mutationEnabled": false,
-  "dispatchers": [
-    {
-      "id": 0,
-      "threadId": 1,
-      "windowNodeIds": ["0:1", "0:2"]
-    }
-  ],
-  "capabilities": ["tree", "properties", "diagnostics", "resources", "screenshots"]
+  "agentVersion": "6.2.0",
+  "mode": "Brokered",
+  "dispatcherHealthy": true,
+  "dispatcherQueueLength": 0,
+  "blobStoreCount": 0,
+  "blobStoreBytes": 0,
+  "auditLogDepth": 0,
+  "sessionPolicy": {
+    "enableMutation": false,
+    "enableAutomation": false,
+    "allowSensitiveRetention": false
+  },
+  "uptimeSeconds": 12.4,
+  "sessionInfo": {
+    "processName": "MyApp",
+    "pid": 12345,
+    "dotnetVersion": "8.0.3",
+    "mutationEnabled": false,
+    "dispatchers": [
+      {
+        "id": 0,
+        "threadId": 1,
+        "windowNodeIds": ["0:1", "0:2"]
+      }
+    ],
+    "capabilities": ["tree", "properties", "diagnostics", "resources", "screenshots"],
+    "windows": [
+      { "nodeId": "0:1", "title": "MyApp", "width": 1280, "height": 720, "locator": "$type:MainWindow" }
+    ]
+  }
 }
 ```
 
-**Usage:** Call this first to verify connection and to get window node IDs for
-subsequent calls.
+`sessionInfo` is produced by the same Dispatcher round-trip that sets `dispatcherHealthy`;
+it is `null` when the probe fails (`dispatcherHealthy: false`).
+
+**Usage:** Call this first on every new session to verify the agent is functional and to get
+the window node IDs (from `sessionInfo.dispatchers[].windowNodeIds` or `sessionInfo.windows`)
+for subsequent calls.
 
 ---
 
@@ -397,44 +420,6 @@ On failure:
 
 ---
 
-## wpf_get_binding_info
-
-Get detailed data binding information for a specific property.
-
-**Parameters:**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `nodeId` | string | *(required)* | Node to inspect. |
-| `propertyName` | string | *(required)* | Property name (e.g. `"Text"`, `"IsEnabled"`). |
-
-**Returns:**
-
-```json
-{
-  "hasBinding": true,
-  "bindingType": "Binding",
-  "path": "UserName",
-  "elementName": null,
-  "relativeSource": null,
-  "mode": "TwoWay",
-  "updateSourceTrigger": "PropertyChanged",
-  "converterTypeName": null,
-  "sourceType": "MyApp.ViewModel.MainViewModel",
-  "status": "Active",
-  "error": null,
-  "dataContextIsNull": false,
-  "dataContextType": "MyApp.ViewModel.MainViewModel",
-  "resolvedValue": "Alice",
-  "childBindings": null
-}
-```
-
-`status` values: `"Active"`, `"PathError"`, `"UpdateTargetError"`, `"UpdateSourceError"`,
-`"Detached"`, `"Unattached"`.
-
----
-
 ## wpf_run_diagnostics
 
 Run Snoop's built-in diagnostic providers on the visual tree.
@@ -737,14 +722,17 @@ UIElement whose AutomationPeer supports `IExpandCollapseProvider`.
 
 ## wpf_select_item
 
-Select an item in a `ListBox`, `ComboBox`, or any `Selector` control.
+Select an item in a `ListBox`, `ComboBox`, or any `Selector` control. A single discriminated
+tool with three selection modes — pass **exactly one** of `identifier` or `index`.
 
 **Parameters:**
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `nodeId` | string | *(required)* | Node ID of the ItemsControl whose selection should be changed. |
-| `identifier` | string | *(required)* | Item identifier: zero-based integer index (`"0"`), exact item text, or unambiguous substring of item text. |
+| `nodeId` | string | *(required)* | Node ID of the ItemsControl/Selector whose selection should be changed. |
+| `identifier` | string | `null` | Identifier-mode selector: zero-based integer index (`"0"`), exact item text, or unambiguous substring of item text. Pass this OR `index`. |
+| `index` | int | `null` | Index-mode selector: exact zero-based index. Pass this OR `identifier`. |
+| `scrollToRealize` | bool | `false` | Index mode only: scroll the list to materialize the container at `index` before selecting. Ignored in identifier mode. |
 
 **Returns:**
 
@@ -758,21 +746,25 @@ Select an item in a `ListBox`, `ComboBox`, or any `Selector` control.
 }
 ```
 
-**Guidelines:** The `identifier` parameter accepts three forms:
-1. Zero-based integer index (e.g. `"0"`, `"2"`) — selects by position.
-2. Exact text — the item's `ToString()` is compared case-insensitively.
-3. Partial text (substring) — when no exact match exists, an unambiguous substring match is
-   used. If two or more items match, the call fails with `LOCATOR_AMBIGUOUS`.
+**Guidelines:** Selection mode is chosen by which parameter you pass:
+1. **`identifier`** — resolves a zero-based index string (`"0"`), exact item text
+   (case-insensitive `ToString()` match), or an unambiguous substring. Ambiguous substrings fail
+   with `LOCATOR_AMBIGUOUS`. This mode auto-realizes a virtualized item when it resolves a match.
+2. **`index`** (with `scrollToRealize` = `false`, the default) — selects by exact zero-based index
+   without forcing container realization; use for non-virtualized or already-realized items.
+3. **`index` with `scrollToRealize` = `true`** — scrolls a virtualized list
+   (`VirtualizingStackPanel`) until the container at `index` is materialized, then selects it.
+
+Passing neither or both of `identifier`/`index` fails with `INVALID_ARGUMENT`.
 
 Mutation must be enabled (`EnableMutation = true` in `SnoopAgentOptions`). Operates at L0 —
-uses `DependencyObject.SetCurrentValue` on the dependency property; no raw Win32 input.
-Uses `DependencyObject.SetCurrentValue` so existing TwoWay bindings and triggers remain intact — setting a value does NOT clear the binding chain.
+uses `DependencyObject.SetCurrentValue` on the dependency property, so existing TwoWay bindings
+and triggers remain intact; no raw Win32 input.
 
-**Limitations:** Virtualized lists (`VirtualizingStackPanel` with many items) are not supported
-— the item container may not be materialized. Multi-selection controls (`ListBox` with
-`SelectionMode=Multiple`) will have their selection replaced (not appended) by this tool.
+**Limitations:** Multi-selection controls (`ListBox` with `SelectionMode=Multiple`) will have
+their selection replaced (not appended) by this tool.
 
-**Applies to:** ListBox, ListView, ComboBox, and any `Selector` subclass (non-virtualized).
+**Applies to:** ListBox, ListView, ComboBox, and any `Selector` subclass.
 
 ---
 
@@ -1039,8 +1031,8 @@ Resolve the full data-binding chain for a dependency property on a WPF element.
 `status` values: `"OK"`, `"PathError"`, `"ValidationError"`, `"MissingDataContext"`,
 `"ConverterError"`, `"NoBinding"`.
 
-**Guidelines:** Use `wpf_get_binding_info` for a lighter-weight summary, or this tool when
-you need full chain diagnostics including per-step values and validation errors.
+**Guidelines:** This is the single binding-inspection tool. It returns full chain diagnostics
+including per-step values and validation errors.
 
 **Limitations:** Resolution is read-only and point-in-time. Converter implementations are
 not invoked; only the converter type name is reported. Multi-bindings report child binding

@@ -55,10 +55,10 @@ public static class ToolProxyRegistrar
         // redaction on, MaxTier = L0) so the broker is safe-by-default out of the box.
         services.AddSingleton(agentOptions ?? new SnoopAgentOptions());
 
-        // Register all 36 tools from the SnoopWPF.Agent.Tools assembly.
+        // Register all 32 tools from the SnoopWPF.Agent.Tools assembly.
         // Each tool takes ISnoopInspector (or BlobStore, SnoopAgentOptions) from DI
         // and routes calls over the pipe to the target.
-        var toolsAssembly = typeof(SnoopWPF.Agent.Tools.SessionInfoTool).Assembly;
+        var toolsAssembly = typeof(SnoopWPF.Agent.Tools.WpfDiagnosticsTool).Assembly;
         services
             .AddMcpServer()
             .WithToolsFromAssembly(toolsAssembly);

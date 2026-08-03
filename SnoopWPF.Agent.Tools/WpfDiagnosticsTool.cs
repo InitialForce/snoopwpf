@@ -12,12 +12,15 @@ using SnoopWPF.Agent.Contracts.Dtos;
 using SnoopWPF.Agent.Engine.Blob;
 
 /// <summary>
-/// MCP tool: wpf_diagnostics — returns a self-health snapshot of the running agent (FX6-D3).
+/// MCP tool: wpf_diagnostics — returns a self-health snapshot of the running agent (FX6-D3)
+/// together with the attached process's session info.
 /// </summary>
 /// <remarks>
 /// Use this tool as a first step before any inspection session to verify the agent is
 /// functional, the Dispatcher is responsive, and the BlobStore/audit subsystems are
-/// operating within normal parameters.
+/// operating within normal parameters. The <c>sessionInfo</c> field carries process/session
+/// metadata (process name, PID, .NET version, dispatchers with window node IDs, capabilities,
+/// top-level windows, mutation flag) obtained from the same Dispatcher probe.
 /// </remarks>
 [McpServerToolType]
 public sealed class WpfDiagnosticsTool(
@@ -29,19 +32,24 @@ public sealed class WpfDiagnosticsTool(
 {
     [McpServerTool(Name = "wpf_diagnostics")]
     [Description("Returns a self-health snapshot of the running agent: version, mode, Dispatcher health, " +
-                 "BlobStore fill, audit log queue depth, session policy, and uptime in seconds. " +
-                 "Call this as a first step to verify the agent is functional before starting an inspection.")]
+                 "BlobStore fill, audit log queue depth, session policy, uptime in seconds, and the attached " +
+                 "process's sessionInfo (process name, PID, .NET version, dispatchers with window node IDs, " +
+                 "capabilities, top-level windows, mutationEnabled). Call this as the first tool on every new " +
+                 "session to verify the agent is functional and to obtain the bootstrap window node IDs. " +
+                 "sessionInfo is null when the Dispatcher probe fails (dispatcherHealthy=false).")]
     public async Task<string> GetDiagnosticsAsync(CancellationToken ct)
     {
         // Probe the dispatcher by calling a lightweight inspector method.
         // GetSessionInfoAsync does a Dispatcher round-trip; a timeout or SnoopException
         // with DispatcherBusy/SessionNotFound indicates the Dispatcher is unhealthy.
+        // The same round-trip yields the session info folded into the response below.
+        SessionInfoDto? sessionInfo = null;
         bool dispatcherHealthy;
         try
         {
             using var probeCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             probeCts.CancelAfter(TimeSpan.FromMilliseconds(1000));
-            await inspector.GetSessionInfoAsync(probeCts.Token).ConfigureAwait(false);
+            sessionInfo = await inspector.GetSessionInfoAsync(probeCts.Token).ConfigureAwait(false);
             dispatcherHealthy = true;
         }
         catch (SnoopException ex) when (
@@ -74,6 +82,7 @@ public sealed class WpfDiagnosticsTool(
                 AllowSensitiveRetention = sessionPolicy.AllowSensitiveRetention,
             },
             UptimeSeconds = startInfo.UptimeSeconds,
+            SessionInfo = sessionInfo,
         };
 
         return JsonSerializer.Serialize(dto, ToolSerializerOptions.Default);

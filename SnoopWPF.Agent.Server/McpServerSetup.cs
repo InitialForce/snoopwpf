@@ -497,7 +497,7 @@ internal static class McpServerSetup
         services.AddSingleton(new SnoopWPF.Agent.Contracts.AgentStartInfo(DateTimeOffset.UtcNow));
 
         // Register every tool class from the Tools assembly via the MCP builder.
-        var toolsAssembly = typeof(SnoopWPF.Agent.Tools.SessionInfoTool).Assembly;
+        var toolsAssembly = typeof(SnoopWPF.Agent.Tools.WpfDiagnosticsTool).Assembly;
         services
             .AddMcpServer()
             .WithToolsFromAssembly(toolsAssembly);

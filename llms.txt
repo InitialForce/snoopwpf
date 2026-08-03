@@ -18,7 +18,7 @@
 - On .NET Framework 4.6.2 targets, passing `EnableMutation=true` to `SnoopAgent.StartCoLocated` or the injection entrypoint aborts session startup with `SnoopException(UnsupportedOnNet462)`; there is no audit log on net462 (the session does NOT degrade silently to read-only — it fails to start). To run read-only on net462, leave `EnableMutation=false`.
 - A caller MUST NOT issue a [MUTATE] tool call when the active session is on a .NET Framework 4.6.2 target (such a target only ever has `EnableMutation=false`).
 - Caller SHOULD treat node IDs as opaque strings valid only within the session that produced them; node IDs MUST NOT be reused across sessions or process restarts.
-- A caller SHOULD call `wpf_get_session_info` or `wpf_diagnostics` as the first tool in any session to verify handshake completion and to retrieve dispatcher IDs and initial window node IDs.
+- A caller SHOULD call `wpf_diagnostics` as the first tool in any session to verify handshake completion and to retrieve (via its `sessionInfo` field) dispatcher IDs and initial window node IDs.
 - A caller SHOULD call `wpf_pump_until_idle` after any [MUTATE] call before calling `wpf_poll_changes` or `wpf_wait_for_property`, to allow the Dispatcher queue and composition pipeline to settle.
 - A caller MUST NOT pass a node ID returned from a response with `stale: true` as input to subsequent tools without first re-navigating via `wpf_get_windows`.
 - A caller SHOULD call `wpf_inspect_element` to verify `isVisible=true` and the element type before issuing any input action tool.
@@ -100,9 +100,8 @@ FLAGS: [MUTATE] = requires `EnableMutation=true`; [AUTOMATION] = requires `Enabl
 
 SESSION group:
 
-  wpf_get_session_info() → {processName, pid, dotnetVersion, mutationEnabled, dispatchers:[{id,threadId,windowNodeIds[]}], capabilities:[]}
   wpf_get_windows([includeHidden: bool=false]) → [{nodeId, title, typeName, width, height, dispatcherId}]
-  wpf_diagnostics() → {agentVersion, mode, dispatcherHealthy, blobStoreCount, blobStoreBytes, auditLogDepth, sessionPolicy:{enableMutation,enableAutomation,allowSensitiveRetention}, uptimeSeconds}
+  wpf_diagnostics() → {agentVersion, mode, dispatcherHealthy, blobStoreCount, blobStoreBytes, auditLogDepth, sessionPolicy:{enableMutation,enableAutomation,allowSensitiveRetention}, uptimeSeconds, sessionInfo:{processName,pid,dotnetVersion,mutationEnabled,dispatchers:[{id,threadId,windowNodeIds[]}],capabilities:[],windows:[{nodeId,title,width,height,locator}]}|null}
 
 TREE group:
 
@@ -116,7 +115,6 @@ PROPERTIES/BINDINGS group:
 
   wpf_get_properties(nodeId: string, [filter:string], [category:"all"|"layout"|"color"|"font"|"grid"="all"], [includeDefaults:bool=false], [cursor:string], [take:int=100]) → {items:[{name,typeName,value,valueSource,isLocallySet,isDataBound,hasBindingError,bindingError,isReadOnly,hasTypeConverter,isRedacted}], nextCursor,totalCount,hasMore,stale}
   wpf_set_property(nodeId: string, propertyName: string, value: string) → {success:bool, previousValue:string|null, newValue:string|null, error:string|null} [MUTATE]
-  wpf_get_binding_info(nodeId: string, propertyName: string) → {hasBinding,bindingType,path,elementName,relativeSource,mode,updateSourceTrigger,converterTypeName,sourceType,status,error,dataContextIsNull,dataContextType,resolvedValue,childBindings}
   wpf_resolve_binding(nodeId: string, propertyName: string) → {path,sourceTypeName,sourceValue,pathSteps:[{segment,value}],converterTypeName,converterParameter,mode,validationErrors,status:"OK"|"PathError"|"ValidationError"|"MissingDataContext"|"ConverterError"|"NoBinding"}
 
 DIAGNOSTICS group:
@@ -147,30 +145,26 @@ INPUT L1 — UIA group (all [AUTOMATION]):
 INPUT L0 — WPF-native group (all [MUTATE]):
 
   wpf_execute_command(nodeId: string) → {success:bool,stateChanged:bool,treeVersionDelta:int,failureReason:string|null,suggestion:string|null} [MUTATE]
-  wpf_select_item(nodeId:string, identifier:string) → {success:bool,stateChanged:bool,treeVersionDelta:int,failureReason:string|null,suggestion:string|null} [MUTATE]
-  wpf_select_item_by_index(nodeId:string, index:int) → {success:bool,stateChanged:bool,treeVersionDelta:int,failureReason:string|null,suggestion:string|null} [MUTATE]
-  wpf_select_item_by_scroll(nodeId:string, targetIndex:int) → {success:bool,stateChanged:bool,treeVersionDelta:int,failureReason:string|null,suggestion:string|null} [MUTATE]
+  wpf_select_item(nodeId:string, [identifier:string], [index:int], [scrollToRealize:bool=false]) → {success:bool,stateChanged:bool,treeVersionDelta:int,failureReason:string|null,suggestion:string|null} [MUTATE]  (pass exactly one of identifier|index; identifier=index-string/text/substring, index=exact index, index+scrollToRealize=virtualized scroll-then-select)
   wpf_set_check_state(nodeId:string, state:"checked"|"unchecked"|"indeterminate") → {success:bool,stateChanged:bool,treeVersionDelta:int,failureReason:string|null,suggestion:string|null} [MUTATE]
   wpf_set_slider_value(nodeId:string, value:number, [normalized:bool=false]) → {success:bool,stateChanged:bool,treeVersionDelta:int,failureReason:string|null,suggestion:string|null} [MUTATE]
   wpf_set_text_value(nodeId:string, value:string) → {success:bool,stateChanged:bool,treeVersionDelta:int,failureReason:string|null,suggestion:string|null} [MUTATE]
   wpf_get_list_items(nodeId: string) → [{index,nodeId,displayName,isSelected}]
 
-Tool count: 33 wpf_* tools total (SESSION:3, TREE:5, PROPERTIES/BINDINGS:4, DIAGNOSTICS:4, SCREENSHOTS:2, SYNC:3, INPUT L1:4, INPUT L0:8).
+Tool count: 29 wpf_* tools total (SESSION:2, TREE:5, PROPERTIES/BINDINGS:3, DIAGNOSTICS:4, SCREENSHOTS:2, SYNC:3, INPUT L1:4, INPUT L0:6).
 
 
 ## Tool notes
 
 wpf_double_click — primary path raises routed MouseLeftButtonDown+Up twice with ClickCount=2 then Control.MouseDoubleClickEvent; fallback uses Win32 SendInput when primary does not set Handled=true; response includes `chosenTier` and `warnings[]` when fallback was taken. Use for controls that open detail views or start edits on double-click (ListBoxItem, TreeViewItem, DataGrid row).
 
-wpf_select_item — identifier accepts: zero-based integer index ("0"), exact item text (case-insensitive), or unambiguous substring. Fails with `LOCATOR_AMBIGUOUS` when substring matches more than one item. Uses `DependencyObject.SetCurrentValue`; existing TwoWay bindings remain intact.
+wpf_select_item — single tool with three modes; pass EXACTLY ONE of `identifier` or `index` (both/neither → `INVALID_ARGUMENT`). `identifier` accepts a zero-based integer index ("0"), exact item text (case-insensitive), or unambiguous substring; ambiguous substrings fail with `LOCATOR_AMBIGUOUS`, and identifier mode auto-realizes a virtualized item when it resolves a match. `index` selects by exact zero-based index without forcing realization (use for non-virtualized or already-realized items); add `scrollToRealize:true` to scroll a virtualized list until the container at `index` is materialized before selecting. Uses `DependencyObject.SetCurrentValue`; existing TwoWay bindings remain intact.
 
-wpf_select_item_by_scroll — forces realization of a virtualized item by scrolling before selecting. Use when the target item may not yet be in the visual tree. Prefer `wpf_select_item_by_index` for non-virtualized lists.
-
-wpf_get_list_items — returns only realized (materialized) containers; virtualized items not yet scrolled into view are omitted. For virtualized lists, call `wpf_select_item_by_scroll` first to force realization.
+wpf_get_list_items — returns only realized (materialized) containers; virtualized items not yet scrolled into view are omitted. For virtualized lists, call `wpf_select_item(index:…, scrollToRealize:true)` first to force realization.
 
 wpf_set_text_value — for PasswordBox, `previousValue` is always `"[REDACTED]"` in the response. For RichTextBox, replaces the entire flow document with a single paragraph; existing formatting is discarded.
 
-wpf_resolve_binding — resolution is read-only and point-in-time; converter implementations are not invoked, only the type name is reported. Use `wpf_get_binding_info` for a lighter summary.
+wpf_resolve_binding — resolution is read-only and point-in-time; converter implementations are not invoked, only the type name is reported. Returns the full path-step chain, source values, converter/mode/validation, and an overall `status`; it is the single binding-inspection tool.
 
 wpf_poll_changes — hard cap of 5000 nodes per poll. On `sinceVersion=0`, returns all currently registered nodes as `added`. Does not wait for mutations to settle; call `wpf_pump_until_idle` first for deterministic results.
 
@@ -178,9 +172,7 @@ wpf_pump_until_idle — AND-gate: requires both Dispatcher queue AND composition
 
 wpf_capture_screenshot — blob TTL is configured via `SnoopAgentOptions.BlobTtl` (default 60 s). Returns `ELEMENT_NOT_RENDERABLE` for zero-size or fully hidden elements. Fallback: when `nodeId` omitted, captures main window; if not visible, first visible window.
 
-wpf_diagnostics — self-health snapshot; call as a first step to verify agent is functional before starting an inspection session.
-
-wpf_get_session_info — MUST be called first. The `dispatchers[].windowNodeIds[]` values ARE the canonical bootstrap node IDs; they are the same IDs returned by `wpf_get_windows()`. An agent SHOULD use either source.
+wpf_diagnostics — self-health snapshot AND session info; call as the first step of every session to verify the agent is functional and to obtain session metadata. The folded `sessionInfo.dispatchers[].windowNodeIds[]` values ARE the canonical bootstrap node IDs (the same IDs returned by `wpf_get_windows()`); an agent SHOULD use either source. `sessionInfo` is `null` when `dispatcherHealthy` is `false`.
 
 
 ## Error channels
@@ -229,7 +221,7 @@ Agent error handlers MUST branch on the envelope `ok` field first, then inspect 
 | `CannotExecuteCommand` | `ICommand.CanExecute` returned `false` | `wpf_execute_command` | Check application state; verify preconditions before retrying |
 | `PatternNotSupported` | Element does not expose required UIA pattern | L1 input tools | Use appropriate L0 tool or verify element type with `wpf_inspect_element` |
 | `ElementDisabled` | UIA pattern present but element has `IsEnabled=false` | L1 input tools | Verify `IsEnabled` first; application may need to reach a different state |
-| `ElementOutsideViewport` | Item could not be materialized after scroll budget exhausted | `wpf_select_item_by_scroll` | Item may be beyond the list's scroll extent; verify index |
+| `ElementOutsideViewport` | Item could not be materialized after scroll budget exhausted | `wpf_select_item` (index + scrollToRealize) | Item may be beyond the list's scroll extent; verify index |
 
 
 ## State machine
@@ -372,10 +364,9 @@ Only one prefix per locator expression. Compound expressions are not supported. 
 ## Common agent workflows
 
 Inspect binding errors:
-  1. wpf_get_session_info() → verify session + get window node IDs
+  1. wpf_diagnostics() → verify session + get window node IDs (from sessionInfo)
   2. wpf_run_diagnostics(minLevel:"Error") → get BindingError items with nodeIds
-  3. wpf_get_binding_info(nodeId, propertyName) → inspect specific failing binding
-  4. wpf_resolve_binding(nodeId, propertyName) → get full path-step chain for root cause
+  3. wpf_resolve_binding(nodeId, propertyName) → full path-step chain + status for root cause
 
 Screenshot workflow:
   1. wpf_get_windows() → get window nodeId
@@ -398,9 +389,9 @@ Find and click a button by name:
 Virtualized list selection:
   1. wpf_get_windows() → get window nodeId
   2. wpf_find_elements(typeName:"ListBox") → get list nodeId
-  3a. if you have the item text → wpf_select_item(listNodeId, identifier="<text>") [MUTATE] → BringIndexIntoView + select
-  3b. if you know the zero-based index → wpf_select_item_by_scroll(listNodeId, targetIndex:int) [MUTATE] → scroll to index + select
-  Note: for non-virtualized lists, either works; prefer wpf_select_item for lower latency.
+  3a. if you have the item text → wpf_select_item(listNodeId, identifier="<text>") [MUTATE] → resolve + realize + select
+  3b. if you know the zero-based index → wpf_select_item(listNodeId, index:int, scrollToRealize:true) [MUTATE] → scroll to index + select
+  Note: for non-virtualized lists, drop scrollToRealize (or use identifier); identifier mode also auto-realizes a resolved match.
   4. wpf_get_list_items(nodeId) → confirm selection
 
 
@@ -408,29 +399,26 @@ Virtualized list selection:
 
 Full sequence from cold session to root cause. Copy as a template for an agent debugging a bound property that renders blank.
 
-  1. wpf_get_session_info()
-     → dispatchers[0].windowNodeIds[0] = "0:1" (root window)
-     → mutationEnabled = false (read-only is fine for this workflow)
+  1. wpf_diagnostics()
+     → sessionInfo.dispatchers[0].windowNodeIds[0] = "0:1" (root window)
+     → sessionInfo.mutationEnabled = false (read-only is fine for this workflow)
 
   2. wpf_run_diagnostics(minLevel:"Error")
      → items: [{name:"BindingError", nodeId:"0:88", area:"Binding", level:"Error"}]
 
-  3. wpf_get_binding_info(nodeId:"0:88", propertyName:"Text")
-     → {status:"PathError", path:"CurrentStride.ValueMetric",
-         error:"Cannot find 'ValueMetric' on type 'StrideReading'"}
-
-  4. wpf_resolve_binding(nodeId:"0:88", propertyName:"Text")
+  3. wpf_resolve_binding(nodeId:"0:88", propertyName:"Text")
+     → status:"PathError", path:"CurrentStride.ValueMetric"
      → pathSteps:[
          {segment:"CurrentStride", value:"StrideReading{StepLength=1.2, CadenceRpm=84}"},
          {segment:"ValueMetric",   value:null}
        ]
 
-  5. Conclusion: "ValueMetric" is not a member of `StrideReading`. Candidate members
-     (from step 4's resolvedValue): `StepLength`, `CadenceRpm`. Agent reports
+  4. Conclusion: "ValueMetric" is not a member of `StrideReading`. Candidate members
+     (from step 3's resolved values): `StepLength`, `CadenceRpm`. Agent reports
      "rename binding path to `CurrentStride.StepLength`" and moves on.
 
 Invariants shown:
-  - wpf_get_session_info MUST be first (per Preconditions).
+  - wpf_diagnostics MUST be first (per Preconditions).
   - nodeId values from wpf_run_diagnostics items are the same namespace as tree tools.
   - wpf_resolve_binding is read-only — no EnableMutation required.
   - No wpf_pump_until_idle needed for pure inspection chains.
