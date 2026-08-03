@@ -1110,6 +1110,129 @@ Re-run the originating tool to get a fresh ref.
 
 ---
 
+## wpf_double_click
+
+Fire a WPF routed double-click on an element (L1).
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `nodeId` | string | *(required)* | Node ID of the element to double-click. |
+
+**Returns:** `StateDeltaDto` with `success`, `stateChanged`, `chosenTier`, and `warnings[]` when the
+fallback path was taken.
+
+**Behavior:** The primary path raises `MouseLeftButtonDown` + `MouseLeftButtonUp` twice with
+`ClickCount=2` on the second pair, then raises `Control.MouseDoubleClickEvent`. When the primary
+path does not set `Handled=true` and the control type is not known to respond to routed
+double-click, a Win32 `SendInput` mouse sequence is used instead and a `DOUBLE_CLICK_FALLBACK`
+warning is emitted.
+
+**Guidelines:** Use for controls that open detail views, start edits, or navigate on double-click
+(e.g. ListBoxItem, TreeViewItem, DataGrid row). For single-click controls prefer `wpf_click` (L1) or
+`wpf_execute_command` (L0). Automation must be enabled (`EnableAutomation=true`).
+
+**Limitations:** Controls relying on mouse-capture state, preview event sequencing, or hit-testing
+may not respond to the routed-event primary path (the fallback handles this). Does not check
+`IsEnabled` or `IsVisible` before invoking.
+
+---
+
+## wpf_get_list_items
+
+Enumerate the realized item containers of an `ItemsControl`.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `nodeId` | string | *(required)* | Node ID of the ItemsControl whose realized items should be enumerated. |
+
+**Returns:** an array of `{ index, nodeId, displayName, isSelected }`.
+
+**Guidelines:** Use to inspect list contents, determine which item is selected, or obtain nodeIds
+for individual item containers. For virtualized lists, call `wpf_select_item` with an `index` and
+`scrollToRealize=true` first to force realization of specific items before calling this tool.
+
+**Limitations:** Only realized containers are returned; virtualized items not yet scrolled into view
+are omitted and appear as gaps in the index sequence. Non-`ItemsControl` elements fail with
+`INVALID_ARGUMENT`.
+
+**Applies to:** ListBox, ListView, ComboBox, TreeView, DataGrid, and any `ItemsControl` subclass.
+
+---
+
+## wpf_get_actionables
+
+Compact list of currently-interactable controls in the visible visual tree.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `rootNodeId` | string | *(whole tree)* | Subtree root to scan within. Omit to scan from `Application.Current`. |
+| `maxResults` | int | `100` | Maximum results. Max 200. |
+
+**Returns:** each item carries `nodeId`, `kind`, `label`, `x:Name`, `AutomationId`, `type`, enabled
+state, and an L0 hint (`hasCommandBinding=true` → prefer `wpf_execute_command` over `wpf_click`).
+`truncated=true` when results were cut at `maxResults`.
+
+**Guidelines:** Intended for LLM-driven navigation: call once per screen to see the action menu, then
+call `wpf_click` / `wpf_set_text_value` / `wpf_execute_command` on the chosen nodeId. Cheaper and
+lower-token than `wpf_get_visual_tree` when you only need to decide what to act on.
+
+**Limitations:** Skips invisible controls (`Visibility != Visible`, `IsVisible=false`,
+`ActualWidth`/`ActualHeight = 0`) and non-actionable controls (TextBlock, Image, Border, Grid, etc.).
+
+---
+
+## wpf_act_sequence
+
+Execute an ordered list of action primitives in a single round-trip.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `steps` | ActionStepDto[] | *(required)* | Ordered steps. Each step is `{ type, nodeId, value? }` where `type ∈ { click, double_click, execute_command, set_text }`; `value` is required only for `set_text`. |
+| `stopOnError` | bool | `true` | If true, abort at the first step returning `Success=false`. If false, run every step and report per-step outcome. |
+
+**Returns:** `ActionSequenceResultDto` with `allSucceeded`, `stoppedAtIndex` (-1 on full success),
+and a `Steps` list — each entry carries the step's type/nodeId, success flag, full `StateDeltaDto`,
+and (on failure) `errorCode` + `errorMessage`.
+
+**Guidelines:** Collapse multi-step navigation (click → set_text → click → …) into one call to
+eliminate LLM round-trip overhead. Pair with `wpf_get_actionables` to plan the sequence from a single
+tree snapshot. Mutation must be enabled (`EnableMutation=true`); each primitive enforces its own
+MaxTier gate, and tier failures are reported in the per-step delta.
+
+---
+
+## wpf_act_until
+
+Fire one action, then poll a property predicate server-side until it matches or the timeout elapses.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `action` | ActionStepDto | *(required)* | `{ type, nodeId, value? }` (same shape as a `wpf_act_sequence` step). |
+| `predicate` | ActUntilPredicateDto | *(required)* | `{ targetNodeId, propertyName, expectedValue?, presenceExpected? }`. `presenceExpected ∈ { present (default), absent }`. |
+| `timeoutMs` | int | `5000` | Maximum milliseconds to poll after the action fires. |
+
+**Returns:** `ActUntilResultDto` with `actionResult` (the action's delta), `success` (action OK and
+predicate met), `predicateMet`, `timedOut`, `actualValue` (last observed), `elapsedMs`, `pollCount`.
+
+**Behavior:** `present` is satisfied when the target node resolves AND its property equals
+`expectedValue`; `absent` is satisfied when the node fails to resolve (e.g. a dialog closed). Poll
+interval is 50 ms. If the action fails, polling is skipped and `success=false`.
+
+**Guidelines:** Collapse "click → loop `wpf_wait_for_property` until X" into a single call, keeping the
+wait inside the agent process.
+
+---
+
 ## Error Codes
 
 All tool errors return a structured object:

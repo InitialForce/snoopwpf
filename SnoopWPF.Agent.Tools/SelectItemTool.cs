@@ -19,24 +19,11 @@ public sealed class SelectItemTool(ISnoopInspector inspector)
 {
     [McpServerTool(Name = "wpf_select_item")]
     [Description(
-        "Select an item in a ListBox, ComboBox, ListView, or any Selector control by setting " +
-        "SelectedItem/SelectedIndex via SetValue on the dependency property (L0). No raw Win32 " +
-        "input is used. Returns StateDeltaDto with success, stateChanged, previousValue, newValue, " +
-        "and failureReason/suggestion if the item could not be selected. " +
-        "\n\nSelection mode is chosen by which parameter you pass — supply EXACTLY ONE of " +
-        "'identifier' or 'index': " +
-        "\n(1) 'identifier' — select by zero-based index string (\"0\"), exact item text " +
-        "(case-insensitive), or an unambiguous substring. Ambiguous substrings fail with " +
-        "LOCATOR_AMBIGUOUS. This mode auto-realizes virtualized items when it resolves a match. " +
-        "\n(2) 'index' with scrollToRealize=false (default) — select by exact zero-based index " +
-        "without forcing container realization. Use for non-virtualized lists or already-realized items. " +
-        "\n(3) 'index' with scrollToRealize=true — scroll the list until the container at 'index' is " +
-        "materialized, then select it. Use for virtualized lists (VirtualizingStackPanel) where the " +
-        "target container may not yet exist. " +
-        "\n\nMutation must be enabled (EnableMutation=true in SnoopAgentOptions). Multi-selection " +
-        "controls have their selection replaced (not appended). " +
-        "Passing neither or both of 'identifier'/'index' fails with INVALID_ARGUMENT. " +
-        "\n\nApplies to: ListBox, ListView, ComboBox, and any Selector subclass.")]
+        "Select an item in a ListBox, ComboBox, or any Selector (L0); returns StateDeltaDto. Pass EXACTLY " +
+        "ONE of: 'identifier' (zero-based index string, exact text, or unambiguous substring) or 'index' " +
+        "(exact zero-based index, optionally with scrollToRealize=true to materialize a virtualized container " +
+        "first). Requires EnableMutation=true; neither/both fails with INVALID_ARGUMENT, ambiguous substring " +
+        "with LOCATOR_AMBIGUOUS. See docs/mcp-tools-reference.md.")]
     public Task<string> SelectItemAsync(
         [Description("Node ID of the ItemsControl/Selector whose selection should be changed.")] string nodeId,
         [Description(

@@ -15,22 +15,10 @@ public sealed class GetListItemsTool(ISnoopInspector inspector)
 {
     [McpServerTool(Name = "wpf_get_list_items")]
     [Description(
-        "Enumerate the realized (materialized) item containers in the ItemsControl identified " +
-        "by nodeId and return an array of {index, nodeId, displayName, isSelected} for each. " +
-        "Only currently realized containers are returned — virtualized items that have not " +
-        "yet been scrolled into view are omitted. " +
-        "Returns an array of ListItemDto objects. " +
-        "\n\nGuidelines: " +
-        "Use this tool to inspect list contents, determine which item is selected, or obtain " +
-        "nodeIds for individual item containers for follow-up inspection tools. " +
-        "For virtualized lists, call wpf_select_item with an index and scrollToRealize=true first " +
-        "to force realization of specific items before calling this tool. " +
-        "\n\nLimitations: " +
-        "Only realized items are included (virtualized items appear as gaps in the index sequence). " +
-        "The element must be an ItemsControl (ListBox, ListView, ComboBox, TreeView, etc.). " +
-        "Non-ItemsControl elements fail with INVALID_ARGUMENT. " +
-        "\n\nApplies to: " +
-        "ListBox, ListView, ComboBox, TreeView, DataGrid, and any ItemsControl subclass.")]
+        "Enumerate the realized item containers of an ItemsControl, returning { index, nodeId, displayName, " +
+        "isSelected } for each (virtualized items not yet scrolled into view are omitted, appearing as gaps " +
+        "in the index sequence). For virtualized lists call wpf_select_item with index + scrollToRealize=true " +
+        "first; non-ItemsControl targets fail with INVALID_ARGUMENT. See docs/mcp-tools-reference.md.")]
     public Task<string> GetListItemsAsync(
         [Description("Node ID of the ItemsControl whose realized items should be enumerated.")] string nodeId,
         CancellationToken ct = default)

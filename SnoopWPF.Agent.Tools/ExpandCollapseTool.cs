@@ -16,26 +16,10 @@ public sealed class ExpandCollapseTool(ISnoopInspector inspector)
 {
     [McpServerTool(Name = "wpf_expand_collapse")]
     [Description(
-        "Expand or collapse a WPF element using the UI Automation ExpandCollapsePattern (L1). " +
-        "Returns StateDeltaDto with success, stateChanged, treeVersionDelta, and " +
-        "failureReason/suggestion if the operation could not be performed. " +
-        "\n\nGuidelines: " +
-        "Pass action=\"expand\" to expand the element or action=\"collapse\" to collapse it. " +
-        "The action is idempotent: expanding an already-expanded element succeeds without error. " +
-        "Automation must be enabled (EnableAutomation=true in SnoopAgentOptions). " +
-        "After expanding a TreeViewItem, call wpf_get_children to retrieve the newly revealed " +
-        "child nodes. " +
-        "\n\nLimitations: " +
-        "Elements that do not expose IExpandCollapseProvider (e.g. plain Button, TextBox) are " +
-        "rejected with PatternNotSupported. " +
-        "Does not check IsEnabled or IsVisible before acting — verify actionability with " +
-        "wpf_inspect_element first if the element may be disabled. " +
-        "Virtualized tree nodes may not be in the visual tree; scroll or realise them first. " +
-        "\n\nApplies to: " +
-        "TreeViewItem, " +
-        "Expander, " +
-        "GroupItem (CollectionViewSource groups), " +
-        "and any UIElement whose AutomationPeer supports IExpandCollapseProvider.")]
+        "Expand or collapse a WPF element via the UIA ExpandCollapsePattern (L1); pass action=\"expand\" or " +
+        "\"collapse\" (idempotent). Returns StateDeltaDto; fails with PatternNotSupported when the element has " +
+        "no IExpandCollapseProvider. Applies to TreeViewItem, Expander, GroupItem, etc.; requires " +
+        "EnableAutomation=true. See docs/mcp-tools-reference.md.")]
     public Task<string> ExpandCollapseAsync(
         [Description("Node ID of the element to expand or collapse.")] string nodeId,
         [Description("Action to perform: \"expand\" or \"collapse\".")] string action,

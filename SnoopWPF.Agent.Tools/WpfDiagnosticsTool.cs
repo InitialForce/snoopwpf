@@ -31,12 +31,11 @@ public sealed class WpfDiagnosticsTool(
     IAuditDepthProvider? auditDepthProvider = null)
 {
     [McpServerTool(Name = "wpf_diagnostics")]
-    [Description("Returns a self-health snapshot of the running agent: version, mode, Dispatcher health, " +
-                 "BlobStore fill, audit log queue depth, session policy, uptime in seconds, and the attached " +
-                 "process's sessionInfo (process name, PID, .NET version, dispatchers with window node IDs, " +
-                 "capabilities, top-level windows, mutationEnabled). Call this as the first tool on every new " +
-                 "session to verify the agent is functional and to obtain the bootstrap window node IDs. " +
-                 "sessionInfo is null when the Dispatcher probe fails (dispatcherHealthy=false).")]
+    [Description("Agent self-health snapshot (version, mode, dispatcherHealthy, BlobStore fill, audit depth, " +
+                 "sessionPolicy, uptime) plus the attached process's sessionInfo (process name, PID, .NET " +
+                 "version, dispatchers with window node IDs, capabilities, windows, mutationEnabled). Call this " +
+                 "first on every session to verify the agent and get the bootstrap window node IDs; sessionInfo " +
+                 "is null when dispatcherHealthy is false. See docs/mcp-tools-reference.md.")]
     public async Task<string> GetDiagnosticsAsync(CancellationToken ct)
     {
         // Probe the dispatcher by calling a lightweight inspector method.
