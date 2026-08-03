@@ -16,11 +16,10 @@ public sealed class WaitForPropertyTool(ISnoopInspector inspector, SnoopAgentOpt
 {
     [McpServerTool(Name = "wpf_wait_for_property")]
     [Description(
-        "Poll a WPF element property until its value equals expectedValue (presenceExpected=present) " +
-        "or until the element disappears (presenceExpected=absent). " +
-        "Returns WaitForPropertyResultDto with conditionMet, actualValue, elapsedMs, pollCount. " +
-        "On timeout throws DISPATCHER_BUSY with suggestion to call wpf_pump_until_idle first. " +
-        "Use presenceExpected=absent to detect modal dismissal or element removal.")]
+        "Poll a WPF element (by WpfLocator) until propertyName equals expectedValue (presenceExpected=present) " +
+        "or the element disappears (presenceExpected=absent). Returns WaitForPropertyResultDto (conditionMet, " +
+        "actualValue, elapsedMs, pollCount); on timeout throws DISPATCHER_BUSY suggesting wpf_pump_until_idle. " +
+        "See docs/mcp-tools-reference.md.")]
     public Task<string> WaitForPropertyAsync(
         [Description("WpfLocator string identifying the element (e.g. \"$name:myButton\" or \"$type:Button\").")] string locator,
         [Description("Property name to observe (e.g. \"IsEnabled\", \"Text\", \"Visibility\").")] string propertyName,

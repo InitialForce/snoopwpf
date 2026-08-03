@@ -14,10 +14,9 @@ using SnoopWPF.Agent.Contracts;
 public sealed class GetResourcesTool(ISnoopInspector inspector)
 {
     [McpServerTool(Name = "wpf_get_resources")]
-    [Description("Get cursor-paginated resource dictionary entries visible from a node (merged dictionaries included). " +
-                 "Each entry includes key, valueTypeName, valueSummary, origin (Application/Window/Element), and dictionarySource. " +
-                 "Filter by resourceKey substring to find a specific resource. " +
-                 "Pass nextCursor from the previous response to get the next page.")]
+    [Description("Get cursor-paginated resource dictionary entries visible from a node (merged dictionaries included); " +
+                 "each entry has key, valueTypeName, valueSummary, origin, and dictionarySource. Filter by resourceKey " +
+                 "substring; pass nextCursor for the next page. See docs/mcp-tools-reference.md.")]
     public Task<string> GetResourcesAsync(
         [Description("Node ID to start resource lookup from (resources flow up through merged dictionaries). Omit for application-level resources.")] string? nodeId = null,
         [Description("Case-insensitive substring filter on resource key (optional).")] string? resourceKey = null,

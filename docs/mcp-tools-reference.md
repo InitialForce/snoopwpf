@@ -574,6 +574,8 @@ Get all triggers on an element (Style, ControlTemplate, DataTemplate, and direct
 
 `source` values: `"Style"`, `"ControlTemplate"`, `"DataTemplate"`, `"Element"`.
 
+**Usage:** Call `wpf_inspect_element` first to check whether the element has triggers before calling this tool.
+
 ---
 
 ## wpf_get_behaviors
@@ -603,6 +605,8 @@ Get all Blend behaviors and actions attached to an element.
 
 Works with both `System.Windows.Interactivity` (legacy Blend SDK) and
 `Microsoft.Xaml.Behaviors.Wpf` (modern package).
+
+**Usage:** Call `wpf_inspect_element` first to check whether the element has behaviors before calling this tool.
 
 ---
 

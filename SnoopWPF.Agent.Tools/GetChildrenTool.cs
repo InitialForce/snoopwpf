@@ -14,10 +14,9 @@ using SnoopWPF.Agent.Contracts;
 public sealed class GetChildrenTool(ISnoopInspector inspector)
 {
     [McpServerTool(Name = "wpf_get_children")]
-    [Description("Get cursor-paginated direct children of a node. Uses snapshot-based cursors to prevent " +
-                 "gaps/duplicates when the visual tree changes between pages. " +
-                 "When nodeId is omitted, returns the application root windows (main window first). " +
-                 "Pass nextCursor from the previous response to get the next page.")]
+    [Description("Get cursor-paginated direct children of a node (snapshot cursors prevent gaps/duplicates across " +
+                 "pages); omit nodeId to return the application root windows (main window first). Pass nextCursor " +
+                 "for the next page. See docs/mcp-tools-reference.md.")]
     public Task<string> GetChildrenAsync(
         [Description("Parent node ID (omit for app roots).")] string? nodeId = null,
         [Description("Tree type: \"visual\" (default), \"logical\", or \"automation\".")] string treeType = "visual",

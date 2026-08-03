@@ -15,9 +15,8 @@ using SnoopWPF.Agent.Contracts;
 public sealed class GetVisualTreeTool(ISnoopInspector inspector)
 {
     [McpServerTool(Name = "wpf_get_visual_tree")]
-    [Description("Get the visual tree starting from a node. Returns a depth-limited tree with truncation metadata. " +
-                 "Nodes at the cut boundary have childrenTruncated: true. Hard cap: 5000 nodes. " +
-                 "Use wpf_get_children for cursor-paginated access to large subtrees.")]
+    [Description("Get a depth-limited visual tree from a node; nodes cut by maxDepth or the 5000-node cap have " +
+                 "childrenTruncated=true (use wpf_get_children for those subtrees). See docs/mcp-tools-reference.md.")]
     public Task<string> GetVisualTreeAsync(
         [Description("Node ID to use as root (omit or null to start from app root).")] string? rootNodeId = null,
         [Description("Maximum tree depth to traverse. Default: 3, max: 10.")] int maxDepth = 3,

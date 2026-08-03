@@ -26,12 +26,9 @@ public sealed class FetchBlobTool(BlobStore blobStore)
 {
     [McpServerTool(Name = "wpf_fetch_blob")]
     [Description(
-        "Fetch a large payload (screenshot, property dump) by its blobRef key. " +
-        "blobRef values are returned by other wpf_* tools whose response would exceed 64 KB. " +
-        "Blobs expire after the session TTL (default 60 seconds; configurable via SnoopAgentOptions.BlobTtl); re-run the originating tool to refresh. " +
-        "Returns two content blocks: a JSON text block with metadata (key, mimeType, sizeBytes) " +
-        "and an inline content block carrying the raw bytes. " +
-        "Fails with BLOB_NOT_FOUND if the key is unknown or has expired.")]
+        "Fetch a large payload (screenshot, property dump) by its blobRef key returned by another wpf_* tool. " +
+        "Returns two content blocks: a JSON metadata block (key, mimeType, sizeBytes) and the raw bytes. " +
+        "Fails with BLOB_NOT_FOUND if the key is unknown or has expired. See docs/mcp-tools-reference.md.")]
     public Task<CallToolResult> FetchBlobAsync(
         [Description("The blobRef key returned by a previous tool call.")] string key,
         CancellationToken ct = default)
