@@ -168,6 +168,18 @@ public class SelectItemToolTests
     }
 
     [Test]
+    public void IdentifierWithScrollToRealize_ThrowsInvalidArgument_NotSilentlyDropped()
+    {
+        // scrollToRealize is index-mode only; passing it with identifier used to be silently ignored
+        // (a virtualized-list selection would fail as not-found with no explanation). It must be a
+        // loud INVALID_ARGUMENT instead.
+        var ex = Assert.ThrowsAsync<McpException>(
+            () => this.tool.SelectItemAsync("0:1", identifier: "Item 900", scrollToRealize: true));
+
+        Assert.That(ex!.Message, Does.Contain("INVALID_ARGUMENT"));
+    }
+
+    [Test]
     public void BothIdentifierAndIndex_ThrowsInvalidArgument()
     {
         var ex = Assert.ThrowsAsync<McpException>(

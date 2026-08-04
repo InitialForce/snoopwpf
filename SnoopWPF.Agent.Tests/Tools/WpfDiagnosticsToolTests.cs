@@ -282,4 +282,46 @@ public sealed class WpfDiagnosticsToolTests : IDisposable
         Assert.That(doc.RootElement.GetProperty("sessionInfo").ValueKind, Is.EqualTo(JsonValueKind.Null),
             "sessionInfo must be null when the Dispatcher probe fails.");
     }
+
+    [Test]
+    public async Task SlowProbe_RetriesOnCallerToken_RecoversSessionInfo()
+    {
+        // The 1s health-probe budget can elapse on a cold/loaded first call without the caller having
+        // cancelled. The old wpf_get_session_info awaited the caller's own token and never lost session
+        // info this way, so wpf_diagnostics retries once on the caller token rather than silently
+        // returning sessionInfo:null (the regression the fold would otherwise introduce).
+        int calls = 0;
+        this.fake.OnGetSessionInfo = ct =>
+        {
+            if (++calls == 1)
+            {
+                // Simulate the 1s probe budget elapsing (caller token NOT cancelled).
+                throw new OperationCanceledException();
+            }
+
+            return Task.FromResult(new SessionInfoDto
+            {
+                ProcessName = "SlowApp",
+                Pid = 4242,
+                DotnetVersion = "8.0.0",
+                MutationEnabled = true,
+                Dispatchers = new List<DispatcherInfoDto>
+                {
+                    new DispatcherInfoDto { Id = 1, ThreadId = 5, WindowNodeIds = new List<string> { "0:1" } },
+                },
+                Capabilities = new List<string> { "screenshot" },
+            });
+        };
+
+        var tool = this.MakeTool();
+        var json = await tool.GetDiagnosticsAsync(default).ConfigureAwait(false);
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.That(calls, Is.EqualTo(2), "the caller-token retry must have run after the probe timed out");
+        Assert.That(doc.RootElement.GetProperty("dispatcherHealthy").GetBoolean(), Is.True,
+            "a slow-but-alive dispatcher recovered on retry must report healthy");
+        Assert.That(doc.RootElement.GetProperty("sessionInfo").ValueKind, Is.EqualTo(JsonValueKind.Object),
+            "the retry must recover the bootstrap session info rather than leaving it null");
+        Assert.That(doc.RootElement.GetProperty("sessionInfo").GetProperty("pid").GetInt32(), Is.EqualTo(4242));
+    }
 }

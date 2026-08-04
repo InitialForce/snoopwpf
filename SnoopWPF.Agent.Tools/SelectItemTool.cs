@@ -34,7 +34,7 @@ public sealed class SelectItemTool(ISnoopInspector inspector)
             "Pass this OR 'identifier', not both.")] int? index = null,
         [Description(
             "Index-mode only: when true, scroll the list to realize a virtualized container at " +
-            "'index' before selecting. Ignored in identifier mode.")] bool scrollToRealize = false,
+            "'index' before selecting. Invalid in identifier mode (INVALID_ARGUMENT).")] bool? scrollToRealize = null,
         CancellationToken ct = default)
     {
         return ToolExceptionMapper.Wrap(async () =>
@@ -53,12 +53,23 @@ public sealed class SelectItemTool(ISnoopInspector inspector)
                     suggestions: new[] { SnoopSuggestions.InvalidArgument });
             }
 
+            // scrollToRealize is index-mode only; passing it with identifier is a caller error, not a
+            // silent no-op (previously the flag was dropped with no explanation on a virtualized list).
+            if (hasIdentifier && scrollToRealize.HasValue)
+            {
+                throw new SnoopException(
+                    SnoopErrorCode.InvalidArgument,
+                    "scrollToRealize applies only to index mode; do not pass it with 'identifier'.",
+                    targetId: nodeId,
+                    suggestions: new[] { SnoopSuggestions.InvalidArgument });
+            }
+
             StateDeltaDto result;
             if (hasIdentifier)
             {
                 result = await inspector.SelectItemAsync(nodeId, identifier!, ct).ConfigureAwait(false);
             }
-            else if (scrollToRealize)
+            else if (scrollToRealize == true)
             {
                 result = await inspector.SelectItemByScrollAsync(nodeId, index!.Value, ct).ConfigureAwait(false);
             }

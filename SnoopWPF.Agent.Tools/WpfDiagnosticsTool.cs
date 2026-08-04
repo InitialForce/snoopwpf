@@ -58,8 +58,32 @@ public sealed class WpfDiagnosticsTool(
         {
             dispatcherHealthy = false;
         }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            // The 1s health-probe budget elapsed but the CALLER did not cancel: the dispatcher may be slow
+            // (cold/loaded first call), not dead. The removed wpf_get_session_info awaited the caller's own
+            // token, so it never lost session info this way. Retry once on the caller's token so a first-call
+            // bootstrap (window node IDs) isn't silently dropped as sessionInfo:null.
+            try
+            {
+                sessionInfo = await inspector.GetSessionInfoAsync(ct).ConfigureAwait(false);
+                dispatcherHealthy = true;
+            }
+            catch (SnoopException ex) when (
+                ex.Code == SnoopErrorCode.DispatcherBusy ||
+                ex.Code == SnoopErrorCode.SessionNotFound ||
+                ex.Code == SnoopErrorCode.OperationTimedOut)
+            {
+                dispatcherHealthy = false;
+            }
+            catch (OperationCanceledException)
+            {
+                dispatcherHealthy = false;
+            }
+        }
         catch (OperationCanceledException)
         {
+            // Caller cancelled — report unhealthy rather than swallowing their cancellation into a retry.
             dispatcherHealthy = false;
         }
 
