@@ -47,14 +47,17 @@
         <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
     </PropertyGroup>
 
-    <!-- Version: 1.1.0 — adds the modal-blocked agent-warning channel (PipeResponse.Warnings
-         + SnoopAgentContext in Contracts, server drain, broker proxy re-emit, engine MODAL_BLOCKED
-         detection). 1.0.0 was the first stable public release under InitialForce.SnoopAgent.*.
-         UpdateVersionProperties=false prevents GitVersion.MsBuild from overwriting
-         the explicitly declared Version. CI pipelines can re-enable GitVersion by
-         setting UpdateVersionProperties=true on the build agent. -->
+    <!-- Version: 1.4.0 — tool-surface consolidation to reduce MCP client context cost:
+         folds wpf_get_session_info into wpf_diagnostics, merges the three select_item tools into
+         one discriminated wpf_select_item, drops wpf_get_binding_info (use wpf_resolve_binding),
+         and trims per-tool descriptions (detail relocated to docs/mcp-tools-reference.md).
+         Breaking tool-surface change: four tools removed/merged from the published surface.
+         1.3.0/1.1.0/1.0.0 preceded this. The release is tag-driven (push v1.4.0 to publish);
+         UpdateVersionProperties=false prevents GitVersion.MsBuild from overwriting the explicitly
+         declared Version. CI pipelines can re-enable GitVersion by setting
+         UpdateVersionProperties=true on the build agent. -->
     <PropertyGroup>
-        <VersionPrefix>1.1.0</VersionPrefix>
+        <VersionPrefix>1.4.0</VersionPrefix>
         <VersionSuffix></VersionSuffix>
         <UpdateVersionProperties>false</UpdateVersionProperties>
     </PropertyGroup>

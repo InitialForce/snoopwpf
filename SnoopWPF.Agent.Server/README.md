@@ -53,11 +53,11 @@ SnoopAgent.StartCoLocated(new SnoopAgentOptions
 });
 ```
 
-## Available Tools (28)
+## Available Tools
 
-`wpf_get_session_info`, `wpf_get_windows`, `wpf_get_visual_tree`, `wpf_get_children`,
+`wpf_diagnostics`, `wpf_get_windows`, `wpf_get_visual_tree`, `wpf_get_children`,
 `wpf_get_ancestors`, `wpf_find_elements`, `wpf_inspect_element`, `wpf_get_properties`,
-`wpf_set_property`, `wpf_get_binding_info`, `wpf_run_diagnostics`, `wpf_get_resources`,
+`wpf_set_property`, `wpf_run_diagnostics`, `wpf_get_resources`,
 `wpf_capture_screenshot`, `wpf_get_triggers`, `wpf_get_behaviors`, `wpf_fetch_blob`,
 `wpf_poll_changes`, `wpf_pump_until_idle`, `wpf_resolve_binding`, `wpf_click`,
 `wpf_execute_command`, `wpf_expand_collapse`, `wpf_select_item`, `wpf_set_check_state`,

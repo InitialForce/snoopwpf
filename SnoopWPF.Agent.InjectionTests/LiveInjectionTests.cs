@@ -133,9 +133,9 @@ public sealed class LiveInjectionTests
 
             Assert.That(initResponse, Is.Not.Null, "MCP initialize response not received.");
 
-            // Call wpf_get_session_info.
+            // Call wpf_diagnostics (session info is folded into its response).
             string toolCallMsg =
-                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"wpf_get_session_info\",\"arguments\":{}}}\n";
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"wpf_diagnostics\",\"arguments\":{}}}\n";
             await snoopMcp.StandardInput.WriteAsync(toolCallMsg).ConfigureAwait(false);
             await snoopMcp.StandardInput.FlushAsync().ConfigureAwait(false);
 
@@ -156,7 +156,7 @@ public sealed class LiveInjectionTests
                 }
             }
 
-            Assert.That(toolResponse, Is.Not.Null, "wpf_get_session_info response not received.");
+            Assert.That(toolResponse, Is.Not.Null, "wpf_diagnostics response not received.");
 
             // Parse response and verify PID.
             using var doc = JsonDocument.Parse(toolResponse!);
@@ -170,7 +170,7 @@ public sealed class LiveInjectionTests
                 .GetString()!;
 
             using var sessionDoc = JsonDocument.Parse(contentText);
-            int reportedPid = sessionDoc.RootElement.GetProperty("pid").GetInt32();
+            int reportedPid = sessionDoc.RootElement.GetProperty("sessionInfo").GetProperty("pid").GetInt32();
 
             Assert.That(reportedPid, Is.EqualTo(targetPid),
                 $"Reported PID {reportedPid} must match sample app PID {targetPid}.");

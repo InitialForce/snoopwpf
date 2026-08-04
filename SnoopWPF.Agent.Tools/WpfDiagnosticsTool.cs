@@ -12,12 +12,15 @@ using SnoopWPF.Agent.Contracts.Dtos;
 using SnoopWPF.Agent.Engine.Blob;
 
 /// <summary>
-/// MCP tool: wpf_diagnostics — returns a self-health snapshot of the running agent (FX6-D3).
+/// MCP tool: wpf_diagnostics — returns a self-health snapshot of the running agent (FX6-D3)
+/// together with the attached process's session info.
 /// </summary>
 /// <remarks>
 /// Use this tool as a first step before any inspection session to verify the agent is
 /// functional, the Dispatcher is responsive, and the BlobStore/audit subsystems are
-/// operating within normal parameters.
+/// operating within normal parameters. The <c>sessionInfo</c> field carries process/session
+/// metadata (process name, PID, .NET version, dispatchers with window node IDs, capabilities,
+/// top-level windows, mutation flag) obtained from the same Dispatcher probe.
 /// </remarks>
 [McpServerToolType]
 public sealed class WpfDiagnosticsTool(
@@ -28,20 +31,24 @@ public sealed class WpfDiagnosticsTool(
     IAuditDepthProvider? auditDepthProvider = null)
 {
     [McpServerTool(Name = "wpf_diagnostics")]
-    [Description("Returns a self-health snapshot of the running agent: version, mode, Dispatcher health, " +
-                 "BlobStore fill, audit log queue depth, session policy, and uptime in seconds. " +
-                 "Call this as a first step to verify the agent is functional before starting an inspection.")]
+    [Description("Agent self-health snapshot (version, mode, dispatcherHealthy, BlobStore fill, audit depth, " +
+                 "sessionPolicy, uptime) plus the attached process's sessionInfo (process name, PID, .NET " +
+                 "version, dispatchers with window node IDs, capabilities, windows, mutationEnabled). Call this " +
+                 "first on every session to verify the agent and get the bootstrap window node IDs; sessionInfo " +
+                 "is null when dispatcherHealthy is false. See docs/mcp-tools-reference.md.")]
     public async Task<string> GetDiagnosticsAsync(CancellationToken ct)
     {
         // Probe the dispatcher by calling a lightweight inspector method.
         // GetSessionInfoAsync does a Dispatcher round-trip; a timeout or SnoopException
         // with DispatcherBusy/SessionNotFound indicates the Dispatcher is unhealthy.
+        // The same round-trip yields the session info folded into the response below.
+        SessionInfoDto? sessionInfo = null;
         bool dispatcherHealthy;
         try
         {
             using var probeCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             probeCts.CancelAfter(TimeSpan.FromMilliseconds(1000));
-            await inspector.GetSessionInfoAsync(probeCts.Token).ConfigureAwait(false);
+            sessionInfo = await inspector.GetSessionInfoAsync(probeCts.Token).ConfigureAwait(false);
             dispatcherHealthy = true;
         }
         catch (SnoopException ex) when (
@@ -51,8 +58,32 @@ public sealed class WpfDiagnosticsTool(
         {
             dispatcherHealthy = false;
         }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            // The 1s health-probe budget elapsed but the CALLER did not cancel: the dispatcher may be slow
+            // (cold/loaded first call), not dead. The removed wpf_get_session_info awaited the caller's own
+            // token, so it never lost session info this way. Retry once on the caller's token so a first-call
+            // bootstrap (window node IDs) isn't silently dropped as sessionInfo:null.
+            try
+            {
+                sessionInfo = await inspector.GetSessionInfoAsync(ct).ConfigureAwait(false);
+                dispatcherHealthy = true;
+            }
+            catch (SnoopException ex) when (
+                ex.Code == SnoopErrorCode.DispatcherBusy ||
+                ex.Code == SnoopErrorCode.SessionNotFound ||
+                ex.Code == SnoopErrorCode.OperationTimedOut)
+            {
+                dispatcherHealthy = false;
+            }
+            catch (OperationCanceledException)
+            {
+                dispatcherHealthy = false;
+            }
+        }
         catch (OperationCanceledException)
         {
+            // Caller cancelled — report unhealthy rather than swallowing their cancellation into a retry.
             dispatcherHealthy = false;
         }
 
@@ -74,6 +105,7 @@ public sealed class WpfDiagnosticsTool(
                 AllowSensitiveRetention = sessionPolicy.AllowSensitiveRetention,
             },
             UptimeSeconds = startInfo.UptimeSeconds,
+            SessionInfo = sessionInfo,
         };
 
         return JsonSerializer.Serialize(dto, ToolSerializerOptions.Default);

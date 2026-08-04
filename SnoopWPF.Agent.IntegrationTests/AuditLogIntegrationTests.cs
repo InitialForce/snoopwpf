@@ -141,12 +141,12 @@ public sealed class AuditLogIntegrationTests : WpfIntegrationTestBase
             Assert.That(sessionInfo.Pid, Is.GreaterThan(0),
                 "Session PID must be positive.");
 
-            // Emit a tool-result entry representing the wpf_get_session_info call.
+            // Emit a tool-result entry representing the wpf_diagnostics call.
             await auditWriter.Writer.WriteAsync(new AuditEntry
             {
                 Seq = 2,
                 At = DateTimeOffset.UtcNow,
-                ToolName = "wpf_get_session_info",
+                ToolName = "wpf_diagnostics",
                 SessionId = sessionId,
                 Outcome = "ok",
                 Reason = null,

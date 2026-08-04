@@ -4,6 +4,7 @@
 namespace SnoopWPF.Agent.Tests.Tools;
 
 using System;
+using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -219,5 +220,108 @@ public sealed class WpfDiagnosticsToolTests : IDisposable
             "sessionPolicy.enableAutomation must reflect the session policy.");
         Assert.That(dto.SessionPolicy.AllowSensitiveRetention, Is.False,
             "sessionPolicy.allowSensitiveRetention must reflect the session policy.");
+    }
+
+    // -------------------------------------------------------------------------
+    // sessionInfo is folded into the diagnostics response (session-info tool merge)
+    // -------------------------------------------------------------------------
+
+    [Test]
+    public async Task Returns_SessionInfo_FromDispatcherProbe()
+    {
+        this.fake.OnGetSessionInfo = ct =>
+            Task.FromResult(new SessionInfoDto
+            {
+                ProcessName = "MyApp",
+                Pid = 1234,
+                DotnetVersion = "8.0.0",
+                MutationEnabled = true,
+                Dispatchers = new List<DispatcherInfoDto>
+                {
+                    new DispatcherInfoDto
+                    {
+                        Id = 1,
+                        ThreadId = 5,
+                        WindowNodeIds = new List<string> { "0:1", "0:2" },
+                    },
+                },
+                Capabilities = new List<string> { "screenshot", "behaviors" },
+            });
+
+        var tool = this.MakeTool();
+        var json = await tool.GetDiagnosticsAsync(default).ConfigureAwait(false);
+
+        using var doc = JsonDocument.Parse(json);
+        var sessionInfo = doc.RootElement.GetProperty("sessionInfo");
+        Assert.That(sessionInfo.ValueKind, Is.EqualTo(JsonValueKind.Object),
+            "sessionInfo must be populated when the Dispatcher probe succeeds.");
+        Assert.That(sessionInfo.GetProperty("processName").GetString(), Is.EqualTo("MyApp"));
+        Assert.That(sessionInfo.GetProperty("pid").GetInt32(), Is.EqualTo(1234));
+        Assert.That(sessionInfo.GetProperty("dotnetVersion").GetString(), Is.EqualTo("8.0.0"));
+        Assert.That(sessionInfo.GetProperty("mutationEnabled").GetBoolean(), Is.True);
+
+        var dispatchers = sessionInfo.GetProperty("dispatchers");
+        Assert.That(dispatchers.GetArrayLength(), Is.EqualTo(1));
+        var windowNodeIds = dispatchers[0].GetProperty("windowNodeIds");
+        Assert.That(windowNodeIds.GetArrayLength(), Is.EqualTo(2),
+            "sessionInfo must carry the bootstrap window node IDs.");
+        Assert.That(sessionInfo.GetProperty("capabilities").GetArrayLength(), Is.EqualTo(2));
+    }
+
+    [Test]
+    public async Task Returns_SessionInfo_Null_WhenDispatcherUnhealthy()
+    {
+        this.fake.OnGetSessionInfo = ct =>
+            throw new SnoopException(SnoopErrorCode.DispatcherBusy, "Dispatcher is busy.");
+
+        var tool = this.MakeTool();
+        var json = await tool.GetDiagnosticsAsync(default).ConfigureAwait(false);
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.That(doc.RootElement.GetProperty("dispatcherHealthy").GetBoolean(), Is.False);
+        Assert.That(doc.RootElement.GetProperty("sessionInfo").ValueKind, Is.EqualTo(JsonValueKind.Null),
+            "sessionInfo must be null when the Dispatcher probe fails.");
+    }
+
+    [Test]
+    public async Task SlowProbe_RetriesOnCallerToken_RecoversSessionInfo()
+    {
+        // The 1s health-probe budget can elapse on a cold/loaded first call without the caller having
+        // cancelled. The old wpf_get_session_info awaited the caller's own token and never lost session
+        // info this way, so wpf_diagnostics retries once on the caller token rather than silently
+        // returning sessionInfo:null (the regression the fold would otherwise introduce).
+        int calls = 0;
+        this.fake.OnGetSessionInfo = ct =>
+        {
+            if (++calls == 1)
+            {
+                // Simulate the 1s probe budget elapsing (caller token NOT cancelled).
+                throw new OperationCanceledException();
+            }
+
+            return Task.FromResult(new SessionInfoDto
+            {
+                ProcessName = "SlowApp",
+                Pid = 4242,
+                DotnetVersion = "8.0.0",
+                MutationEnabled = true,
+                Dispatchers = new List<DispatcherInfoDto>
+                {
+                    new DispatcherInfoDto { Id = 1, ThreadId = 5, WindowNodeIds = new List<string> { "0:1" } },
+                },
+                Capabilities = new List<string> { "screenshot" },
+            });
+        };
+
+        var tool = this.MakeTool();
+        var json = await tool.GetDiagnosticsAsync(default).ConfigureAwait(false);
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.That(calls, Is.EqualTo(2), "the caller-token retry must have run after the probe timed out");
+        Assert.That(doc.RootElement.GetProperty("dispatcherHealthy").GetBoolean(), Is.True,
+            "a slow-but-alive dispatcher recovered on retry must report healthy");
+        Assert.That(doc.RootElement.GetProperty("sessionInfo").ValueKind, Is.EqualTo(JsonValueKind.Object),
+            "the retry must recover the bootstrap session info rather than leaving it null");
+        Assert.That(doc.RootElement.GetProperty("sessionInfo").GetProperty("pid").GetInt32(), Is.EqualTo(4242));
     }
 }

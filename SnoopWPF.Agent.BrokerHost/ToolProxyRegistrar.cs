@@ -18,7 +18,7 @@ public static class ToolProxyRegistrar
     /// <summary>
     /// Registers a singleton <see cref="ISnoopInspector"/> implementation, a broker-side
     /// <see cref="BlobStore"/> singleton, a <see cref="SnoopAgentOptions"/> singleton, and
-    /// the 27 broker-side MCP tool proxies that delegate to the inspector.
+    /// the 32 broker-side MCP tool proxies that delegate to the inspector.
     /// </summary>
     /// <param name="services">The service collection to populate.</param>
     /// <param name="inspector">The proxy inspector that routes calls over the pipe.</param>
@@ -55,10 +55,10 @@ public static class ToolProxyRegistrar
         // redaction on, MaxTier = L0) so the broker is safe-by-default out of the box.
         services.AddSingleton(agentOptions ?? new SnoopAgentOptions());
 
-        // Register all 36 tools from the SnoopWPF.Agent.Tools assembly.
+        // Register all 32 tools from the SnoopWPF.Agent.Tools assembly.
         // Each tool takes ISnoopInspector (or BlobStore, SnoopAgentOptions) from DI
         // and routes calls over the pipe to the target.
-        var toolsAssembly = typeof(SnoopWPF.Agent.Tools.SessionInfoTool).Assembly;
+        var toolsAssembly = typeof(SnoopWPF.Agent.Tools.WpfDiagnosticsTool).Assembly;
         services
             .AddMcpServer()
             .WithToolsFromAssembly(toolsAssembly);

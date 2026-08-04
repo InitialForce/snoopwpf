@@ -15,10 +15,9 @@ using SnoopWPF.Agent.Contracts;
 public sealed class RunDiagnosticsTool(ISnoopInspector inspector)
 {
     [McpServerTool(Name = "wpf_run_diagnostics")]
-    [Description("Run diagnostic providers and return issues found in the WPF application. " +
-                 "Each result includes name, description, area, level (Error/Warning/Info), nodeId, and nodePath. " +
-                 "Results are cursor-paginated. Filter by nodeId to scope to a subtree, by providers to run only " +
-                 "specific diagnostic checks, or by minLevel to surface only high-severity issues.")]
+    [Description("Run diagnostic providers and return cursor-paginated issues found in the WPF application; each " +
+                 "result has name, description, area, level (Error/Warning/Info), nodeId, and nodePath. Filter by " +
+                 "nodeId (subtree), providers, or minLevel. See docs/mcp-tools-reference.md.")]
     public Task<string> RunDiagnosticsAsync(
         [Description("Node ID to scope diagnostics to a subtree (omit for full application scan).")] string? nodeId = null,
         [Description("List of diagnostic provider names to run (omit for all providers).")] List<string>? providers = null,

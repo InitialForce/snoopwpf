@@ -21,13 +21,10 @@ using SnoopWPF.Agent.Engine.Blob;
 public sealed class CaptureScreenshotTool(ISnoopInspector inspector, BlobStore blobStore, SnoopAgentOptions agentOptions)
 {
     [McpServerTool(Name = "wpf_capture_screenshot")]
-    [Description("Capture a PNG screenshot of a WPF element or window. " +
-                 "When nodeId is omitted, captures the first visible window. " +
-                 "Returns a JSON text block with metadata (width, height, nodeId) and a blobRef key. " +
-                 "Fetch the actual PNG bytes by passing the blobRef key to wpf_fetch_blob. " +
-                 "The blob expires after the session-configured TTL (default 60 s); re-capture if needed. " +
-                 "Fails with ELEMENT_NOT_RENDERABLE if the element has zero size or is not visible; " +
-                 "use wpf_get_windows to get a window nodeId for a full window screenshot instead.")]
+    [Description("Capture a PNG screenshot of a WPF element or window; omit nodeId to capture the first visible window. " +
+                 "Returns a JSON text block with metadata (width, height, nodeId) and a blobRef key; pass it to " +
+                 "wpf_fetch_blob for the PNG bytes. Fails with ELEMENT_NOT_RENDERABLE for a zero-size or hidden element. " +
+                 "See docs/mcp-tools-reference.md.")]
     public Task<CallToolResult> CaptureScreenshotAsync(
         [Description("Node ID of the element or window to capture. Omit to capture the first visible window.")] string? nodeId = null,
         CancellationToken ct = default)

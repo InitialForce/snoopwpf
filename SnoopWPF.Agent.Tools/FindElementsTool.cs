@@ -16,11 +16,10 @@ using SnoopWPF.Agent.Contracts.Dtos;
 public sealed class FindElementsTool(ISnoopInspector inspector)
 {
     [McpServerTool(Name = "wpf_find_elements")]
-    [Description("Search the visual tree for elements matching criteria. Filter by type name (substring match), " +
-                 "x:Name, optional root node, and/or property conditions (list of {property, operator, value} where " +
-                 "operator is \"Equals\" or \"Contains\"). " +
-                 "Returns a FindElementResultDto with matched nodes and their paths from root. " +
-                 "Hard cap: maxResults (default 50, max 200). Truncated=true when results were cut.")]
+    [Description("Search the visual tree for elements by type name (substring), x:Name, optional root, and/or " +
+                 "property conditions ({property, operator (\"Equals\"|\"Contains\"), value}). Returns a " +
+                 "FindElementResultDto with matched nodes and their paths; maxResults default 50, max 200. " +
+                 "See docs/mcp-tools-reference.md.")]
     public Task<string> FindElementsAsync(
         [Description("Type name substring to match (case-insensitive, e.g. \"Button\", \"TextBox\"). Omit to match any type.")] string? typeName = null,
         [Description("x:Name attribute to match exactly (case-sensitive). Omit to skip name filtering.")] string? name = null,

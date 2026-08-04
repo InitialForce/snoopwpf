@@ -18,18 +18,12 @@ public sealed class ActUntilTool(ISnoopInspector inspector)
 {
     [McpServerTool(Name = "wpf_act_until")]
     [Description(
-        "Fire a single action then poll a property predicate server-side until matched or timeout. " +
-        "action is { type, nodeId, value? } (same shape as a wpf_act_sequence step). " +
-        "predicate is { targetNodeId, propertyName, expectedValue?, presenceExpected } where " +
-        "presenceExpected ∈ { present (default), absent }: " +
-        "'present' is satisfied when the node resolves AND its property equals expectedValue; " +
-        "'absent' is satisfied when the node fails to resolve (e.g. dialog closed). " +
-        "\n\nReturns ActUntilResultDto with: actionResult (per-step delta), success (action OK and " +
-        "predicate met), predicateMet, timedOut, actualValue (last observed), elapsedMs, pollCount. " +
-        "\n\nIntended use: collapse 'click → loop wpf_wait_for_property until X' into a single tool " +
-        "call. Eliminates LLM polling overhead and keeps the wait inside the agent process. " +
-        "\n\nTimeout is clamped at the MCP request-timeout level (default ~30s); poll interval is 50ms. " +
-        "If the action fails, polling is skipped and success=false (no point waiting on a non-effect).")]
+        "Fire one action then poll a property predicate server-side until matched or timeout. action is " +
+        "{ type, nodeId, value? } (same shape as a wpf_act_sequence step); predicate is { targetNodeId, " +
+        "propertyName, expectedValue?, presenceExpected } where presenceExpected ∈ { present (default), " +
+        "absent } (absent = satisfied when the node stops resolving, e.g. a dialog closes). If the action " +
+        "fails, polling is skipped and success=false. Returns ActUntilResultDto. " +
+        "See docs/mcp-tools-reference.md.")]
     public Task<string> ActUntilAsync(
         [Description("Action step: { type, nodeId, value? }. type ∈ click | double_click | execute_command | set_text. value required for set_text.")] ActionStepDto action,
         [Description("Predicate: { targetNodeId, propertyName, expectedValue?, presenceExpected? }. presenceExpected defaults to \"present\".")] ActUntilPredicateDto predicate,

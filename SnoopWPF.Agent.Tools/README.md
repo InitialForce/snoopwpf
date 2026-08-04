@@ -1,6 +1,6 @@
 # SnoopWPF.Agent.Tools
 
-MCP tool implementations for SnoopWPF Agent. Contains the 28 `wpf_*` tool classes
+MCP tool implementations for SnoopWPF Agent. Contains the `wpf_*` tool classes
 registered via `[McpServerToolType]` that are exposed over the MCP server.
 
 **Targets: .NET 8.0-windows**
@@ -10,7 +10,7 @@ registered via `[McpServerToolType]` that are exposed over the MCP server.
 
 | Tool | Description |
 |------|-------------|
-| `wpf_get_session_info` | Process/session metadata, capabilities |
+| `wpf_diagnostics` | Agent self-health snapshot + session metadata (`sessionInfo`) |
 | `wpf_get_windows` | List all top-level WPF windows |
 | `wpf_get_visual_tree` | Walk the visual tree |
 | `wpf_get_children` | Get direct children of an element |
@@ -19,8 +19,7 @@ registered via `[McpServerToolType]` that are exposed over the MCP server.
 | `wpf_inspect_element` | Detailed element inspection |
 | `wpf_get_properties` | Read element properties |
 | `wpf_set_property` | Write element property (requires `EnableMutation=true`) |
-| `wpf_get_binding_info` | Inspect data bindings |
-| `wpf_resolve_binding` | Resolve binding source object |
+| `wpf_resolve_binding` | Inspect/resolve data bindings (full chain diagnostics) |
 | `wpf_run_diagnostics` | Run binding error diagnostics |
 | `wpf_get_resources` | Inspect resource dictionaries |
 | `wpf_capture_screenshot` | Capture element/window screenshot |

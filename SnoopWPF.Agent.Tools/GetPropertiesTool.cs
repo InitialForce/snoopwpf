@@ -14,9 +14,9 @@ using SnoopWPF.Agent.Contracts;
 public sealed class GetPropertiesTool(ISnoopInspector inspector)
 {
     [McpServerTool(Name = "wpf_get_properties")]
-    [Description("Get cursor-paginated properties of a WPF element. Each property includes name, typeName, value, " +
-                 "valueSource, isLocallySet, isDataBound, hasBindingError, bindingError, isReadOnly, hasTypeConverter, isRedacted. " +
-                 "Properties are sorted by name for stable pagination. Redacted properties show \"[REDACTED]\" as value.")]
+    [Description("Get cursor-paginated properties of a WPF element, each with value plus binding/source status " +
+                 "(isDataBound, hasBindingError, valueSource, isReadOnly, isRedacted). Sorted by name for stable " +
+                 "pagination; redacted properties show \"[REDACTED]\". See docs/mcp-tools-reference.md.")]
     public Task<string> GetPropertiesAsync(
         [Description("Node ID of the element.")] string nodeId,
         [Description("Case-insensitive substring filter on property name (optional).")] string? filter = null,

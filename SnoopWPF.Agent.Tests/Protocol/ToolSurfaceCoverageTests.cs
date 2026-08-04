@@ -89,10 +89,15 @@ public class ToolSurfaceCoverageTests
     [Test]
     public void ToolCount_MatchesPrd()
     {
-        // PRD §5 + Addendum M4 (FX6-C4): 29 tools + 4 WS3 tools (bd-1a9.39/40/41/42) + 3 LLM-nav tools (wpf_get_actionables, wpf_act_sequence, wpf_act_until) = 36.
-        // Update this constant (and PRD.md + docs/prd-scope-addendum-m4.md + docs/mcp-tools-reference.md)
-        // whenever a tool is added or removed.
-        const int PrdToolCount = 36;
+        // Tool-surface trim (breaking): folded wpf_get_session_info into wpf_diagnostics,
+        // consolidated the wpf_select_item triple (removed wpf_select_item_by_index and
+        // wpf_select_item_by_scroll), and removed wpf_get_binding_info (wpf_resolve_binding is the
+        // replacement). Net −4 from the previous surface of 36.
+        // Breakdown: 27 core tools + 2 WS3 tools (wpf_double_click, wpf_get_list_items) +
+        // 3 LLM-nav tools (wpf_get_actionables, wpf_act_sequence, wpf_act_until) = 32.
+        // Update this constant (and llms.txt + docs/mcp-tools-reference.md) whenever a tool is
+        // added or removed.
+        const int PrdToolCount = 32;
 
         var toolAssembly = typeof(ClickTool).Assembly;
 

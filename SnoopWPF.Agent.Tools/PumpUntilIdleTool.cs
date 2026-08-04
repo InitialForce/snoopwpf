@@ -17,16 +17,10 @@ public sealed class PumpUntilIdleTool(ISnoopInspector inspector)
 {
     [McpServerTool(Name = "wpf_pump_until_idle")]
     [Description(
-        "Wait until the WPF Dispatcher queue AND composition rendering pipeline are simultaneously " +
-        "idle (AND-gate, M2-11). Returns immediately when idle; throws DISPATCHER_BUSY if the 5-second " +
-        "animation-runaway ceiling is reached. " +
-        "\n\nUse before wpf_poll_changes or wpf_wait_for_property when you need deterministic results " +
-        "after a UI mutation. " +
-        "\n\nNested-pump guard: calling this tool from within an active pump on the same thread " +
-        "is rejected with DISPATCHER_BUSY immediately. " +
-        "\n\nresources filter: pass an array of resource names to monitor only a subset " +
-        "(e.g. [\"Dispatcher\"] to skip CompositionRendering). " +
-        "Omit or pass null to monitor all built-in resources (Dispatcher + CompositionRendering).")]
+        "Wait until the WPF Dispatcher queue AND composition rendering pipeline are simultaneously idle " +
+        "(AND-gate); returns immediately when idle, throws DISPATCHER_BUSY at the 5-second ceiling. Use before " +
+        "wpf_poll_changes or wpf_wait_for_property for deterministic post-mutation results (optionally pass a " +
+        "resources subset to monitor). See docs/mcp-tools-reference.md.")]
     public Task<string> PumpUntilIdleAsync(
         [Description("Maximum wait time in milliseconds. Capped at 5000 (animation-runaway ceiling). Default: 5000.")] int timeoutMs = 5000,
         [Description("Optional array of resource names to monitor (e.g. [\"Dispatcher\", \"CompositionRendering\"]). Omit or null to monitor all.")] IReadOnlyList<string>? resources = null,

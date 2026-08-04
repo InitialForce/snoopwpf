@@ -80,4 +80,14 @@ public sealed class AgentDiagnosticsDto
     /// </summary>
     [DataMember(Name = "uptimeSeconds")]
     public double UptimeSeconds { get; init; }
+
+    /// <summary>
+    /// Process/session metadata for the attached WPF target: process name, PID, .NET version,
+    /// dispatchers (with their window node IDs), advertised capabilities, top-level windows, and
+    /// whether mutation is enabled. Populated from the same Dispatcher round-trip that produces
+    /// <see cref="DispatcherHealthy"/>; <see langword="null"/> when that probe fails
+    /// (i.e. when <see cref="DispatcherHealthy"/> is <see langword="false"/>).
+    /// </summary>
+    [DataMember(Name = "sessionInfo")]
+    public SessionInfoDto? SessionInfo { get; init; }
 }

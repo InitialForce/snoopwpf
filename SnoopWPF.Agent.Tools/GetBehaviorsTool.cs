@@ -14,10 +14,9 @@ using SnoopWPF.Agent.Contracts;
 public sealed class GetBehaviorsTool(ISnoopInspector inspector)
 {
     [McpServerTool(Name = "wpf_get_behaviors")]
-    [Description("Get all Blend/Microsoft.Xaml.Behaviors behaviors and actions attached to a WPF element. " +
-                 "Each BehaviorDto includes typeName, assemblyName, and a list of properties (name/value pairs). " +
-                 "Returns an empty list if no behaviors are attached. " +
-                 "Use wpf_inspect_element first to check behaviorCount before calling this tool.")]
+    [Description("Get all Blend/Microsoft.Xaml.Behaviors behaviors and actions attached to a WPF element " +
+                 "(empty list if none); each BehaviorDto has typeName, assemblyName, and name/value properties. " +
+                 "See docs/mcp-tools-reference.md.")]
     public Task<string> GetBehaviorsAsync(
         [Description("Node ID of the element whose behaviors to retrieve.")] string nodeId,
         CancellationToken ct = default)
