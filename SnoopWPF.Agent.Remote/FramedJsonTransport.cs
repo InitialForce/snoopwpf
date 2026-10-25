@@ -39,6 +39,15 @@ public sealed class FramedJsonTransport : IDisposable
     /// Serializes <paramref name="value"/> as JSON and sends it as a framed message.
     /// Concurrent callers are serialized via an internal write lock to guarantee in-order delivery.
     /// </summary>
+    /// <remarks>
+    /// <paramref name="ct"/> bounds the wait for the write lock and for the write to finish, but it
+    /// never cancels the write itself. A pipe write that does not fit the pipe's buffer stays pending
+    /// until the reader consumes the bytes (under Wine that is every write to a pipe with the zero-size
+    /// buffer .NET asks for), and cancelling a pending write drops whatever the reader has not consumed yet. The reader would then take the next
+    /// frame's bytes as the rest of this one, and the connection would be lost. So once the frame has
+    /// started, it is always written in full, and the write lock is held until it is, so a later frame
+    /// cannot overtake it.
+    /// </remarks>
     public async Task SendAsync<T>(T value, CancellationToken ct)
     {
         byte[] body = JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions);
@@ -49,21 +58,51 @@ public sealed class FramedJsonTransport : IDisposable
                 $"Outgoing frame size {body.Length} exceeds MaxFrameSize {ProtocolConstants.MaxFrameSize}.");
         }
 
-        // Use a method-local buffer so SendAsync and ReceiveAsync never share state.
-        byte[] sendLengthBuffer = new byte[4];
-        BinaryPrimitives.WriteInt32LittleEndian(sendLengthBuffer, body.Length);
+        // One buffer for the length prefix and the body, so the frame goes out in a single write.
+        // Method-local, so SendAsync and ReceiveAsync never share state.
+        byte[] frame = new byte[4 + body.Length];
+        BinaryPrimitives.WriteInt32LittleEndian(frame, body.Length);
+        Buffer.BlockCopy(body, 0, frame, 4, body.Length);
 
         await this.writeLock.WaitAsync(ct).ConfigureAwait(false);
+
+        Task write;
         try
         {
-            await this.stream.WriteAsync(sendLengthBuffer, 0, 4, ct).ConfigureAwait(false);
-            await this.stream.WriteAsync(body, 0, body.Length, ct).ConfigureAwait(false);
-            await this.stream.FlushAsync(ct).ConfigureAwait(false);
+            write = this.WriteFrameAsync(frame);
         }
-        finally
+        catch
         {
             this.writeLock.Release();
+            throw;
         }
+
+        _ = write.ContinueWith(
+            static (t, state) =>
+            {
+                // Observe a failure nobody is waiting for any more; the next read or write reports it.
+                _ = t.Exception;
+                try
+                {
+                    ((SemaphoreSlim)state!).Release();
+                }
+                catch (ObjectDisposedException)
+                {
+                    // The transport was disposed while the write was in flight.
+                }
+            },
+            this.writeLock,
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+
+        await write.WaitAsync(ct).ConfigureAwait(false);
+    }
+
+    private async Task WriteFrameAsync(byte[] frame)
+    {
+        await this.stream.WriteAsync(frame, 0, frame.Length, CancellationToken.None).ConfigureAwait(false);
+        await this.stream.FlushAsync(CancellationToken.None).ConfigureAwait(false);
     }
 
     /// <summary>

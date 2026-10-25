@@ -226,6 +226,98 @@ public sealed class PipeTransportTests
     }
 
     // -------------------------------------------------------------------------
+    // Cancellation while a write is pending
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// A write stream that behaves like a pipe whose reader has taken only the first
+    /// <c>consumedBeforeStall</c> bytes: those are written at once, the rest of every write waits
+    /// until <see cref="Release"/>, and a write cancelled while it waits loses its remaining bytes,
+    /// as a cancelled pending pipe write does.
+    /// </summary>
+    private sealed class StallingWriteStream : Stream
+    {
+        private readonly MemoryStream written = new MemoryStream();
+        private readonly TaskCompletionSource released = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource stalled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int allowance;
+
+        public StallingWriteStream(int consumedBeforeStall) => this.allowance = consumedBeforeStall;
+
+        public Task Stalled => this.stalled.Task;
+
+        public byte[] Written => this.written.ToArray();
+
+        public void Release() => this.released.TrySetResult();
+
+        public override async Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+        {
+            int now = Math.Min(count, this.allowance);
+            this.allowance -= now;
+            this.written.Write(buffer, offset, now);
+            if (now == count)
+            {
+                return;
+            }
+
+            this.stalled.TrySetResult();
+            await this.released.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            this.written.Write(buffer, offset + now, count - now);
+        }
+
+        public override Task FlushAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public override bool CanRead => false;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => true;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override void Flush()
+        {
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
+    [Test]
+    public async Task SendAsync_CancelledWhileWritePending_StillWritesWholeFrame()
+    {
+        // The reader has taken the 4-byte length prefix and nothing more, then stalls.
+        var stream = new StallingWriteStream(consumedBeforeStall: 4);
+        var transport = new FramedJsonTransport(stream);
+
+        using var cts = new CancellationTokenSource();
+        Task first = transport.SendAsync(new PipeRequest { Id = 1, Method = "FindElements", ParamsJson = "{}" }, cts.Token);
+        await stream.Stalled;
+        cts.Cancel();
+        Assert.That(async () => await first, Throws.InstanceOf<OperationCanceledException>());
+
+        Task second = transport.SendAsync(new PipeRequest { Id = 2, Method = "GetWindows", ParamsJson = "{}" }, CancellationToken.None);
+        stream.Release();
+        await second;
+
+        // Both frames arrive whole and in order: the cancelled send stopped the wait, not the write.
+        using var ms = new MemoryStream(stream.Written);
+        var reader = new FramedJsonTransport(ms);
+        var r1 = await reader.ReceiveAsync<PipeRequest>(CancellationToken.None);
+        var r2 = await reader.ReceiveAsync<PipeRequest>(CancellationToken.None);
+        Assert.That(r1!.Id, Is.EqualTo(1));
+        Assert.That(r2!.Id, Is.EqualTo(2));
+        Assert.That(await reader.ReceiveAsync<PipeRequest>(CancellationToken.None), Is.Null);
+    }
+
+    // -------------------------------------------------------------------------
     // Max frame enforcement
     // -------------------------------------------------------------------------
 

@@ -290,21 +290,22 @@ public sealed class PipeSnoopInspectorProxy : ISnoopInspector, IAsyncDisposable,
 
         try
         {
-            // Send the request (serialised — only one writer at a time).
-            await this.sendLock.WaitAsync(linkedCts.Token).ConfigureAwait(false);
-            try
-            {
-                await this.connection.SendRequestAsync(request, linkedCts.Token).ConfigureAwait(false);
-            }
-            finally
-            {
-                this.sendLock.Release();
-            }
-
-            // Wait for the response pump to deliver a response.
             PipeResponse response;
             try
             {
+                // Send the request (serialised — only one writer at a time). The timeout stops the
+                // wait, never the write: the transport always finishes a frame it has started.
+                await this.sendLock.WaitAsync(linkedCts.Token).ConfigureAwait(false);
+                try
+                {
+                    await this.connection.SendRequestAsync(request, linkedCts.Token).ConfigureAwait(false);
+                }
+                finally
+                {
+                    this.sendLock.Release();
+                }
+
+                // Wait for the response pump to deliver a response.
                 response = await pendingRequest.Completion.Task
                     .WaitAsync(linkedCts.Token)
                     .ConfigureAwait(false);
