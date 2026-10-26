@@ -297,15 +297,18 @@ public sealed class PipeTransportTests
         var stream = new StallingWriteStream(consumedBeforeStall: 4);
         var transport = new FramedJsonTransport(stream);
 
+        // Bounds every wait, so a write-lock regression fails the test instead of hanging it.
+        var watchdog = TimeSpan.FromSeconds(10);
+
         using var cts = new CancellationTokenSource();
         Task first = transport.SendAsync(new PipeRequest { Id = 1, Method = "FindElements", ParamsJson = "{}" }, cts.Token);
-        await stream.Stalled;
+        await stream.Stalled.WaitAsync(watchdog);
         cts.Cancel();
-        Assert.That(async () => await first, Throws.InstanceOf<OperationCanceledException>());
+        Assert.That(async () => await first.WaitAsync(watchdog), Throws.InstanceOf<OperationCanceledException>());
 
         Task second = transport.SendAsync(new PipeRequest { Id = 2, Method = "GetWindows", ParamsJson = "{}" }, CancellationToken.None);
         stream.Release();
-        await second;
+        await second.WaitAsync(watchdog);
 
         // Both frames arrive whole and in order: the cancelled send stopped the wait, not the write.
         using var ms = new MemoryStream(stream.Written);
